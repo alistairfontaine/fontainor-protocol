@@ -8,5 +8,9 @@
   },
   "keywords": [],
   "author": "",
-  "license": "ISC"
+  "license": "ISC",
+  "dependencies": {
+    "arweave": "^1.15.7",
+    "warp-contracts": "^1.4.45"
+  }
 }
