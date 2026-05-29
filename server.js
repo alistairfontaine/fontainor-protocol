@@ -3,9 +3,20 @@ const cors = require('cors');
 const { uploadData } = require('./irysStorage');
 const app = express();
 
-app.use(cors()); // Allows your HTML to talk to this server
-app.use(express.json()); // Allows the server to read JSON
+app.use(cors());
+app.use(express.json());
 
+// 1. Serve the frontend
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/index.html');
+});
+
+// 2. Serve the registry (connect this to your HTML)
+app.get('/registry', (req, res) => {
+    res.sendFile(__dirname + '/registry.json');
+});
+
+// 3. The Upload API
 app.post('/upload', async (req, res) => {
     try {
         const { content } = req.body;
@@ -16,4 +27,4 @@ app.post('/upload', async (req, res) => {
     }
 });
 
-app.listen(3000, () => console.log('Fontainor Protocol API running on http://localhost:3000'));
+app.listen(3000, () => console.log('Fontainor Protocol live at http://localhost:3000'));
