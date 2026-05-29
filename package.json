@@ -11,6 +11,7 @@
   "license": "ISC",
   "dependencies": {
     "arweave": "^1.15.7",
+    "dotenv": "^17.4.2",
     "warp-contracts": "^1.4.45"
   }
 }
