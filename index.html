@@ -957,6 +957,18 @@ async function start() {
 
 // Call the function
 start();
+async function triggerUpload(content) {
+    const response = await fetch("http://localhost:3000/upload", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content })
+    });
+    const result = await response.json();
+    if (result.success) {
+        alert("Published to Protocol! TX ID: " + result.txId);
+        console.log("New registry location:", result.txId);
+    }
+}
 </script>
 </body>
 </html>

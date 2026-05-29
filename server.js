@@ -1,30 +1,36 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 const { uploadData } = require('./irysStorage');
+
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 
-// 1. Serve the frontend
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/index.html');
-});
+// Serve all static files (index.html, css, js, etc.) from the current folder
+app.use(express.static(__dirname));
 
-// 2. Serve the registry (connect this to your HTML)
+// The Registry Endpoint (used by your index.html to load data)
 app.get('/registry', (req, res) => {
-    res.sendFile(__dirname + '/registry.json');
+    res.sendFile(path.join(__dirname, 'registry.json'));
 });
 
-// 3. The Upload API
+// The Upload Endpoint (used to save data to Irys)
 app.post('/upload', async (req, res) => {
     try {
         const { content } = req.body;
         const txId = await uploadData(content);
         res.json({ success: true, txId });
     } catch (error) {
+        console.error("Upload error:", error);
         res.status(500).json({ success: false, error: error.message });
     }
 });
 
-app.listen(3000, () => console.log('Fontainor Protocol live at http://localhost:3000'));
+// Start the server
+const PORT = 3000;
+app.listen(PORT, () => {
+    console.log(`Fontainor Protocol live at http://localhost:${PORT}`);
+});
