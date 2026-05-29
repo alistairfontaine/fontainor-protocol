@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@irys/sdk": "^0.2.11",
     "arweave": "^1.15.7",
     "dotenv": "^17.4.2",
     "warp-contracts": "^1.4.45"
