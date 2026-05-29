@@ -1,0 +1,31 @@
+{
+  "name": "Fontainor Genesis",
+  "symbol": "FONT",
+  "description": "The first architecture of the Fontainor Protocol.",
+  "artist": "Alistair Fontaine",
+  "version": "0.1",
+  "equity_model": {
+    "total_copies": 200,
+    "price_per_copy": 29.99,
+    "secondary_royalty_basis_points": 1000
+  },
+  "properties": {
+    "category": "audio",
+    "files": [
+      {
+        "uri": "fontainor-genesis.mp3",
+        "type": "audio/mp3"
+      }
+    ]
+  },
+  "attributes": [
+    {
+      "trait_type": "Genre",
+      "value": "Experimental Folk"
+    },
+    {
+      "trait_type": "License",
+      "value": "Collector Equity"
+    }
+  ]
+}
