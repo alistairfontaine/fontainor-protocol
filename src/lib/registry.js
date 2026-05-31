@@ -6,26 +6,32 @@ function pick(o, ...keys) {
 
 export function normalizeOne(a) {
   const eq = a.equity || {}
+  const priceObj = (a.price && typeof a.price === 'object') ? a.price : {}
+  const edObj = (a.editions && typeof a.editions === 'object') ? a.editions : {}
   return {
     id: pick(a, 'assetId', 'id', 'catalogNumber') || '\u2014',
     title: pick(a, 'name', 'title') || 'Untitled',
     artist: pick(a, 'artist', 'creator') || 'Unknown artist',
     label: pick(a, 'label', 'hub', 'publisher') || null,
     tags: Array.isArray(a.tags) ? a.tags : [],
-    coverUrl: pick(a, 'cover', 'coverUrl', 'image', 'image_url', 'artwork') || null,
-    audio: pick(a, 'audio', 'audioUrl', 'animation_url') || null,
+    // new schema: coverUri ; legacy: cover/image/etc
+    coverUrl: pick(a, 'coverUri', 'cover', 'coverUrl', 'image', 'image_url', 'artwork') || null,
+    // new schema: audioUri ; legacy: audio/audioUrl
+    audio: pick(a, 'audioUri', 'audio', 'audioUrl', 'animation_url') || null,
     arweaveTx: pick(a, 'arweaveTx', 'txId', 'tx', 'arweave') || null,
     desc: pick(a, 'description', 'desc') || '',
     bonus: a.bonus || a.bonusMaterial || [],
     status: pick(a, 'status') || null,
-    date: pick(a, 'timestamp', 'date', 'createdAt') || null,
+    date: pick(a, 'date', 'timestamp', 'createdAt') || null,
     price: {
-      amount: pick(eq, 'price_per_copy') ?? pick(a, 'price') ?? 0,
-      currency: pick(a, 'currency', 'priceCurrency') || 'USD',
+      // new schema: price.amount/price.currency ; legacy: equity.price_per_copy / flat price
+      amount: priceObj.amount ?? pick(eq, 'price_per_copy') ?? (typeof a.price === 'number' ? a.price : 0) ?? 0,
+      currency: priceObj.currency || pick(a, 'currency', 'priceCurrency') || 'USD',
     },
     editions: {
-      total: pick(eq, 'total_copies') ?? pick(a, 'total_copies') ?? 0,
-      minted: pick(eq, 'copies_sold', 'sold', 'minted') ?? pick(a, 'minted'),
+      // new schema: editions.total ; legacy: equity.total_copies
+      total: edObj.total ?? pick(eq, 'total_copies') ?? pick(a, 'total_copies') ?? 0,
+      minted: edObj.minted ?? pick(eq, 'copies_sold', 'sold', 'minted') ?? pick(a, 'minted'),
     },
     royaltyBps: pick(eq, 'secondary_royalty_basis_points') ?? pick(a, 'royaltyBps') ?? 0,
     social: {
@@ -61,18 +67,23 @@ export function parseRegistryText(text) {
 }
 
 // build a new asset in YOUR registry schema, for the Publish flow
-export function buildAsset({ title, artist, price = 0, copies = 0, audio = '' }) {
+// Build a new asset that EXACTLY matches the backend registrySchema (validator.js):
+//   { id, title, artist, price:{amount,currency}, editions:{total}, status, date,
+//     audioUri?, coverUri? }
+// Anything else gets rejected with a 400 by the Zod gatekeeper.
+export function buildAsset({ title, artist, price = 0, currency = 'USD', total = 0, audioUri = '', coverUri = '' }) {
   const asset = {
-    assetId: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
-    name: title,
+    id: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+    title,
     artist,
-    timestamp: new Date().toISOString(),
-    equity: { total_copies: copies, price_per_copy: price, secondary_royalty_basis_points: 1000 },
+    price: { amount: Number(price) || 0, currency: currency || 'USD' },
+    editions: { total: Number(total) || 0 },
     status: 'REGISTERED_ON_FONTAINOR',
-    social_layer: { support_ledger: [], total_tips_received: 0 },
-    profile_metadata: { bio: '', banner_url: '', social_links: [] },
+    date: new Date().toISOString(),
+    // schema allows these to be omitted/null; only include when provided and valid
+    audioUri: audioUri ? audioUri : null,
+    coverUri: coverUri ? coverUri : null,
   }
-  if (audio) asset.audio = audio
   return asset
 }
 
