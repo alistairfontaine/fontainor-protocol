@@ -15,3 +15,20 @@ Goals for v0.3:
 
 CRUCIAL NOTE. 2:22/ 5/31/26.
 "Backend enforces strict Zod validation on POST /upload. Only accepts arrays of registry objects. Use import syntax for all modules."
+
+# Fontainor Protocol - Project Rules
+
+## Current Status 6:57 5/31/2026
+- **Backend/Frontend Integration:** COMPLETED (PR #2 merged).
+- **Validation:** Active via Zod middleware (`validator.js`).
+- **Data Structure:** API now accepts and validates array-based payloads against `registrySchema`.
+- **Infrastructure:** `/upload` route acts as a validation gatekeeper (Placeholder mode).
+
+## Workflow Rules
+1. All API payloads MUST adhere to `registrySchema` (array format).
+2. Backend MUST return 200 for valid payloads and 400 for validation errors.
+3. Frontend MUST handle Zod-formatted error messages from 400 responses.
+
+## Upcoming Milestones
+- Implement Library Grid (500+ asset support).
+- Integrate Irys SDK for permanent decentralized storage on Arweave.
