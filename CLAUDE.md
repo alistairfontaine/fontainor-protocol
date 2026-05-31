@@ -13,5 +13,5 @@ Goals for v0.3:
 2. History Log: Maintain a rolling log (last 10 TxIDs) in a history.json to prevent state loss.
 3. Media Ready: Ensure all metadata includes standardized audio/image URI fields for stream-readiness.
 
-NOTE. 2:22/ 5/31/26
+CRUCIAL NOTE. 2:22/ 5/31/26.
 "Backend enforces strict Zod validation on POST /upload. Only accepts arrays of registry objects. Use import syntax for all modules."
