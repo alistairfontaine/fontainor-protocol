@@ -63,4 +63,7 @@ The Fontainor Protocol is an autonomous registry for digital assets. It utilizes
     - **Media Readiness**: Standardizing metadata fields for audio and image URI integration.
 * **Auth/Payments:** Auth is currently local-only for UX. Payments are scaffolded but remain optimistic/non-custodial until the backend payment bridge is finalized.
 
+* Current Progress.
+* "Hardened server with Zod schema validation, moved to ES Module architecture, added automatic history logging."
+
 ```
