@@ -1,78 +1,56 @@
+
+```markdown
 # Fontainor Web (v0.2) — React frontend
 
-The production frontend for Fontainor, ported from the HTML prototype to **React + Vite**.
-It renders the full Nina-style UI and talks to the backend (`server.js` / Irys) through one data layer.
+The production frontend for Fontainor, ported from the HTML prototype to **React + Vite**. It renders the full Nina-style UI and talks to the backend (`server.js` / Irys) through a decentralized data layer.
 
 ## Run it
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173
+npm run dev          # http://localhost:5173
+
 ```
 
 Build for production:
 
 ```bash
-npm run build      # outputs to dist/
-npm run preview     # serve the production build
-```
-
-## How it connects to the backend
-
-Data loading order (see `src/lib/api.js`):
-
-1. **Backend API** — `GET {API_BASE}/registry`  (default `http://localhost:3000`)
-2. **Local file** — `./registry.json` (the copy in `public/` — dev fallback)
-3. **Embedded sample** — the genesis asset, if nothing else is reachable
-
-A banner at the top of the feed shows which source loaded (green = live API).
-
-Override the backend URL without editing code:
+npm run build        # outputs to dist/
+npm run preview      # serve the production build
 
 ```
-http://localhost:5173/?api=http://localhost:8080
-```
 
-### Publishing
-`src/lib/api.js > publishAsset()`:
-- If the host page exposes a global `triggerUpload(content)` (leader's integration), it calls that.
-- Otherwise it does `POST {API_BASE}/upload` with the new asset as JSON.
+## Architecture: The Manifest Protocol (v0.2 Update)
 
-New assets are built in **our registry schema** (`assetId` / `name` / `equity` /
-`social_layer` / `profile_metadata`) by `buildAsset()` — so they match the backend.
+We have migrated from local file storage to a **Decentralized Manifest Protocol**. The source of truth for the registry is now an immutable ledger hosted on the Arweave network via Irys.
 
-### Two things the backend needs for the green banner
-1. `GET /registry` returns the registry JSON (single object or array — both handled).
-2. **CORS enabled** on the Express server (browser → localhost:3000 is cross-origin).
+### How it connects to the backend
+
+Data is no longer static. The registry is dynamically fetched:
+
+1. **Manifest Pointer**: The server checks the `REGISTRY_MANIFEST` variable in your `.env` file. This TxID is the "Source of Truth" for the entire protocol.
+2. **Backend API**: `GET /registry` fetches the full JSON array from the blockchain gateway using that TxID.
+3. **Publishing Workflow (`useStore.js`)**:
+* When a new asset is published, the app fetches the *current* array from the registry.
+* It appends the new asset to that array.
+* It sends the *entire updated array* via `POST /upload`.
+* The backend pushes this to Irys and returns a new TxID.
+* **Crucial:** You must update the `REGISTRY_MANIFEST` in your `.env` with the new TxID returned by the server to "point" the protocol to the latest version.
+
 
 ## Project structure
 
-```
-src/
-  main.jsx               app entry
-  App.jsx                hash router + layout + modals + overlay
-  styles.css             all styles (Nina-style, white/blue)
-  lib/
-    registry.js          schema normalization, formatters, generated cover art
-    api.js               backend client (GET /registry, POST /upload) + fallback
-  hooks/
-    useStore.js          app state + audio player engine + auth + publish
-  components/
-    Nav.jsx              sidebar + top nav (auth-aware) + dropdown
-    Release.jsx          release card, grid, skeleton, cover
-    ReleaseDetail.jsx    detail overlay (specs, support, profile)
-    Player.jsx           persistent bottom player
-    Modals.jsx           auth (email + Solana wallet) + publish
-    Pages.jsx            all routed views
-public/
-  registry.json          dev fallback copy of the genesis asset
-```
+* `src/main.jsx`: App entry
+* `src/App.jsx`: Hash router + layout + modals
+* `src/lib/registry.js`: Schema normalization + builders
+* `src/lib/api.js`: Backend client (GET/POST)
+* `src/hooks/useStore.js`: App state, audio engine, and the **Fetch-Append-Push** publish logic
+* `public/registry.json`: Legacy fallback only (do not use for active development)
 
-## Notes / honest limitations
-- **Auth is provisional** (front-end only). Email/wallet sign-in sets local state so
-  the app is explorable; real auth is a backend step.
-- **Payments are not wired** — the "Collect" button and pay-what-you-want support
-  update the UI optimistically but don't move money yet (that's `paymentBridge.js`).
-- `localhost` is dev-only; going public needs hosting.
-- The registry's `equity` / resale-royalty model still has the open securities question
-  flagged earlier — a product/legal decision, not a frontend one.
+## Important Protocol Notes
+
+* **Persistence:** Because we upload the entire array every time, history is never lost.
+* **Manual Pointer:** Version 0.2 requires manual `.env` updates. If the registry appears stale, check the terminal logs for the latest TxID and update your environment variable.
+* **Auth/Payments:** Auth is currently local-only for UX. Payments are scaffolded but remain optimistic/non-custodial until the backend payment bridge is finalized.
+
+```
