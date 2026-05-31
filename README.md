@@ -1,6 +1,6 @@
 
 ```markdown
-# Fontainor Web (v0.3)
+# Fontainor Protocol (v0.3-development)
 
 The production frontend for Fontainor, ported from the HTML prototype to **React + Vite**. It renders the full Nina-style UI and talks to the backend (`server.js` / Irys) through a decentralized data layer.
 
@@ -37,7 +37,6 @@ Data is no longer static. The registry is dynamically fetched:
 * The backend pushes this to Irys and returns a new TxID.
 * **Crucial:** You must update the `REGISTRY_MANIFEST` in your `.env` with the new TxID returned by the server to "point" the protocol to the latest version.
 
-
 ## Project structure
 
 * `src/main.jsx`: App entry
@@ -63,8 +62,7 @@ The Fontainor Protocol is an autonomous registry for digital assets. It utilizes
     - **Media Readiness**: Standardizing metadata fields for audio and image URI integration.
 * **Auth/Payments:** Auth is currently local-only for UX. Payments are scaffolded but remain optimistic/non-custodial until the backend payment bridge is finalized.
 
-* # Update 6:59pm 5/31/2026
-The Fontainor Protocol is an Asset-First infrastructure designed for high-volume digital library management.
+* # Current Update 6:59pm 5/31/2026
 
 ## Technical Overview
 The protocol functions as a secure bridge between frontend asset submission and decentralized permanent storage.
