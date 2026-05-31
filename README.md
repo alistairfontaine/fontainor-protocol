@@ -82,7 +82,7 @@ The protocol utilizes a Zod-based validation layer to ensure all incoming assets
 ---
 *Built with an Asset-First philosophy.*
 
-* Current Progress.
+## Current Progress
 * "Hardened server with Zod schema validation, moved to ES Module architecture, added automatic history logging."
 
 ```
