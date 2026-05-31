@@ -52,9 +52,7 @@ Data is no longer static. The registry is dynamically fetched:
 * **Persistence:** Because we upload the entire array every time, history is never lost.
 * **Manual Pointer:** Version 0.2 requires manual `.env` updates. If the registry appears stale, check the terminal logs for the latest TxID and update your environment variable.
 
-* # Fontainor Protocol
-
-## Architecture Overview
+## Architecture Overview v0.3
 The Fontainor Protocol is an autonomous registry for digital assets. It utilizes an Irys-based storage layer and a `pointer.json` manifest to track the latest state of the registry, ensuring persistence without manual configuration.
 
 ## Status: v0.3-development
