@@ -1,6 +1,30 @@
 import React, { useState } from 'react'
 import { API_BASE } from '../lib/api.js'
 
+// Render Zod's error.format() output as a short, readable field list.
+function ValidationDetails({ details }) {
+  if (!details || typeof details !== 'object') return null
+  const rows = []
+  const walk = (obj, prefix) => {
+    for (const key of Object.keys(obj)) {
+      if (key === '_errors') {
+        if (Array.isArray(obj._errors) && obj._errors.length && prefix) {
+          rows.push(prefix + ': ' + obj._errors.join(', '))
+        }
+      } else if (obj[key] && typeof obj[key] === 'object') {
+        walk(obj[key], prefix ? prefix + '.' + key : key)
+      }
+    }
+  }
+  walk(details, '')
+  if (!rows.length) return null
+  return (
+    <ul style={{ margin: '8px 0 0', paddingLeft: 16, textAlign: 'left', lineHeight: 1.5 }}>
+      {rows.slice(0, 8).map((r, i) => <li key={i} style={{ fontFamily: 'var(--mono)', fontSize: 11 }}>{r}</li>)}
+    </ul>
+  )
+}
+
 export function AuthModal({ store, mode, setMode, onClose }) {
   const [email, setEmail] = useState('')
   const [pass, setPass] = useState('')
@@ -42,9 +66,9 @@ export function AuthModal({ store, mode, setMode, onClose }) {
 }
 
 export function PublishModal({ store, onClose }) {
-  const [form, setForm] = useState({ title: '', artist: store.user?.name || '', price: 0, copies: 0, audio: '' })
+  const [form, setForm] = useState({ title: '', artist: store.user?.name || '', price: 0, currency: 'USD', total: 0, audioUri: '', coverUri: '' })
   const [busy, setBusy] = useState(false)
-  const [note, setNote] = useState(null) // {ok, msg}
+  const [note, setNote] = useState(null) // {ok, msg, details?}
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
 
   const submit = async () => {
@@ -52,11 +76,31 @@ export function PublishModal({ store, onClose }) {
     setBusy(true); setNote(null)
     const res = await store.publish({
       title: form.title.trim(), artist: form.artist.trim(),
-      price: Number(form.price) || 0, copies: Number(form.copies) || 0, audio: form.audio.trim(),
+      price: Number(form.price) || 0, currency: form.currency || 'USD',
+      total: Number(form.total) || 0,
+      audioUri: form.audioUri.trim(), coverUri: form.coverUri.trim(),
     })
     setBusy(false)
-    if (res.ok) { onClose('recent-releases') }
+    if (res.ok) { onClose('recent-releases') }   // toast shows the confirmation
     else setNote(res)
+  }
+
+  // while the manifest is being committed, show the "etching" state
+  if (busy || store.uploadState === 'uploading') {
+    return (
+      <div className="modal">
+        <div className="sheet etching">
+          <div className="etch-spinner" />
+          <h2>Etching onto the blockchain…</h2>
+          <p className="msub">Committing the updated registry to Arweave via Irys. This can take a few moments — please don’t close the tab.</p>
+          <div className="etch-steps">
+            <div className="estep done">Fetched current registry</div>
+            <div className="estep done">Appended your release</div>
+            <div className="estep active">Pushing manifest to Arweave…</div>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -64,18 +108,27 @@ export function PublishModal({ store, onClose }) {
       <div className="sheet">
         <button className="mclose" onClick={() => onClose()}>×</button>
         <h2>Register a release</h2>
-        <p className="msub">This commits a new release to the protocol via the backend upload pipeline.</p>
+        <p className="msub">This commits a new release to the protocol via the manifest ledger (Fetch → Append → Push).</p>
         <div className="field"><label>Title</label><input value={form.title} onChange={set('title')} placeholder="e.g. Midnight Tape" /></div>
         <div className="field"><label>Artist</label><input value={form.artist} onChange={set('artist')} placeholder="Your artist name" /></div>
         <div className="field" style={{ display: 'flex', gap: 10 }}>
-          <div style={{ flex: 1 }}><label>Price (USD)</label><input type="number" min="0" step="0.01" value={form.price} onChange={set('price')} /></div>
-          <div style={{ flex: 1 }}><label>Copies (0 = unlimited)</label><input type="number" min="0" step="1" value={form.copies} onChange={set('copies')} /></div>
+          <div style={{ flex: 2 }}><label>Price</label><input type="number" min="0" step="0.01" value={form.price} onChange={set('price')} /></div>
+          <div style={{ flex: 1 }}><label>Currency</label>
+            <select value={form.currency} onChange={set('currency')} style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 7, padding: '11px 12px', fontSize: 14, fontFamily: 'var(--sans)' }}>
+              <option>USD</option><option>SOL</option><option>USDC</option>
+            </select>
+          </div>
+          <div style={{ flex: 1 }}><label>Editions</label><input type="number" min="0" step="1" value={form.total} onChange={set('total')} placeholder="0" /></div>
         </div>
-        <div className="field"><label>Audio URL (Arweave, optional for now)</label><input value={form.audio} onChange={set('audio')} placeholder="https://arweave.net/..." /></div>
+        <div className="field"><label>Audio URI (Arweave URL, optional)</label><input value={form.audioUri} onChange={set('audioUri')} placeholder="https://arweave.net/..." /></div>
+        <div className="field"><label>Cover URI (image URL, optional)</label><input value={form.coverUri} onChange={set('coverUri')} placeholder="https://arweave.net/..." /></div>
         <button className="primary" disabled={busy} onClick={submit}>{busy ? 'Publishing…' : 'Publish to protocol'}</button>
         {note
-          ? <div className={'mnote ' + (note.ok ? 'okmsg' : 'warnmsg')}>{note.ok ? '✓ ' : ''}{note.msg}{!note.ok && ' Your release was added to this preview only.'}</div>
-          : <div className="mnote">This calls the backend at <code>{API_BASE}/upload</code>. Make sure the server is running.</div>}
+          ? <div className={'mnote ' + (note.ok ? 'okmsg' : 'warnmsg')}>
+              {note.ok ? '✓ ' : ''}{note.msg}{!note.ok && ' Your release was added to this preview only.'}
+              {note.details && <ValidationDetails details={note.details} />}
+            </div>
+          : <div className="mnote">This sends an array to <code>{API_BASE}/upload</code>, validated against the registry schema. Make sure the server is running.</div>}
       </div>
     </div>
   )
