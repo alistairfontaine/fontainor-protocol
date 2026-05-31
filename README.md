@@ -63,6 +63,29 @@ The Fontainor Protocol is an autonomous registry for digital assets. It utilizes
     - **Media Readiness**: Standardizing metadata fields for audio and image URI integration.
 * **Auth/Payments:** Auth is currently local-only for UX. Payments are scaffolded but remain optimistic/non-custodial until the backend payment bridge is finalized.
 
+* Update 6:59pm 5/31/2026
+* # Fontainor Protocol
+
+The Fontainor Protocol is an Asset-First infrastructure designed for high-volume digital library management.
+
+## Technical Overview
+The protocol functions as a secure bridge between frontend asset submission and decentralized permanent storage.
+
+### Data Gatekeeper
+The protocol utilizes a Zod-based validation layer to ensure all incoming assets meet the required structural standards:
+- **ID:** Unique Identifier
+- **Title/Artist:** Metadata
+- **Price:** Amount/Currency object
+- **Editions:** Total count
+- **Media:** audioUri and coverUri
+
+### Status
+- **v0.3-development:** Frontend-Backend integration complete and validated. 
+- **Storage:** Currently running in validation-only mode. Irys integration pending.
+
+---
+*Built with an Asset-First philosophy.*
+
 * Current Progress.
 * "Hardened server with Zod schema validation, moved to ES Module architecture, added automatic history logging."
 
