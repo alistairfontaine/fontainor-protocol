@@ -32,3 +32,11 @@ CRUCIAL NOTE. 2:22/ 5/31/26.
 ## Upcoming Milestones
 - Implement Library Grid (500+ asset support).
 - Integrate Irys SDK for permanent decentralized storage on Arweave.
+
+## Current Status
+- **Backend/Frontend Integration:** COMPLETED.
+- **Validation:** Active via Zod middleware (`validator.js`).
+- **Frontend Grid:** Implementation authorized.
+  - Dependency: `react-window` (virtualization).
+  - Search: Client-side (includes `tags`, `title`, `artist`, `id`).
+  - State: 20s polling for registry reconciliation.
