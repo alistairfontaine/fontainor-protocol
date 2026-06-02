@@ -19,7 +19,7 @@ export function Sidebar({ route, onPublish, onWritePost }) {
   return (
     <aside>
       <div className="grp">{NAV.map(A)}</div>
-      <div className="grp">{A(['explore', 'Explore'])}</div>
+      <div className="grp">{A(['explore', 'Explore'])}{A(['library', 'Library'])}</div>
       <div className="grp">
         {A(['favorites', 'Favorites'])}
         {A(['history', 'History'])}

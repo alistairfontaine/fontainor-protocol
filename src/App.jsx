@@ -4,6 +4,8 @@ import { Sidebar, TopNav } from './components/Nav.jsx'
 import { Player } from './components/Player.jsx'
 import { ReleaseDetail } from './components/ReleaseDetail.jsx'
 import { AuthModal, PublishModal } from './components/Modals.jsx'
+import { Toast } from './components/Toast.jsx'
+import { LibraryView } from './components/library/LibraryView.jsx'
 import {
   BrowsePage, PostsPage, FavoritesPage, HistoryPage, PopularTagsPage,
   EditorialPage, InsightsPage, IcebergPage, OfframpPage, TextPage, ProfilePage,
@@ -67,6 +69,7 @@ export default function App() {
       case 'staff-picks': return <BrowsePage store={store} onOpen={open} title="Staff Picks" sub="Selections from the Fontainor team." emptyMsg="No staff picks yet." />
       case 'now-listening': return <BrowsePage store={store} onOpen={open} title="Now Listening" sub="What people are listening to right now on Fontainor." emptyMsg="Nobody's listening right now." />
       case 'explore': return <BrowsePage store={store} onOpen={open} title="Explore" sub="Browse everything on Fontainor." emptyMsg="Nothing to explore yet." />
+      case 'library': return <LibraryView store={store} onOpen={open} />
       case 'editorial': return <EditorialPage store={store} onOpen={open} />
       case 'popular-tags': return <PopularTagsPage store={store} onOpen={open} />
       case 'favorites': return <FavoritesPage store={store} onOpen={open} />
@@ -100,6 +103,7 @@ export default function App() {
       </div>
 
       <Player store={store} />
+      <Toast toast={store.toast} onClose={store.dismissToast} />
 
       {detail && <ReleaseDetail rel={detail} store={store} onClose={() => setDetail(null)} />}
       {auth && <AuthModal store={store} mode={auth} setMode={setAuth} onClose={(go) => { setAuth(null); if (go) location.hash = '#/' + go }} />}
