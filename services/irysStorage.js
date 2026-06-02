@@ -1,28 +1,16 @@
-/**
- * Irys Storage Service
- * Wiring for Devnet initialization and upload handling
- */
+// services/irysStorage.js
 
 export const uploadToIrys = async (data) => {
-    try {
-        console.log("Initializing Irys on Devnet...");
+    console.warn("⚠️ MOCK MODE ACTIVATED: Skipping real network write");
 
-        // TODO: Initialize Irys SDK with Devnet[cite: 1]
-        // TODO: Perform upload logic
+    // Simulate network latency (1.5 seconds)
+    await new Promise(resolve => setTimeout(resolve, 1500));
 
-        // Mock successful response shape for testing
-        return {
-            success: true,
-            txId: "mock_tx_id_12345"
-        };
-    } catch (error) {
-        console.error("Irys write failed:", error);
-
-        // Standardized failure shape[cite: 1]
-        return {
-            success: false,
-            error: error.message || "Unknown write error",
-            code: "WRITE_FAILURE"
-        };
-    }
+    // Return the successful "Etch" response
+    // This allows the UI to trigger the success toast and pointer update
+    return {
+        success: true,
+        txId: "MOCK_ETCH_SUCCESS_001",
+        message: "Mock write successful"
+    };
 };
