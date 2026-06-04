@@ -11,14 +11,19 @@
   },
   "dependencies": {
     "@irys/sdk": "^0.2.11",
+    "@solana/web3.js": "^1.98.4",
     "bs58": "^6.0.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-window": "^1.8.11"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@vitejs/plugin-react": "^4.3.1",
     "arlocal": "^1.1.66",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
     "vite": "^5.4.2"
   }
 }
