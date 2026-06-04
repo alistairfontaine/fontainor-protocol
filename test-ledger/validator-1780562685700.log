@@ -1,0 +1,10 @@
+[90m[[0m2026-06-04T08:44:45.700206466Z [32mINFO [0m solana_test_validator[90m][0m agave-validator 4.0.0 (src:a5517b29; feat:dda54cf7, client:Agave)
+[90m[[0m2026-06-04T08:44:45.700259279Z [32mINFO [0m solana_test_validator[90m][0m Starting validator with: ArgsOs {
+        inner: [
+            "solana-test-validator",
+            "--reset",
+            "--rpc-port",
+            "8899",
+        ],
+    }
+[90m[[0m2026-06-04T08:44:45.700296470Z [1m[31mERROR[0m solana_perf[90m][0m Incompatible CPU detected: missing AVX support. Please build from source on the target
