@@ -6,7 +6,7 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { validateUpload } from './validator.js';
 import { initArweave, uploadManifest } from './src/protocol/arweaveUploader.js';
-
+import { devFundArLocal } from './src/protocol/devFundArLocal.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -120,7 +120,21 @@ app.get('/manifest', (req, res) => {
 });
 
 const PORT = 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
     console.log(`Fontainor Protocol live at http://localhost:${PORT}`);
     console.log(`Arweave target: ${process.env.AR_HOST || 'localhost'}:${process.env.AR_PORT || 1984} | gateway: ${GATEWAY}`);
+
+    // DEV-ONLY: top up the wallet on local ArLocal. No-op on real networks.
+    try {
+        const wallet = loadWallet();
+        const result = await devFundArLocal(arweave, wallet, {
+            host: process.env.AR_HOST || 'localhost',
+            enabled: process.env.AR_DEV_AUTOFUND === '1',
+            endpoint: GATEWAY,
+        });
+        if (result.funded) console.log('[dev] ArLocal wallet funded:', result.address);
+        else console.log('[dev] auto-fund skipped:', result.reason);
+    } catch (e) {
+        console.log('[dev] auto-fund error (ignored):', e.message);
+    }
 });
