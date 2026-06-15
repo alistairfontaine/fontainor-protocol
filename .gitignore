@@ -3,3 +3,4 @@ node_modules/
 dist
 walletKey.json
 wallet-key.json
+.arlocal

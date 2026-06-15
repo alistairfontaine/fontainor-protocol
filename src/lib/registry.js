@@ -80,9 +80,10 @@ export function buildAsset({ title, artist, price = 0, currency = 'USD', total =
     editions: { total: Number(total) || 0 },
     status: 'REGISTERED_ON_FONTAINOR',
     date: new Date().toISOString(),
-    // schema allows these to be omitted/null; only include when provided and valid
-    audioUri: audioUri ? audioUri : null,
-    coverUri: coverUri ? coverUri : null,
+    // Fix: If the string is empty or just whitespace, set it to null.
+    // Zod's .nullable() allows null, but .url() crashes on ""
+    audioUri: (audioUri && audioUri.trim().length > 0) ? audioUri : null,
+    coverUri: (coverUri && coverUri.trim().length > 0) ? coverUri : null,
   }
   return asset
 }

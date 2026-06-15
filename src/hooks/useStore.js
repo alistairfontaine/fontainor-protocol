@@ -134,8 +134,18 @@ export function useStore() {
   }, [user])
 
   // ---- publish: Fetch-Append-Push (manifest protocol) with Mint UX ----
-  const publish = useCallback(async (form) => {
-    const asset = buildAsset(form)
+const publish = useCallback(async (form) => {
+    // --- DEBUGGING LOGS ---
+    console.log("DEBUG: Raw Form Input:", form);
+    const asset = buildAsset(form);
+    console.log("DEBUG: Asset structure after buildAsset:", asset);
+
+    // Check if the asset has the required fields
+    if (!asset.title || !asset.artist || !asset.id) {
+       console.error("DEBUG: Asset is missing required fields!");
+    }
+    // -----------------------
+
     setUploadState('uploading')
     setToast(null)
     // optimistic: show it immediately so work isn't lost
@@ -151,14 +161,10 @@ export function useStore() {
         msg: res.txId ? 'Permanently etched onto Arweave.' : 'Committed to the manifest ledger.',
         txId: res.txId || null,
       })
-      // re-pull the canonical ledger after the chain settles
       setTimeout(() => reload(), 1500)
-      // auto-dismiss the toast
       setTimeout(() => setToast(null), 9000)
     } else {
       setUploadState('error')
-      // Distinguish a validation rejection (your data was refused) from a
-      // write failure (the Arweave write itself didn't land) — spec ❸.
       let msg
       if (res.failure === 'validation') {
         msg = res.msg + ' (kept in this preview — not submitted).'
