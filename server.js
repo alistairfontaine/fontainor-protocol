@@ -1,4 +1,4 @@
-import 'dotenv/config'; // Add this line
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
@@ -7,42 +7,40 @@ import { fileURLToPath } from 'url';
 import { validateUpload } from './validator.js';
 import { initArweave, uploadManifest } from './src/protocol/arweaveUploader.js';
 import { devFundArLocal } from './src/protocol/devFundArLocal.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// --- App Setup ---
 const app = express();
+// Middleware to handle raw binary chunks (for audio upload)
+const rawBodyParser = express.raw({ type: 'application/octet-stream', limit: '1mb' });
+// In-memory store for chunking
+const uploadBuffer = new Map();
 
 app.use(cors());
-app.use(express.json({ limit: '5mb' })); // registry arrays grow; default 100kb is too small
+app.use(express.json({ limit: '5mb' }));
 app.use(express.static(__dirname));
 
-// ---- Arweave client (endpoint comes from .env; defaults = ArLocal) ----
+// --- Arweave Setup ---
 const arweave = initArweave({
     host: process.env.AR_HOST || 'localhost',
     port: Number(process.env.AR_PORT || 1984),
     protocol: process.env.AR_PROTOCOL || 'http',
 });
 
-// Wallet is loaded lazily per upload from a server-side path (never committed).
 function loadWallet() {
     const keyPath = process.env.ARWEAVE_KEY_PATH;
     if (!keyPath) throw new Error('ARWEAVE_KEY_PATH not set in .env');
     return JSON.parse(fs.readFileSync(keyPath, 'utf8'));
 }
 
-// Where to READ manifests back from. For ArLocal that's the local node itself;
-// for production it's a public gateway (e.g. https://arweave.net or Irys).
-const GATEWAY =
-    process.env.AR_GATEWAY ||
-    `${process.env.AR_PROTOCOL || 'http'}://${process.env.AR_HOST || 'localhost'}:${process.env.AR_PORT || 1984}`;
+const GATEWAY = process.env.AR_GATEWAY || `${process.env.AR_PROTOCOL || 'http'}://${process.env.AR_HOST || 'localhost'}:${process.env.AR_PORT || 1984}`;
 
-// ---- Manifest pointer (auto, no manual .env edits) ----
-// The "head" of the registry lives in pointer.json on disk.
-// Every successful /upload rewrites it; /registry always reads it.
+// --- Manifest Pointer Logic ---
 const POINTER_FILE = path.join(__dirname, 'pointer.json');
 
 function readManifestPointer() {
-    // Priority: pointer.json -> REGISTRY_MANIFEST env (legacy/seed) -> null
     try {
         if (fs.existsSync(POINTER_FILE)) {
             const raw = fs.readFileSync(POINTER_FILE, 'utf-8');
@@ -57,17 +55,12 @@ function readManifestPointer() {
 
 function writeManifestPointer(txId) {
     try {
-        fs.writeFileSync(
-            POINTER_FILE,
-            JSON.stringify({ txId, updatedAt: new Date().toISOString() }, null, 2)
-        );
-        console.log('Pointer updated -> current manifest:', txId);
+        fs.writeFileSync(POINTER_FILE, JSON.stringify({ txId, updatedAt: new Date().toISOString() }, null, 2));
     } catch (e) {
         console.error('Pointer write error:', e.message);
     }
 }
 
-// Helper: fetch the registry array back from the gateway (ArLocal or public)
 async function fetchRegistryFromGateway(txId) {
     if (!txId) throw new Error('No Manifest ID defined');
     const response = await fetch(`${GATEWAY}/${txId}`);
@@ -75,11 +68,11 @@ async function fetchRegistryFromGateway(txId) {
     return await response.json();
 }
 
-// ---- Routes ----
+// --- Routes ---
 
+// 1. Registry
 app.get('/registry', async (req, res) => {
     try {
-        // Resolve the current manifest from pointer.json (falls back to env, then local file)
         const manifestId = readManifestPointer();
         if (manifestId) {
             const data = await fetchRegistryFromGateway(manifestId);
@@ -88,53 +81,71 @@ app.get('/registry', async (req, res) => {
             res.sendFile(path.join(__dirname, 'registry.json'));
         }
     } catch (error) {
-        console.error('Registry Fetch Error:', error.message);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Zod gate first (400 + details on bad shape), then the real Arweave write.
+// 2. Upload (Manifest)
 app.post('/upload', validateUpload, async (req, res) => {
     try {
         const wallet = loadWallet();
         const manifest = JSON.stringify(req.body);
-
         const up = await uploadManifest(manifest, { arweave, wallet });
-        if (!up.success) {
-            // spec failure shape passes straight through to the frontend
-            return res.status(502).json({ success: false, error: up.error, code: up.code });
-        }
-
-        // Auto-advance the pointer to the new manifest — closes the persistence loop.
+        if (!up.success) return res.status(502).json({ success: false, error: up.error, code: up.code });
         writeManifestPointer(up.txId);
         return res.json({ success: true, txId: up.txId });
     } catch (error) {
-        console.error('Upload route error:', error.message);
         return res.status(500).json({ success: false, error: error.message, code: 'SERVER_ERR' });
     }
 });
 
-// Debug: expose the current pointer
+// 3. Audio Chunk Upload
+app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
+    try {
+        const uploadId = req.headers['x-upload-id'];
+        const chunkIndex = parseInt(req.headers['x-chunk-index']);
+        const totalChunks = parseInt(req.headers['x-total-chunks']);
+
+        if (!uploadId || isNaN(chunkIndex) || !req.body) {
+            return res.status(400).json({ success: false, message: "Missing headers or binary body" });
+        }
+
+        if (!uploadBuffer.has(uploadId)) {
+            uploadBuffer.set(uploadId, new Array(totalChunks).fill(null));
+        }
+
+        const session = uploadBuffer.get(uploadId);
+        session[chunkIndex] = req.body; // Buffer stored here
+
+        if (chunkIndex === totalChunks - 1) {
+            const fullFileBuffer = Buffer.concat(session);
+            // TODO: Replace with your actual Irys upload logic
+            const txId = "mock-tx-id";
+            uploadBuffer.delete(uploadId);
+            return res.status(201).json({ success: true, audioUri: `https://arweave.net/${txId}` });
+        }
+        return res.status(200).json({ success: true, chunkReceived: chunkIndex });
+    } catch (err) {
+        return res.status(500).json({ success: false, error: "CHUNK_WRITE_FAILED", message: err.message });
+    }
+});
+
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });
 
+// --- Start Server ---
 const PORT = 3000;
 app.listen(PORT, async () => {
     console.log(`Fontainor Protocol live at http://localhost:${PORT}`);
-    console.log(`Arweave target: ${process.env.AR_HOST || 'localhost'}:${process.env.AR_PORT || 1984} | gateway: ${GATEWAY}`);
-
-    // DEV-ONLY: top up the wallet on local ArLocal. No-op on real networks.
     try {
         const wallet = loadWallet();
-        const result = await devFundArLocal(arweave, wallet, {
+        await devFundArLocal(arweave, wallet, {
             host: process.env.AR_HOST || 'localhost',
             enabled: process.env.AR_DEV_AUTOFUND === '1',
             endpoint: GATEWAY,
         });
-        if (result.funded) console.log('[dev] ArLocal wallet funded:', result.address);
-        else console.log('[dev] auto-fund skipped:', result.reason);
     } catch (e) {
-        console.log('[dev] auto-fund error (ignored):', e.message);
+        console.log('[dev] auto-fund skipped/error');
     }
 });
