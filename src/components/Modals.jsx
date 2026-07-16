@@ -93,8 +93,14 @@ export function PublishModal({ store, uploader, onClose }) {
           <div className="etch-spinner" />
           {uploader.isUploading ? (
             <>
-              <h2>Streaming track bytes to protocol…</h2>
-              <p className="msub">Slicing audio file into sequential 256KB binary fragments. Progress: <strong>{uploader.progress}%</strong></p>
+              <h2>{!form.audioUri ? "Streaming track bytes to protocol…" : "Streaming cover artwork to protocol…"}</h2>
+              <p className="msub">
+                {!form.audioUri
+                  ? `Slicing audio file into sequential 256KB binary fragments. Progress: `
+                  : `Slicing graphic artwork layout into sequential 256KB fragments. Progress: `
+                }
+                <strong>{uploader.progress}%</strong>
+              </p>
               <div style={{ width: '100%', background: 'var(--line)', height: 6, borderRadius: 3, margin: '16px 0', overflow: 'hidden' }}>
                 <div style={{ width: `${uploader.progress}%`, background: 'var(--accent)', height: '100%', transition: 'width 0.2s ease' }} />
               </div>
@@ -168,6 +174,7 @@ export function PublishModal({ store, uploader, onClose }) {
               const result = await uploader.uploadTrack(file);
               setBusy(false);
               if (result.success) {
+                // Ensure the generated transaction ID string maps onto the cover field cleanly
                 setForm(f => ({ ...f, coverUri: result.audioUri }));
                 console.log(`📸 [Artwork Engine] Cover successfully etched at: ${result.audioUri}`);
               } else {
@@ -176,6 +183,7 @@ export function PublishModal({ store, uploader, onClose }) {
             }}
           />
         </div>
+
         <div className="field"><label>Cover URI (Auto-populated upon selection)</label><input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" /></div>
         <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
 

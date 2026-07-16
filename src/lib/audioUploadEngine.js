@@ -11,9 +11,20 @@ export const ACCEPTED_TYPES = ['audio/wav', 'audio/flac', 'audio/mpeg', 'audio/o
 
 const CHUNK_ENDPOINT = '/api/v1/upload-audio/chunk'
 
-// ---- validation (runs before a single byte leaves the browser) ----
+// ---- validation (Adaptive validation loop for both audio assets and artwork images) ----
 export function validateFile(file) {
   if (!file) return { ok: false, code: 'validation', message: 'No file selected.' }
+
+  // Dynamic type detection filter pass
+  if (file.type.startsWith('image/')) {
+    // Permit standard graphic layouts freely
+    if (file.size > 10 * 1024 * 1024) {
+      return { ok: false, code: 'validation', message: 'Cover artwork image cannot exceed 10 MB.' }
+    }
+    return { ok: true }
+  }
+
+  // Fallback to strict music protocol requirements for audio uploads
   if (!ACCEPTED_TYPES.includes(file.type)) {
     return { ok: false, code: 'validation', message: 'Unsupported format. Please upload a WAV, FLAC, MP3, or OGG file.' }
   }

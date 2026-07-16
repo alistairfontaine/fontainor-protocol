@@ -178,13 +178,14 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
             try {
                 const wallet = loadWallet();
 
-                // 🔒 FIXED: Forcefully cast the Node.js Buffer into a compliant standard web Uint8Array
-                const binaryDataArray = new Uint8Array(fullFileBuffer.buffer, fullFileBuffer.byteOffset, fullFileBuffer.byteLength);
+                // 🔒 FIXED: Securely copy the exact file bitstream into an isolated standard web Uint8Array
+                const binaryDataArray = new Uint8Array(fullFileBuffer);
 
                 // 1. Instantiate a raw data transaction container directly from the verified byte array
                 const transaction = await arweave.createTransaction({
                     data: binaryDataArray
                 }, wallet);
+
 
                 // 2. Attach standard, high-integrity cryptographic protocol tags
                 transaction.addTag('Content-Type', 'application/octet-stream');
@@ -219,8 +220,9 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
 
                 return res.status(201).json({
                     success: true,
-                    audioUri: `https://arweave.net{finalTxId}`
+                    audioUri: `https://arweave.net${finalTxId}`
                 });
+
 
 
             } catch (storageError) {

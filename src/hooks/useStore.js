@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
-import { loadRegistry, publishManifest, FALLBACK } from '../lib/api.js'
+import { loadRegistry, publishManifest, FALLBACK, resolveAudioUri } from '../lib/api.js'
 import { normalize, normalizeOne, buildAsset } from '../lib/registry.js'
+
 
 export function useStore() {
   const [releases, setReleases] = useState([])
@@ -62,7 +63,6 @@ export function useStore() {
 
     if (audioTrackSource) {
       // 🎵 RESOLVE LOCAL SANDBOX MEDIA PATHS NATIVELY 🎵
-      const { resolveAudioUri } = require('../lib/api.js');
       const targetAudioStreamUrl = resolveAudioUri(audioTrackSource);
 
       console.log(`🎵 [Media Player] Instantiating hardware pipeline for stream: ${targetAudioStreamUrl}`);
