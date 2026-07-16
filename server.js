@@ -119,10 +119,26 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
 
         if (chunkIndex === totalChunks - 1) {
             const fullFileBuffer = Buffer.concat(session);
-            // TODO: Replace with your actual Irys upload logic
-            const txId = "mock-tx-id";
+
+            /* 🔥 PHASE II: BIND REAL ON-CHAIN DECENTRALIZED DATA WRITER 🔥 */
+            const { uploadToIrys } = await import('./services/irysStorage.js');
+            const storageResult = await uploadToIrys(fullFileBuffer);
+
+            // Clean up the volatile in-memory cache space to prevent server heap bloat
             uploadBuffer.delete(uploadId);
-            return res.status(201).json({ success: true, audioUri: `https://arweave.net/${txId}` });
+
+            if (!storageResult.success) {
+                return res.status(502).json({
+                    success: false,
+                    error: "BLOCKCHAIN_WRITE_FAILED",
+                    message: storageResult.message
+                });
+            }
+
+            return res.status(201).json({
+                success: true,
+                audioUri: `https://arweave.net/${storageResult.txId}`
+            });
         }
         return res.status(200).json({ success: true, chunkReceived: chunkIndex });
     } catch (err) {
