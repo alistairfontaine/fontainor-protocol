@@ -198,3 +198,20 @@ export const FALLBACK = {
   social_layer: { support_ledger: [], total_tips_received: 0 },
   profile_metadata: { bio: '', banner_url: '', social_links: [] },
 }
+
+/**
+ * 🎵 ADAPTIVE SANDBOX GATEWAY RESOLVER 🎵
+ * Dynamically intercepts decentralized media addresses inside the interface layer.
+ * Maps assets targeting public gateways straight onto local ArLocal nodes during development.
+ */
+export function resolveAudioUri(uri) {
+  if (!uri || typeof uri !== 'string') return '';
+
+  // If running locally, route the player network traffic to load data vectors directly off your disk
+  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+    return uri.replace('https://arweave.net', 'http://localhost:1984');
+  }
+
+  return uri;
+}
+
