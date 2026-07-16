@@ -1,13 +1,20 @@
 import React from 'react'
 import { fmtTime, prettyStatus, coverSVG } from '../lib/registry.js'
+import { resolveAudioUri } from '../lib/api.js'
+
 
 function NpCover({ rel }) {
+  // Safe-resolve the image URI map if it's hosted on a local block ledger track
+  const coverSource = rel.coverUrl || rel.coverUri || '';
+  const resolvedCover = resolveAudioUri(coverSource);
+
   return (
     <div className="npcover">
-      {rel.coverUrl ? <img src={rel.coverUrl} alt="" /> : <span style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: coverSVG(rel.id || rel.title) }} />}
+      {resolvedCover ? <img src={resolvedCover} alt="" /> : <span style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: coverSVG(rel.id || rel.title) }} />}
     </div>
   )
 }
+
 
 export function Player({ store }) {
   const { current, playing, pos, cur, dur } = store

@@ -56,9 +56,19 @@ export function useStore() {
   const play = useCallback((rel) => {
     stopSim(); clearAudio()
     setCurrent(rel); pushHistory(rel.id); setPos(0); setCur(0)
-    if (rel.audio) {
-      const a = new Audio(rel.audio)
+
+    // Check both standard field shapes: rel.audio and rel.audioUri
+    const audioTrackSource = rel.audio || rel.audioUri;
+
+    if (audioTrackSource) {
+      // 🎵 RESOLVE LOCAL SANDBOX MEDIA PATHS NATIVELY 🎵
+      const { resolveAudioUri } = require('../lib/api.js');
+      const targetAudioStreamUrl = resolveAudioUri(audioTrackSource);
+
+      console.log(`🎵 [Media Player] Instantiating hardware pipeline for stream: ${targetAudioStreamUrl}`);
+      const a = new Audio(targetAudioStreamUrl)
       audioRef.current = a
+
       a.addEventListener('loadedmetadata', () => setDur(a.duration || 0))
       a.addEventListener('timeupdate', () => {
         setCur(a.currentTime); setDur(a.duration || 0)
