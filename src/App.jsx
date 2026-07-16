@@ -28,10 +28,12 @@ function useHashRoute() {
 
 export default function App() {
   const store = useStore()
+  const uploader = useAudioUploader() // 🔒 FIXED: Declared unconditionally at the component top level
   const route = useHashRoute()
   const [detail, setDetail] = useState(null)        // rel or null
   const [auth, setAuth] = useState(null)            // 'login' | 'signup' | null
   const [pub, setPub] = useState(false)
+
 
   const [base, param] = route.split('/')
 
@@ -108,14 +110,11 @@ export default function App() {
 
       {detail && <ReleaseDetail rel={detail} store={store} onClose={() => setDetail(null)} />}
       {auth && <AuthModal store={store} mode={auth} setMode={setAuth} onClose={(go) => { setAuth(null); if (go) location.hash = '#/' + go }} />}
-      {pub && (() => {
-        // Instantiate the local audio chunk-stream tracker
-        const uploader = useAudioUploader();
-        return <PublishModal store={store} uploader={uploader} onClose={(go) => { setPub(false); if (go) location.hash = '#/' + go }} />;
-      })()}
+      {pub && <PublishModal store={store} uploader={uploader} onClose={(go) => { setPub(false); if (go) location.hash = '#/' + go }} />}
     </>
   )
 }
+
 
 // small variant for the tag route (passes explicit items)
 function BrowsePageFiltered({ store, onOpen, title, sub, items, emptyMsg }) {

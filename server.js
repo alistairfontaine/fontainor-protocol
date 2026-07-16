@@ -160,29 +160,59 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
         const session = uploadBuffer.get(uploadId);
         session[chunkIndex] = req.body; // Buffer stored here
 
-        if (chunkIndex === totalChunks - 1) {
+                if (chunkIndex === totalChunks - 1) {
             const fullFileBuffer = Buffer.concat(session);
+            console.log(`📦 Final chunk received. Concatenating bitstream (${fullFileBuffer.length} bytes)...`);
 
-            /* 🔥 PHASE II: BIND REAL ON-CHAIN DECENTRALIZED DATA WRITER 🔥 */
-            const { uploadToIrys } = await import('./services/irysStorage.js');
-            const storageResult = await uploadToIrys(fullFileBuffer);
+            /* 🔥 NATIVE BARE-METAL ARWEAVE TRANSACTION ENGINE 🔥 */
+            try {
+                const wallet = loadWallet();
 
-            // Clean up the volatile in-memory cache space to prevent server heap bloat
-            uploadBuffer.delete(uploadId);
+                // 🔒 FIXED: Forcefully cast the Node.js Buffer into a compliant standard web Uint8Array
+                const binaryDataArray = new Uint8Array(fullFileBuffer.buffer, fullFileBuffer.byteOffset, fullFileBuffer.byteLength);
 
-            if (!storageResult.success) {
+                // 1. Instantiate a raw data transaction container directly from the verified byte array
+                const transaction = await arweave.createTransaction({
+                    data: binaryDataArray
+                }, wallet);
+
+                // 2. Attach standard, high-integrity cryptographic protocol tags
+                transaction.addTag('Content-Type', 'application/octet-stream');
+                transaction.addTag('Protocol-Layer', 'Fontainor-Audio-Registry');
+
+                // 3. Cryptographically sign the transaction using the local developer JWK wallet
+                await arweave.transactions.sign(transaction, wallet);
+                const txId = transaction.id;
+
+                // 4. Broadcast the signed transaction bytes straight onto the ArLocal node
+                const response = await arweave.transactions.post(transaction);
+
+                // Wipe the volatile in-memory storage buffer array space to prevent heap leakage
+                uploadBuffer.delete(uploadId);
+
+                if (response.status !== 200 && response.status !== 208) {
+                    throw new Error(`Local ledger node rejected transaction with status code: ${response.status}`);
+                }
+
+                // 5. Force a local block generation mine tick to settle the audio data instantly
+                await fetch(`${GATEWAY}/mine`);
+                console.log(`🎯 [Blockchain] Native Audio upload successful! Permanent TxID: ${txId}`);
+
+                return res.status(201).json({
+                    success: true,
+                    audioUri: `https://arweave.net/${txId}`
+                });
+            } catch (storageError) {
+                console.error("❌ On-Chain Native Arweave Upload Failed:", storageError.message);
+                uploadBuffer.delete(uploadId);
                 return res.status(502).json({
                     success: false,
                     error: "BLOCKCHAIN_WRITE_FAILED",
-                    message: storageResult.message
+                    message: storageError.message
                 });
             }
-
-            return res.status(201).json({
-                success: true,
-                audioUri: `https://arweave.net/${storageResult.txId}`
-            });
         }
+
         return res.status(200).json({ success: true, chunkReceived: chunkIndex });
     } catch (err) {
         return res.status(500).json({ success: false, error: "CHUNK_WRITE_FAILED", message: err.message });
@@ -195,8 +225,11 @@ app.get('/manifest', (req, res) => {
 
 // --- Start Server ---
 const PORT = 3000;
-app.listen(PORT, async () => {
+const HOST = '0.0.0.0'; // Bind universally to all local network loopbacks (IPv4 and IPv6)
+
+app.listen(PORT, HOST, async () => {
     console.log(`Fontainor Protocol live at http://localhost:${PORT}`);
+
     try {
         const wallet = loadWallet();
         await devFundArLocal(arweave, wallet, {
