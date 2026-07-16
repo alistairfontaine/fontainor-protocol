@@ -53,11 +53,54 @@ function readManifestPointer() {
     return process.env.REGISTRY_MANIFEST || null;
 }
 
+/**
+ * 🔥 MILESTONE D1-D2: 10-TxID ROLLING HISTORY LOG CONTROLLER 🔥
+ * Manages the active state manifest pointer using a bounded array queue matrix.
+ * Retains a chronological history stack of the last 10 successful transactions
+ * to provide robust data rollback protection layers across the protocol network.
+ */
 function writeManifestPointer(txId) {
     try {
-        fs.writeFileSync(POINTER_FILE, JSON.stringify({ txId, updatedAt: new Date().toISOString() }, null, 2));
+        let history = [];
+
+        // If the pointer node already exists on disk, read and parse its structural fields
+        if (fs.existsSync(POINTER_FILE)) {
+            try {
+                const raw = fs.readFileSync(POINTER_FILE, 'utf-8');
+                const parsed = JSON.parse(raw);
+                if (parsed && Array.isArray(parsed.history)) {
+                    history = parsed.history;
+                } else if (parsed && parsed.txId) {
+                    // Backwards compatibility fallback loop if upgrading from an older single txId schema
+                    history.push({ txId: parsed.txId, updatedAt: parsed.updatedAt || new Date().toISOString() });
+                }
+            } catch (e) {
+                console.warn('⚠️ Existing pointer parse failure — initializing clean history queue.');
+            }
+        }
+
+        // Push the brand new decentralized transaction hash onto the front of the chronological stack
+        history.unshift({
+            txId,
+            updatedAt: new Date().toISOString()
+        });
+
+        // Enforce rigid, lean allocation constraints: truncate the array stack to exactly 10 slots
+        if (history.length > 10) {
+            history = history.slice(0, 10);
+        }
+
+        // Commit the complete historical data matrix cleanly back to the local file block
+        const payload = {
+            txId,
+            updatedAt: history[0].updatedAt,
+            history
+        };
+
+        fs.writeFileSync(POINTER_FILE, JSON.stringify(payload, null, 2));
+        console.log(`📝 [Registry Pointer] Consolidated rolling ledger entry. Active Top TxID: ${txId}`);
     } catch (e) {
-        console.error('Pointer write error:', e.message);
+        console.error('❌ Critical pointer history write violation:', e.message);
     }
 }
 
