@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { useStore } from './hooks/useStore.js'
+import { useAudioUploader } from './hooks/useAudioUploader.js'
 import { Sidebar, TopNav } from './components/Nav.jsx'
 import { Player } from './components/Player.jsx'
 import { ReleaseDetail } from './components/ReleaseDetail.jsx'
@@ -107,7 +108,11 @@ export default function App() {
 
       {detail && <ReleaseDetail rel={detail} store={store} onClose={() => setDetail(null)} />}
       {auth && <AuthModal store={store} mode={auth} setMode={setAuth} onClose={(go) => { setAuth(null); if (go) location.hash = '#/' + go }} />}
-      {pub && <PublishModal store={store} onClose={(go) => { setPub(false); if (go) location.hash = '#/' + go }} />}
+      {pub && (() => {
+        // Instantiate the local audio chunk-stream tracker
+        const uploader = useAudioUploader();
+        return <PublishModal store={store} uploader={uploader} onClose={(go) => { setPub(false); if (go) location.hash = '#/' + go }} />;
+      })()}
     </>
   )
 }
