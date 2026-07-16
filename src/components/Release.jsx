@@ -1,15 +1,22 @@
 import React from 'react'
 import { coverSVG, priceLabel, edLabel, isSold } from '../lib/registry.js'
 
+import { resolveAudioUri } from '../lib/api.js'
+
 // Cover with optional overlay children (play button, fav, sold flag)
 export function CoverBox({ rel, children }) {
+  // 🔒 FIXED: Fallback to cross-examine both coverUrl and coverUri field models
+  const rawCoverSource = rel.coverUrl || rel.coverUri || '';
+  const resolvedCover = resolveAudioUri(rawCoverSource);
+
   return (
     <div className="cover">
-      {rel.coverUrl ? <img src={rel.coverUrl} alt="" /> : <Svg html={coverSVG(rel.id || rel.title)} />}
+      {resolvedCover ? <img src={resolvedCover} alt="" /> : <Svg html={coverSVG(rel.id || rel.title)} />}
       {children}
     </div>
   )
 }
+
 export function Svg({ html }) {
   return <span style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: html }} />
 }
