@@ -129,9 +129,10 @@ export function PublishModal({ store, uploader, onClose }) {
           <div style={{ flex: 2 }}><label>Price</label><input type="number" min="0" step="0.01" value={form.price} onChange={set('price')} /></div>
           <div style={{ flex: 1 }}><label>Currency</label>
             <select value={form.currency} onChange={set('currency')} style={{ width: '100%', border: '1px solid var(--line)', borderRadius: 7, padding: '11px 12px', fontSize: 14, fontFamily: 'var(--sans)' }}>
-              <option>USD</option><option>SOL</option><option>USDC</option>
+              <option>USD</option><option>SOL</option><option>USDC</option><option>USDT</option>
             </select>
           </div>
+
           <div style={{ flex: 1 }}><label>Editions</label><input type="number" min="0" step="1" value={form.total} onChange={set('total')} placeholder="0" /></div>
         </div>
         <div className="field">
@@ -154,8 +155,30 @@ export function PublishModal({ store, uploader, onClose }) {
           />
         </div>
         <div className="field"><label>Audio URI (Auto-populated upon selection)</label><input value={form.audioUri} onChange={set('audioUri')} placeholder="Select a file or enter address manually" /></div>
-        <div className="field"><label>Cover URI (image URL, optional)</label><input value={form.coverUri} onChange={set('coverUri')} placeholder="https://arweave.net/..." /></div>
+        <div className="field">
+          <label>Upload Cover Artwork Image (PNG, JPG, GIF)</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBusy(true);
+              // Reuse your verified binary chunk uploader loop to store artwork bytes on the blockchain
+              const result = await uploader.uploadTrack(file);
+              setBusy(false);
+              if (result.success) {
+                setForm(f => ({ ...f, coverUri: result.audioUri }));
+                console.log(`📸 [Artwork Engine] Cover successfully etched at: ${result.audioUri}`);
+              } else {
+                alert(`Artwork upload failed: ${result.error}`);
+              }
+            }}
+          />
+        </div>
+        <div className="field"><label>Cover URI (Auto-populated upon selection)</label><input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" /></div>
         <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
+
           {busy || uploader.isUploading ? 'Streaming track…' : 'Publish to protocol'}
         </button>
         {note
