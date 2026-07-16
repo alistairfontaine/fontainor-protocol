@@ -65,7 +65,7 @@ export function AuthModal({ store, mode, setMode, onClose }) {
   )
 }
 
-export function PublishModal({ store, onClose }) {
+export function PublishModal({ store, uploader, onClose }) {
   const [form, setForm] = useState({ title: '', artist: store.user?.name || '', price: 0, currency: 'USD', total: 0, audioUri: '', coverUri: '' })
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState(null) // {ok, msg, details?}
@@ -85,23 +85,37 @@ export function PublishModal({ store, onClose }) {
     else setNote(res)
   }
 
-  // while the manifest is being committed, show the "etching" state
-  if (busy || store.uploadState === 'uploading') {
+  // Intercept the dual-stage loading operations: chunk upload vs manifest commit
+  if (busy || uploader.isUploading || store.uploadState === 'uploading') {
     return (
       <div className="modal">
         <div className="sheet etching">
           <div className="etch-spinner" />
-          <h2>Etching onto the blockchain…</h2>
-          <p className="msub">Committing the updated registry to Arweave via Irys. This can take a few moments — please don’t close the tab.</p>
-          <div className="etch-steps">
-            <div className="estep done">Fetched current registry</div>
-            <div className="estep done">Appended your release</div>
-            <div className="estep active">Pushing manifest to Arweave…</div>
-          </div>
+          {uploader.isUploading ? (
+            <>
+              <h2>Streaming track bytes to protocol…</h2>
+              <p className="msub">Slicing audio file into sequential 256KB binary fragments. Progress: <strong>{uploader.progress}%</strong></p>
+              <div style={{ width: '100%', background: 'var(--line)', height: 6, borderRadius: 3, margin: '16px 0', overflow: 'hidden' }}>
+                <div style={{ width: `${uploader.progress}%`, background: 'var(--accent)', height: '100%', transition: 'width 0.2s ease' }} />
+              </div>
+              {uploader.eta > 0 && <p style={{ fontSize: 12, fontFamily: 'var(--mono)' }}>Estimated time remaining: {(uploader.eta / 1000).toFixed(1)}s</p>}
+            </>
+          ) : (
+            <>
+              <h2>Etching onto the blockchain…</h2>
+              <p className="msub">Committing the updated registry to Arweave via Irys. This can take a few moments — please don’t close the tab.</p>
+              <div className="etch-steps">
+                <div className="estep done">Audio binary chunk track uploaded</div>
+                <div className="estep done">Appended release track to registry</div>
+                <div className="estep active">Pushing manifest to Arweave…</div>
+              </div>
+            </>
+          )}
         </div>
       </div>
     )
   }
+
 
   return (
     <div className="modal" onClick={(e) => { if (e.target.classList.contains('modal')) onClose() }}>
@@ -120,15 +134,37 @@ export function PublishModal({ store, onClose }) {
           </div>
           <div style={{ flex: 1 }}><label>Editions</label><input type="number" min="0" step="1" value={form.total} onChange={set('total')} placeholder="0" /></div>
         </div>
-        <div className="field"><label>Audio URI (Arweave URL, optional)</label><input value={form.audioUri} onChange={set('audioUri')} placeholder="https://arweave.net/..." /></div>
+        <div className="field">
+          <label>Upload Audio Track File (WAV, FLAC, MP3, OGG)</label>
+          <input
+            type="file"
+            accept="audio/wav,audio/flac,audio/mpeg,audio/ogg"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBusy(true);
+              const result = await uploader.uploadTrack(file);
+              setBusy(false);
+              if (result.success) {
+                setForm(f => ({ ...f, audioUri: result.audioUri }));
+              } else {
+                alert(`Audio upload failed: ${result.error}`);
+              }
+            }}
+          />
+        </div>
+        <div className="field"><label>Audio URI (Auto-populated upon selection)</label><input value={form.audioUri} onChange={set('audioUri')} placeholder="Select a file or enter address manually" /></div>
         <div className="field"><label>Cover URI (image URL, optional)</label><input value={form.coverUri} onChange={set('coverUri')} placeholder="https://arweave.net/..." /></div>
-        <button className="primary" disabled={busy} onClick={submit}>{busy ? 'Publishing…' : 'Publish to protocol'}</button>
+        <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
+          {busy || uploader.isUploading ? 'Streaming track…' : 'Publish to protocol'}
+        </button>
         {note
           ? <div className={'mnote ' + (note.ok ? 'okmsg' : 'warnmsg')}>
               {note.ok ? '✓ ' : ''}{note.msg}{!note.ok && ' Your release was added to this preview only.'}
               {note.details && <ValidationDetails details={note.details} />}
             </div>
-          : <div className="mnote">This sends an array to <code>{API_BASE}/upload</code>, validated against the registry schema. Make sure the server is running.</div>}
+          : <div className="mnote">This streams chunks to the server registry system. Make sure the backend is active on port 3000.</div>}
+
       </div>
     </div>
   )
