@@ -143,16 +143,41 @@ export function useStore() {
       const response = await window.solana.connect();
       const actualSolanaAddress = response.publicKey.toString();
 
-      // Bind the genuine cryptographic account credentials to the active user viewport state
+      console.log(`📡 [Sovereign Auth] Dispatching cryptographic challenge request for address: ${actualSolanaAddress}`);
+      const challengeMessageStr = "Authenticate Fontainor Sovereign Session";
+      const encodedChallengeBuffer = new TextEncoder().encode(challengeMessageStr);
+
+      // Request the Phantom extension window to securely sign the message bytes locally
+      const signedChallengeData = await window.solana.signMessage(encodedChallengeBuffer, "utf8");
+
+      // Transmit the cryptographic payload straight into your server identity gates
+      const authResponse = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: JSON.stringify(Array.from(response.publicKey.toBytes())),
+          signature: JSON.stringify(Array.from(signedChallengeData.signature)),
+          message: challengeMessageStr
+        })
+      });
+
+      const authResult = await authResponse.json();
+
+      if (!authResponse.ok || !authResult.success) {
+        throw new Error(authResult.message || "Protocol backend rejected identity verification signature.");
+      }
+
+      // Bind the genuine cryptographic account credentials directly to the active viewport state structures
       setUser({
         name: actualSolanaAddress,
-        handle: '@' + actualSolanaAddress.slice(0, 4) + '...' + actualSolanaAddress.slice(-4),
+        handle: authResult.handle,
         via: 'wallet'
       });
 
-      console.log(`✓ [Web3 Auth] Successfully authenticated Solana account address: ${actualSolanaAddress}`);
+      console.log(`✓ [Web3 Auth Secured] Free sovereign profile verified and active for: ${actualSolanaAddress}`);
     } catch (authError) {
       console.error("❌ Non-Custodial Web3 wallet authentication rejected:", authError.message);
+      alert(`Identity Handshake Cancelled: ${authError.message}`);
     }
   }, [])
 
@@ -175,6 +200,7 @@ export function useStore() {
       const connection = new Connection("https://solana.com", "confirmed");
 
       const buyerPubKey = new PublicKey(window.solana.publicKey.toString());
+
       const artistPubKey = new PublicKey(rel.artistWallet || window.solana.publicKey.toString()); // Fallback to current node if un-assigned
 
       let txSignature = "";
@@ -216,11 +242,12 @@ export function useStore() {
       const paymentPayload = {
         signature: txSignature,
         artistWallet: rel.artistWallet || window.solana.publicKey.toString(),
-        amountLamports: currency === 'SOL' ? Math.round(amount * 1_000_000_000) : Math.round(amount * 1_000_000),
+        amountLamports: Math.round(amount * 1_000_000_000), // Enforce native conversion units
         sender: user.handle,
         currency,
         trackId: rel.id
       };
+
 
       const backendResponse = await fetch(`${API_BASE}/api/v1/verify-payment`, {
         method: 'POST',
