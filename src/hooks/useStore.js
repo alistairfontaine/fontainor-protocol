@@ -197,9 +197,10 @@ export function useStore() {
 
       // Initialize the web3 connection layer to talk directly to the Solana network gateway
       const { Connection, Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const connection = new Connection("https://solana.com", "confirmed");
+      const connection = new Connection("https://api.devnet.solana.com", "confirmed");
 
       const buyerPubKey = new PublicKey(window.solana.publicKey.toString());
+
 
       const artistPubKey = new PublicKey(rel.artistWallet || window.solana.publicKey.toString()); // Fallback to current node if un-assigned
 
