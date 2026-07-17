@@ -58,6 +58,7 @@ export function ReleaseDetail({ rel, store, onClose }) {
             <div className="specs">
               <div className="row"><span className="k">Copies</span><span className="v">{edLabel(rel.editions)}{sold ? ' — sold out' : ''}</span></div>
               <div className="row"><span className="k">Price</span><span className="v blue">{priceLabel(rel.price)}</span></div>
+
               <div className="row"><span className="k">Resale royalty to artist</span><span className="v">{royaltyLabel(rel.royaltyBps)}</span></div>
               {status && <div className="row"><span className="k">Status</span><span className="v">{status}</span></div>}
               {date && <div className="row"><span className="k">Registered</span><span className="v">{date}</span></div>}
@@ -68,6 +69,7 @@ export function ReleaseDetail({ rel, store, onClose }) {
               <button className="buy" disabled={sold}>{isFree(rel) ? 'Download free' : sold ? 'Sold out' : 'Collect this edition'}</button>
               <span className="amt">{priceLabel(rel.price)}{isFree(rel) ? <span> · unlimited</span> : <span> · one-time · 100% to artist</span>}</span>
             </div>
+
 
             {/* support / pay-what-you-want */}
             <div className="support">
