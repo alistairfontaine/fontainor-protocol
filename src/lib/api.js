@@ -207,14 +207,10 @@ export const FALLBACK = {
 export function resolveAudioUri(uri) {
   if (!uri || typeof uri !== 'string') return '';
 
-  // If running locally, route the player network traffic to load data vectors directly off your disk
-  if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // 🔒 FIXED: Strip trailing slashes here to eliminate double path separator collisions completely
-    return uri.replace('https://arweave.net', 'http://localhost:1984');
-  }
-
+  // 🔒 PRODUCTION MAINNET ROUTE: Enforce direct native streaming off public decentralized Arweave node clusters
   return uri;
 }
+
 
 
 
