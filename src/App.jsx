@@ -4,7 +4,7 @@ import { useAudioUploader } from './hooks/useAudioUploader.js'
 import { Sidebar, TopNav } from './components/Nav.jsx'
 import { Player } from './components/Player.jsx'
 import { ReleaseDetail } from './components/ReleaseDetail.jsx'
-import { AuthModal, PublishModal } from './components/Modals.jsx'
+import { AuthModal, PublishModal, PostModal } from './components/Modals.jsx'
 import { Toast } from './components/Toast.jsx'
 import { LibraryView } from './components/library/LibraryView.jsx'
 import {
@@ -33,6 +33,8 @@ export default function App() {
   const [detail, setDetail] = useState(null)        // rel or null
   const [auth, setAuth] = useState(null)            // 'login' | 'signup' | null
   const [pub, setPub] = useState(false)
+  const [writePost, setWritePost] = useState(false)
+
 
 
   const [base, param] = route.split('/')
@@ -51,12 +53,13 @@ export default function App() {
 
   const onWritePost = useCallback(() => {
     if (!store.user) { setAuth('login'); return }
-    alert('Posts are coming soon. Your account is set up to write them.')
+    setWritePost(true)
   }, [store.user])
+
 
   // esc closes layers
   useEffect(() => {
-    const k = (e) => { if (e.key === 'Escape') { setDetail(null); setAuth(null); setPub(false) } }
+    const k = (e) => { if (e.key === 'Escape') { setDetail(null); setAuth(null); setPub(false); setWritePost(false) } }
     document.addEventListener('keydown', k)
     return () => document.removeEventListener('keydown', k)
   }, [])
@@ -112,9 +115,11 @@ export default function App() {
       {detail && <ReleaseDetail rel={detail} store={store} onClose={() => setDetail(null)} />}
       {auth && <AuthModal store={store} mode={auth} setMode={setAuth} onClose={(go) => { setAuth(null); if (go) location.hash = '#/' + go }} />}
       {pub && <PublishModal store={store} uploader={uploader} onClose={(go) => { setPub(false); if (go) location.hash = '#/' + go }} />}
+      {writePost && <PostModal store={store} onClose={(go) => { setWritePost(false); if (go) location.hash = '#/' + go }} />}
     </>
   )
 }
+
 
 
 // small variant for the tag route (passes explicit items)
