@@ -91,8 +91,9 @@ export function buildAsset({ title, artist, price = 0, currency = 'USD', total =
 // ---- formatters ----
 export const priceLabel = (p) => {
   if (!p || p.amount === 0 || p.amount == null) return 'Free'
-  const sym = p.currency === 'USD' ? '$' : p.currency === 'SOL' ? '\u25CE' : ''
-  return sym + Number(p.amount).toFixed(2) + (p.currency && p.currency !== 'USD' ? ' ' + p.currency : '')
+  // 🔒 FIXED: Map both USDC and USDT token symbol configurations to prevent missing prefix tokens
+  const sym = (p.currency === 'USD' || p.currency === 'USDC') ? '$' : p.currency === 'USDT' ? '₮' : p.currency === 'SOL' ? '\u25CE' : ''
+  return sym + Number(p.amount).toFixed(2) + (p.currency && p.currency !== 'USD' && p.currency !== 'USDC' && p.currency !== 'USDT' ? ' ' + p.currency : '')
 }
 export const edLabel = (e) => {
   if (!e) return '\u2014'
