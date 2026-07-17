@@ -25,13 +25,26 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
     try {
         if (!signature) return false;
 
-        // 1. Fetch the confirmed transaction record directly off the Solana network blocks
-        const txInfo = await connection.getTransaction(signature, {
-            maxSupportedTransactionVersion: 0
-        });
+        // 1. Fetch the confirmed transaction record with an automatic retry loop for network lag
+        let txInfo = null;
+        let attempts = 3;
+
+        while (attempts > 0) {
+            txInfo = await connection.getTransaction(signature, {
+                maxSupportedTransactionVersion: 0
+            });
+
+            if (txInfo) break; // Transaction successfully found and pulled from block memory
+
+            attempts--;
+            if (attempts > 0) {
+                console.warn(`⚠️ Signature not indexed yet. Remaining attempts: ${attempts}. Holding 3s...`);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
 
         if (!txInfo) {
-            console.error("❌ Solana payment verification rejected: Transaction signature not found on the network.");
+            console.error("❌ Solana payment verification rejected: Transaction signature not found on the network after retries.");
             return false;
         }
 
