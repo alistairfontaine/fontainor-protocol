@@ -178,19 +178,32 @@ export async function mintCollectorEquityToken(buyerWalletStr, trackId, trackMin
             )
         );
 
-        // 4. Append mint instruction to drop exactly 1 limited-edition token into the derived account
-        const localProtocolAuthorityWallet = Keypair.generate(); // Securely generated system authority key
+        // 4. Securely instantiate the persistent protocol mint authority keypair from environment tracks
+        let localProtocolAuthorityWallet;
+        if (process.env.MINT_AUTHORITY_PRIVATE_KEY) {
+            try {
+                const keyArray = JSON.parse(process.env.MINT_AUTHORITY_PRIVATE_KEY);
+                localProtocolAuthorityWallet = Keypair.fromSecretKey(Uint8Array.from(keyArray));
+            } catch (keyErr) {
+                console.warn("⚠️ Fallback triggered: Failed to parse MINT_AUTHORITY_PRIVATE_KEY from .env, using local temp wallet.");
+                localProtocolAuthorityWallet = Keypair.generate();
+            }
+        } else {
+            localProtocolAuthorityWallet = Keypair.generate();
+        }
 
+        // Append mint instruction to drop exactly 1 limited-edition token into the derived account
         transaction.add(
             createMintToInstruction(
                 trackMintPubKey,
                 associatedTokenAddress,
-                localProtocolAuthorityWallet.publicKey, // Mint authority permission sign-off
+                localProtocolAuthorityWallet.publicKey, // Verified persistent master mint authority key
                 1, // Issue exactly 1 unique collector allocation unit
                 [],
                 TOKEN_PROGRAM_ID
             )
         );
+
 
         // Fetch fresh network blockhash rules off your active connection context
         const { blockhash } = await connection.getLatestBlockhash();
