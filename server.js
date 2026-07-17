@@ -220,8 +220,9 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
 
                 return res.status(201).json({
                     success: true,
-                    audioUri: `https://arweave.net${finalTxId}`
+                    audioUri: `https://arweave.net/${finalTxId}`
                 });
+
 
 
 
@@ -254,7 +255,8 @@ app.post('/api/v1/verify-payment', async (req, res) => {
 
         // 🛡️ Step A: Dynamically call our hardened Solana web3 verification engine
         const { verifySolanaPayment, mintCollectorEquityToken } = await import('./paymentBridge.js');
-        const isVerified = await verifySolanaPayment(signature, artistWallet, amountLamports);
+        const isVerified = await verifySolanaPayment(signature, artistWallet, amountLamports, currency || 'SOL');
+
 
         if (!isVerified) {
             return res.status(400).json({ success: false, message: "On-chain transaction cross-examination failed." });
@@ -296,9 +298,44 @@ app.post('/api/v1/verify-payment', async (req, res) => {
 });
 
 
+// 5. Zero-Cost Cryptographic Sovereign Identity Login Gate
+app.post('/api/v1/auth/sovereign-login', async (req, res) => {
+    console.log("📡 [Sovereign Auth] Intercepted cryptographic handshake challenge...");
+    try {
+        const { publicKey, signature, message } = req.body;
+        if (!publicKey || !signature) {
+            return res.status(400).json({ success: false, message: "Missing wallet verification payload." });
+        }
+
+        // Dynamically parse tweetnacl to handle cryptographic signature checking without storage state overhead
+        const nacl = await import('tweetnacl');
+        const encodedMessage = new TextEncoder().encode(message || "Authenticate Fontainor Sovereign Session");
+
+        const signatureBytes = Uint8Array.from(JSON.parse(signature));
+        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
+
+        const isWalletOwnerVerified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
+
+        if (!isWalletOwnerVerified) {
+            return res.status(401).json({ success: false, message: "Cryptographic signature validation rejected." });
+        }
+
+        console.log(`✓ [Sovereign Account Verified] Free account tier opened for wallet: ${publicKey}`);
+        return res.json({
+            success: true,
+            wallet: publicKey,
+            handle: `@${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
+        });
+    } catch (authError) {
+        console.error("❌ Sovereign Auth Breakdown:", authError.message);
+        return res.status(500).json({ success: false, message: authError.message });
+    }
+});
+
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });
+
 
 // --- Start Server ---
 
