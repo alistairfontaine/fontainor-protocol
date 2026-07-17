@@ -212,17 +212,30 @@ export function useStore() {
 
       console.log(`🎯 Transaction successfully broadcast! Network Signature: ${txSignature}`);
 
-      // Forward the verified cryptographic transaction hash directly to your server registry tables
-      rel.social = rel.social || { ledger: [], totalTips: 0 };
-      rel.social.ledger.push({
-        sender: user.handle,
-        amount: Number(amount),
-        currency,
+      // 📡 FORWARD TRANSACTION DATA DIRECTLY TO THE PROTOCOL BACKEND FOR VERIFICATION 📡
+      const paymentPayload = {
         signature: txSignature,
-        timestamp: new Date().toISOString()
+        artistWallet: rel.artistWallet || window.solana.publicKey.toString(),
+        amountLamports: currency === 'SOL' ? Math.round(amount * 1_000_000_000) : Math.round(amount * 1_000_000),
+        sender: user.handle,
+        currency,
+        trackId: rel.id
+      };
+
+      const backendResponse = await fetch(`${API_BASE}/api/v1/verify-payment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(paymentPayload)
       });
 
-      rel.social.totalTips = Number(rel.social.totalTips || 0) + Number(amount);
+      const backendResult = await backendResponse.json();
+
+      if (!backendResponse.ok || !backendResult.success) {
+        throw new Error(backendResult.message || "Backend rejected payment verification.");
+      }
+
+      // Forward the verified cryptographic transaction hash directly to your server registry tables
+      rel.social = backendResult.updatedSocial || rel.social || { ledger: [], totalTips: 0 };
       setReleases((rs) => [...rs]); // Instant high-fidelity re-render
 
       setUploadState('success');
@@ -241,7 +254,8 @@ export function useStore() {
       setTimeout(() => setToast(null), 6000);
       return { success: false, error: paymentErr.message };
     }
-  }, [user])
+  }, [user, releases])
+
 
 
   // ---- publish: Fetch-Append-Push (manifest protocol) with Mint UX ----
