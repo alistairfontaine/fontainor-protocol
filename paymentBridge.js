@@ -19,11 +19,101 @@ const PROTOCOL_FEE_RATE = 0.02; // 2% protocol treasury share
  * @param {number} expectedAmountLamports - The required track cost calculated in Lamports (1 SOL = 10^9 Lamports).
  * @returns {Promise<boolean>}
  */
-export async function verifySolanaPayment(signature, artistWalletStr, expectedAmountLamports) {
-    console.log(`📡 Querying Solana ledger... Verifying transaction signature: ${signature}`);
+export async function verifySolanaPayment(signature, artistWalletStr, expectedAmountTokens, currency = 'SOL') {
+    console.log(`📡 Querying Solana ledger... Verifying ${currency} transaction signature: ${signature}`);
 
     try {
         if (!signature) return false;
+
+        let txInfo = null;
+        let attempts = 3;
+
+        while (attempts > 0) {
+            txInfo = await connection.getTransaction(signature, {
+                maxSupportedTransactionVersion: 0
+            });
+            if (txInfo) break;
+            attempts--;
+            if (attempts > 0) {
+                console.warn(`⚠️ Signature not indexed yet. Holding 3s...`);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
+        }
+
+        if (!txInfo) {
+            console.error("❌ Solana payment verification rejected: Transaction signature not found.");
+            return false;
+        }
+
+        if (txInfo.meta && txInfo.meta.err) {
+            console.error("❌ Solana payment verification rejected: Transaction flagged as failed on-chain.");
+            return false;
+        }
+
+        const PROTOCOL_TREASURY_ADDRESS = "7xTMathRandomTreasuryWalletPlaceholderAddress1111"; // Official Gas Bank
+
+        // --- NATIVE SOL TRANSFER PATHWAY ---
+        if (currency === 'SOL') {
+            const accountKeys = txInfo.transaction.message.getAccountKeys
+                ? txInfo.transaction.message.getAccountKeys().staticAccountKeys
+                : txInfo.transaction.message.accountKeys;
+
+            const artistPubKey = new PublicKey(artistWalletStr);
+            const artistAccountIndex = accountKeys.findIndex(key => key.equals(artistPubKey));
+            const treasuryPubKey = new PublicKey(PROTOCOL_TREASURY_ADDRESS);
+            const treasuryAccountIndex = accountKeys.findIndex(key => key.equals(treasuryPubKey));
+
+            if (artistAccountIndex === -1 || treasuryAccountIndex === -1) return false;
+
+            const artistNetReceived = txInfo.meta.postBalances[artistAccountIndex] - txInfo.meta.preBalances[artistAccountIndex];
+            const treasuryNetReceived = txInfo.meta.postBalances[treasuryAccountIndex] - txInfo.meta.preBalances[treasuryAccountIndex];
+
+            const exactExpectedTreasuryFee = Math.round(expectedAmountTokens * 0.02);
+            const exactExpectedArtistEquity = expectedAmountTokens - exactExpectedTreasuryFee;
+
+            return (artistNetReceived >= exactExpectedArtistEquity && treasuryNetReceived >= exactExpectedTreasuryFee);
+        }
+
+        // --- SPL TOKEN (USDC / USDT) PATHWAY ---
+        // Stablecoins use 6 decimals instead of 9. We parse txInfo.meta.preTokenBalances and postTokenBalances
+        const tokenMintAddress = currency === 'USDC'
+          ? "Gh9ZwEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn76W"
+          : "Er4vEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn77X";
+
+        const tokenBalances = txInfo.meta.postTokenBalances || [];
+        const preTokenBalances = txInfo.meta.preTokenBalances || [];
+
+        // Track net token changes across accounts matching our target destinations
+        let artistTokensReceived = 0;
+        let treasuryTokensReceived = 0;
+
+        tokenBalances.forEach((post) => {
+            if (post.mint !== tokenMintAddress) return;
+            const pre = preTokenBalances.find(p => p.accountIndex === post.accountIndex) || { uiTokenAmount: { uiAmount: 0 } };
+            const diff = (post.uiTokenAmount.uiAmount || 0) - (pre.uiTokenAmount.uiAmount || 0);
+
+            // Cross-examine owners
+            if (post.owner === artistWalletStr) artistTokensReceived += diff;
+            if (post.owner === PROTOCOL_TREASURY_ADDRESS) treasuryTokensReceived += diff;
+        });
+
+        const expectedTreasuryFee = expectedAmountTokens * 0.02;
+        const expectedArtistEquity = expectedAmountTokens - expectedTreasuryFee;
+
+        if (artistTokensReceived < expectedArtistEquity || treasuryTokensReceived < expectedTreasuryFee) {
+            console.error(`❌ SPL Token Split Mismatch! Expected Artist: ${expectedArtistEquity}, Got: ${artistTokensReceived}`);
+            return false;
+        }
+
+        console.log(`✓ [Stablecoin Verified] Spl Token 98/2 transfer cleared natively.`);
+        return true;
+
+    } catch (err) {
+        console.error("❌ Solana payment verification engine crashed:", err.message);
+        return false;
+    }
+}
+
 
         // 1. Fetch the confirmed transaction record with an automatic retry loop for network lag
         let txInfo = null;
