@@ -67,7 +67,9 @@ Milestone Phase III implements true non-custodial asset tokenization and automat
 ---
 
 ## 🛡️ Future Horizon: Phase IV (v0.6) — Solana Collector Equity & Minting Engines
-* **On-Chain Collector Ledger:** Establish immutable collector registry matrices on Arweave mapping track ownership state [s].
+* **Zero-Cost Sovereign Identity Accounts:** Implement decentralized user profiles utilizing cryptographically signed local keypairs (WebAuthn/Phantom keys) stored permanently on Arweave, eliminating central server hosting database overhead completely. [s].
+* **On-Chain Collector Ledger:** Establish immutable collector registry matrices on Arweave mapping track ownership state. [s].
 * **SPL Minting Finalizer:** Automated execution loops generating unique, limited-edition SPL equity tokens deposited straight into collector wallets upon payment signature confirmation [s].
 * **Smart Contract Decentralization:** Port backend Node.js payment checking loops into permanent, permissionless on-chain Solana programs (Rust/Anchor) [s].
 
+---

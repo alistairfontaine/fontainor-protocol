@@ -1,6 +1,8 @@
 import React, { useState } from 'react'
 import { ReleaseGrid, Skeleton, Empty } from './Release.jsx'
 import { avatarSVG, coverSVG } from '../lib/registry.js'
+import { resolveAudioUri } from '../lib/api.js'
+
 
 function Head({ title, sub }) {
   return (<><h1 className="page">{title}</h1>{sub && <p className="sub">{sub}</p>}</>)
@@ -79,12 +81,17 @@ export function PopularTagsPage({ store, onOpen }) {
             {tags.map((t) => (
               <div className="tagcol" key={t}>
                 <h3>{t} ›</h3>
-                {map[t].map((r) => (
-                  <div className="tagrow" key={r.id + r.title} onClick={() => onOpen(r)}>
-                    <div className="th" dangerouslySetInnerHTML={{ __html: r.coverUrl ? `<img src="${r.coverUrl}">` : coverSVG(r.id) }} />
-                    <div><div className="tt">{r.title}</div><div className="ta">{r.artist}</div></div>
-                  </div>
-                ))}
+                {map[t].map((r) => {
+                  const rawGraphicSource = r.coverUrl || r.coverUri || '';
+                  const verifiedArtworkPath = resolveAudioUri(rawGraphicSource);
+                  return (
+                    <div className="tagrow" key={r.id + r.title} onClick={() => onOpen(r)}>
+                      <div className="th" dangerouslySetInnerHTML={{ __html: verifiedArtworkPath ? `<img src="${verifiedArtworkPath}">` : coverSVG(r.id) }} />
+                      <div><div className="tt">{r.title}</div><div className="ta">{r.artist}</div></div>
+                    </div>
+                  )
+                })}
+
               </div>
             ))}
           </div>
@@ -102,16 +109,21 @@ export function EditorialPage({ store, onOpen }) {
         <>
           <div className="ed-sec-h">Staff Picks ›</div>
           <div className="ed-row">
-            {list.map((r) => (
-              <div className="ed-card" key={r.id + r.title} onClick={() => onOpen(r)}>
-                <div className="cv" dangerouslySetInnerHTML={{ __html: r.coverUrl ? `<img src="${r.coverUrl}">` : coverSVG(r.id) }} />
-                <div className="t">{r.artist} - {r.title}</div>
-                <div className="d">{r.desc || 'Featured on Fontainor.'}</div>
-                <div className="src">Staff Picks</div>
-                {r.tags.length > 0 && <div className="tags">{r.tags.map((t) => <a key={t} onClick={(e) => { e.stopPropagation(); location.hash = '#/tag/' + encodeURIComponent(t) }}>#{t}</a>)}</div>}
-              </div>
-            ))}
+            {list.map((r) => {
+              const rawGraphicSource = r.coverUrl || r.coverUri || '';
+              const verifiedArtworkPath = resolveAudioUri(rawGraphicSource);
+              return (
+                <div className="ed-card" key={r.id + r.title} onClick={() => onOpen(r)}>
+                  <div className="cv" dangerouslySetInnerHTML={{ __html: verifiedArtworkPath ? `<img src="${verifiedArtworkPath}">` : coverSVG(r.id) }} />
+                  <div className="t">{r.artist} - {r.title}</div>
+                  <div className="d">{r.desc || 'Featured on Fontainor.'}</div>
+                  <div className="src">Staff Picks</div>
+                  {r.tags.length > 0 && <div className="tags">{r.tags.map((t) => <a key={t} onClick={(e) => { e.stopPropagation(); location.hash = '#/tag/' + encodeURIComponent(t) }}>#{t}</a>)}</div>}
+                </div>
+              )
+            })}
           </div>
+
           <div className="ed-sec-h">Community Picks ›</div>
           <Empty>No community picks yet.</Empty>
         </>
