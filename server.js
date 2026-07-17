@@ -242,11 +242,42 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
     }
 });
 
+// 4. Solana On-Chain Payment Settlement Verification Gate
+app.post('/api/v1/verify-payment', async (req, res) => {
+    console.log("📡 [Payment Router] Intercepted incoming signature for verification loop...");
+    try {
+        const { signature, artistWallet, amountLamports, sender, currency, trackId } = req.body;
+
+        if (!signature || !artistWallet || !trackId) {
+            return res.status(400).json({ success: false, message: "Missing required signature verification headers." });
+        }
+
+        // Dynamically call our hardened Solana web3 verification engine
+        const { verifySolanaPayment } = await import('./paymentBridge.js');
+        const isVerified = await verifySolanaPayment(signature, artistWallet, amountLamports);
+
+        if (!isVerified) {
+            return res.status(400).json({ success: false, message: "On-chain transaction cross-examination failed." });
+        }
+
+        console.log(`✓ [Verification Success] Clearing track registration for ID: ${trackId}`);
+        return res.json({
+            success: true,
+            message: "Payment successfully validated and recorded on protocol ledger.",
+            updatedSocial: { totalTips: amountLamports / 1e9, ledger: [{ sender, signature, timestamp: new Date().toISOString() }] }
+        });
+    } catch (err) {
+        console.error("❌ Critical server-side settlement validation breakdown:", err.message);
+        return res.status(500).json({ success: false, error: "SETTLEMENT_CRASH", message: err.message });
+    }
+});
+
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });
 
 // --- Start Server ---
+
 const PORT = 3000;
 const HOST = '0.0.0.0'; // Bind universally to all local network loopbacks (IPv4 and IPv6)
 
