@@ -78,9 +78,10 @@ export default function App() {
       case 'favorites': return <FavoritesPage store={store} onOpen={open} />
       case 'history': return <HistoryPage store={store} onOpen={open} />
       case 'insights': return <InsightsPage store={store} />
-      case 'iceberg': return <IcebergPage />
-      case 'offramp': return <OfframpPage />
+      case 'iceberg': return <IcebergPage store={store} />
+      case 'offramp': return <OfframpPage store={store} />
       case 'profile': return <ProfilePage store={store} onOpen={open} onPublish={onPublish} />
+
       case 'tag': {
         const t = decodeURIComponent(param || '')
         const list = store.releases.filter((r) => r.tags.includes(t))
