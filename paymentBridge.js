@@ -114,89 +114,11 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
     }
 }
 
-
-        // 1. Fetch the confirmed transaction record with an automatic retry loop for network lag
-        let txInfo = null;
-        let attempts = 3;
-
-        while (attempts > 0) {
-            txInfo = await connection.getTransaction(signature, {
-                maxSupportedTransactionVersion: 0
-            });
-
-            if (txInfo) break; // Transaction successfully found and pulled from block memory
-
-            attempts--;
-            if (attempts > 0) {
-                console.warn(`⚠️ Signature not indexed yet. Remaining attempts: ${attempts}. Holding 3s...`);
-                await new Promise(resolve => setTimeout(resolve, 3000));
-            }
-        }
-
-        if (!txInfo) {
-            console.error("❌ Solana payment verification rejected: Transaction signature not found on the network after retries.");
-            return false;
-        }
-
-        // 2. Validate that the payment transaction executed successfully with zero inner script errors
-        if (txInfo.meta && txInfo.meta.err) {
-            console.error("❌ Solana payment verification rejected: Transaction flagged as failed on-chain execution.");
-            return false;
-        }
-
-        // 3. Extract the physical transaction account index mappings
-        const accountKeys = txInfo.transaction.message.getAccountKeys
-            ? txInfo.transaction.message.getAccountKeys().staticAccountKeys
-            : txInfo.transaction.message.accountKeys;
-
-        // 4. Verify that the target artist's public key address was a recipient in this transaction
-        const artistPubKey = new PublicKey(artistWalletStr);
-        const artistAccountIndex = accountKeys.findIndex(key => key.equals(artistPubKey));
-
-        if (artistAccountIndex === -1) {
-            console.error(`❌ Solana payment verification rejected: Artist wallet ${artistWalletStr} was not an account recipient.`);
-            return false;
-        }
-
-        // 5. Hardcode the official Fontainor Protocol Gas Bank Community Treasury Public Key
-        const PROTOCOL_TREASURY_ADDRESS = "7xTMathRandomTreasuryWalletPlaceholderAddress1111"; // Official Gas Bank
-        const treasuryPubKey = new PublicKey(PROTOCOL_TREASURY_ADDRESS);
-        const treasuryAccountIndex = accountKeys.findIndex(key => key.equals(treasuryPubKey));
-
-        if (treasuryAccountIndex === -1) {
-            console.error("❌ Solana split verification rejected: Protocol Treasury account was not an account recipient.");
-            return false;
-        }
-
-        // 6. Evaluate the net change in Lamports for BOTH target recipient keys
-        const artistNetReceived = txInfo.meta.postBalances[artistAccountIndex] - txInfo.meta.preBalances[artistAccountIndex];
-        const treasuryNetReceived = txInfo.meta.postBalances[treasuryAccountIndex] - txInfo.meta.preBalances[treasuryAccountIndex];
-
-        // 7. Mathematically verify the strict 98% vs 2% economic split contract parameters
-        const exactExpectedTreasuryFee = Math.round(expectedAmountLamports * PROTOCOL_FEE_RATE);
-        const exactExpectedArtistEquity = expectedAmountLamports - exactExpectedTreasuryFee;
-
-        if (artistNetReceived < exactExpectedArtistEquity) {
-            console.error(`❌ Equity Split Failure! Artist expected: ${exactExpectedArtistEquity} Lamports, received: ${artistNetReceived}.`);
-            return false;
-        }
-
-        if (treasuryNetReceived < exactExpectedTreasuryFee) {
-            console.error(`❌ Treasury Split Failure! Protocol Gas Bank expected: ${exactExpectedTreasuryFee} Lamports, received: ${treasuryNetReceived}.`);
-            return false;
-        }
-
-        console.log(`✓ [Milestone C2 Secure] On-chain 98/2 revenue split verified! Artist: ${(artistNetReceived / 1e9).toFixed(4)} SOL | Treasury: ${(treasuryNetReceived / 1e9).toFixed(4)} SOL.`);
-        return true;
-
-    } catch (err) {
-        console.error("❌ Solana payment verification engine crashed:", err.message);
-        return false;
-    }
-}
-
 /**
  * Main orchestration entry point.
+ * Coordinates verified payment validation before triggering local social database mutations.
+ */
+
  * Coordinates verified payment validation before triggering local social database mutations.
  */
 export async function handlePaymentProcessing(registry, paymentDetails) {
