@@ -206,36 +206,54 @@ export function useStore() {
 
       let txSignature = "";
 
-      if (currency === 'SOL') {
-        // Calculate raw Lamports footprint (1 SOL = 1,000,000,000 Lamports)
-        const lamports = Math.round(amount * 1_000_000_000);
+      const { blockhash } = await connection.getLatestBlockhash();
+      const transaction = new Transaction();
 
-        const transaction = new Transaction().add(
+      if (currency === 'SOL') {
+        const lamports = Math.round(amount * 1_000_000_000);
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: buyerPubKey,
             toPubkey: artistPubKey,
             lamports,
           })
         );
-
-        // Fetch the fresh network blockhash to shield the transaction from replication attacks
-        const { blockhash } = await connection.getLatestBlockhash();
-        transaction.recentBlockhash = blockhash;
-        transaction.feePayer = buyerPubKey;
-
-        // Prompt the Phantom extension interface window natively on the listener's screen
-        const signedTx = await window.solana.signAndSendTransaction(transaction);
-        txSignature = signedTx.signature;
       } else {
-        // SPL Token Configuration Tracks (USDC vs USDT Mint Addresses on Solana Devnet)
-        const tokenMintAddress = currency === 'USDC'
-          ? "Gh9ZwEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn76W"  // Devnet USDC Mint Placeholder
-          : "Er4vEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn77X"; // Devnet USDT Mint Placeholder
+        const tokenMintAddressStr = currency === 'USDC'
+          ? "Gh9ZwEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn76W"
+          : "Er4vEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn77X";
+        const tokenMintPubKey = new PublicKey(tokenMintAddressStr);
 
-        console.log(`🪙 Assembling SPL token transfer instructions for Mint: ${tokenMintAddress}`);
-        alert(`[Mock SPL Transfer] Initiating ${amount} ${currency} token contract pipeline via signature verification...`);
-        txSignature = `mock-solana-spl-sig-${Date.now()}-${Math.random().toString(36).substring(2,7)}`;
+        const { TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, getAssociatedTokenAddressSync, createTransferCheckedInstruction } = await import('@solana/spl-token');
+
+        // Derive Associated Token Accounts (ATA) for both buyer and artist wallets
+        const buyerTokenAddress = getAssociatedTokenAddressSync(tokenMintPubKey, buyerPubKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+        const artistTokenAddress = getAssociatedTokenAddressSync(tokenMintPubKey, artistPubKey, false, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID);
+
+        // Stablecoins leverage a 6-decimal scale constraint factor instead of lamports (9)
+        const rawTokenAmount = Math.round(amount * 1_000_000);
+
+        transaction.add(
+          createTransferCheckedInstruction(
+            buyerTokenAddress,
+            tokenMintPubKey,
+            artistTokenAddress,
+            buyerPubKey,
+            rawTokenAmount,
+            6,
+            [],
+            TOKEN_PROGRAM_ID
+          )
+        );
       }
+
+      transaction.recentBlockhash = blockhash;
+      transaction.feePayer = buyerPubKey;
+
+      console.log(`📡 Prompting Phantom wallet to sign and broadcast the on-chain ${currency} transaction payload...`);
+      const signedTx = await window.solana.signAndSendTransaction(transaction);
+      txSignature = signedTx.signature;
+
 
       console.log(`🎯 Transaction successfully broadcast! Network Signature: ${txSignature}`);
 
