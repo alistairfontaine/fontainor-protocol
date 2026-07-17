@@ -3,11 +3,18 @@ import {
   coverSVG, priceLabel, edLabel, royaltyLabel, fmtDate, prettyStatus, isSold, isFree,
 } from '../lib/registry.js'
 
+import { resolveAudioUri } from '../lib/api.js'
+
 function CoverBig({ rel }) {
-  return rel.coverUrl
-    ? <div className="dcover"><img src={rel.coverUrl} alt="" /></div>
+  // 🔒 FIXED: Fallback to evaluate both coverUrl and coverUri field properties
+  const rawGraphicSource = rel.coverUrl || rel.coverUri || '';
+  const verifiedArtworkPath = resolveAudioUri(rawGraphicSource);
+
+  return verifiedArtworkPath
+    ? <div className="dcover"><img src={verifiedArtworkPath} alt="" /></div>
     : <div className="dcover" dangerouslySetInnerHTML={{ __html: coverSVG(rel.id || rel.title) }} />
 }
+
 
 export function ReleaseDetail({ rel, store, onClose }) {
   const [amt, setAmt] = useState(5)
