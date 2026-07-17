@@ -54,22 +54,37 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
             return false;
         }
 
-        // 5. Evaluate the net change in Lamports to verify the artist received their equity share
-        const postBalance = txInfo.meta.postBalances[artistAccountIndex];
-        const preBalance = txInfo.meta.preBalances[artistAccountIndex];
-        const netReceivedLamports = postBalance - preBalance;
+        // 5. Hardcode the official Fontainor Protocol Gas Bank Community Treasury Public Key
+        const PROTOCOL_TREASURY_ADDRESS = "7xTMathRandomTreasuryWalletPlaceholderAddress1111"; // Official Gas Bank
+        const treasuryPubKey = new PublicKey(PROTOCOL_TREASURY_ADDRESS);
+        const treasuryAccountIndex = accountKeys.findIndex(key => key.equals(treasuryPubKey));
 
-        // Calculate expected split margins: subtract the 2% protocol fee from the absolute price tag
-        const expectedTreasuryShare = expectedAmountLamports * PROTOCOL_FEE_RATE;
-        const expectedArtistShare = expectedAmountLamports - expectedTreasuryShare;
-
-        if (netReceivedLamports < expectedArtistShare) {
-            console.error(`❌ Balance delta mismatch! Expected artist share: ${expectedArtistShare} Lamports, received: ${netReceivedLamports}.`);
+        if (treasuryAccountIndex === -1) {
+            console.error("❌ Solana split verification rejected: Protocol Treasury account was not an account recipient.");
             return false;
         }
 
-        console.log(`✓ [Payment Bridge] Verified Solana signature successful! Net settlement: ${(netReceivedLamports / 1e9).toFixed(4)} SOL transferred to artist.`);
+        // 6. Evaluate the net change in Lamports for BOTH target recipient keys
+        const artistNetReceived = txInfo.meta.postBalances[artistAccountIndex] - txInfo.meta.preBalances[artistAccountIndex];
+        const treasuryNetReceived = txInfo.meta.postBalances[treasuryAccountIndex] - txInfo.meta.preBalances[treasuryAccountIndex];
+
+        // 7. Mathematically verify the strict 98% vs 2% economic split contract parameters
+        const exactExpectedTreasuryFee = Math.round(expectedAmountLamports * PROTOCOL_FEE_RATE);
+        const exactExpectedArtistEquity = expectedAmountLamports - exactExpectedTreasuryFee;
+
+        if (artistNetReceived < exactExpectedArtistEquity) {
+            console.error(`❌ Equity Split Failure! Artist expected: ${exactExpectedArtistEquity} Lamports, received: ${artistNetReceived}.`);
+            return false;
+        }
+
+        if (treasuryNetReceived < exactExpectedTreasuryFee) {
+            console.error(`❌ Treasury Split Failure! Protocol Gas Bank expected: ${exactExpectedTreasuryFee} Lamports, received: ${treasuryNetReceived}.`);
+            return false;
+        }
+
+        console.log(`✓ [Milestone C2 Secure] On-chain 98/2 revenue split verified! Artist: ${(artistNetReceived / 1e9).toFixed(4)} SOL | Treasury: ${(treasuryNetReceived / 1e9).toFixed(4)} SOL.`);
         return true;
+
     } catch (err) {
         console.error("❌ Solana payment verification engine crashed:", err.message);
         return false;
