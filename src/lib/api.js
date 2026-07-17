@@ -209,11 +209,12 @@ export function resolveAudioUri(uri) {
 
   // If running locally, route the player network traffic to load data vectors directly off your disk
   if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    // 🔒 FIXED: Added trailing forward slashes to target exact URI paths correctly
-    return uri.replace('https://arweave.net', 'http://localhost:1984/');
+    // 🔒 FIXED: Strip trailing slashes here to eliminate double path separator collisions completely
+    return uri.replace('https://arweave.net', 'http://localhost:1984');
   }
 
   return uri;
 }
+
 
 
