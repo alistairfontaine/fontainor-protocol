@@ -180,17 +180,18 @@ export async function mintCollectorEquityToken(buyerWalletStr, trackId, trackMin
 
         // 4. Securely instantiate the persistent protocol mint authority keypair from environment tracks
         let localProtocolAuthorityWallet;
-        if (process.env.MINT_AUTHORITY_PRIVATE_KEY) {
+        if (process.env.SOLANA_PRIVATE_KEY) {
             try {
-                const keyArray = JSON.parse(process.env.MINT_AUTHORITY_PRIVATE_KEY);
+                const keyArray = JSON.parse(process.env.SOLANA_PRIVATE_KEY);
                 localProtocolAuthorityWallet = Keypair.fromSecretKey(Uint8Array.from(keyArray));
             } catch (keyErr) {
-                console.warn("⚠️ Fallback triggered: Failed to parse MINT_AUTHORITY_PRIVATE_KEY from .env, using local temp wallet.");
+                console.warn("⚠️ Fallback triggered: Failed to parse SOLANA_PRIVATE_KEY from .env, using local temp wallet.");
                 localProtocolAuthorityWallet = Keypair.generate();
             }
         } else {
             localProtocolAuthorityWallet = Keypair.generate();
         }
+
 
         // Append mint instruction to drop exactly 1 limited-edition token into the derived account
         transaction.add(
