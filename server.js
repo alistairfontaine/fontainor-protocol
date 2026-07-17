@@ -265,10 +265,14 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         console.log(`✓ [Verification Success] Clearing track registration for ID: ${trackId}`);
 
         // 💎 Step B: Trigger the on-chain SPL Token Collector Equity Minting loop
-        const collectorPublicKeyStr = req.body.buyerWallet || artistWallet; // Extract or pass from context
-        const trackMintAddressPlaceholder = "MINT77777777777777777777777777777777777777"; // Protocol asset tracking mint
+        // Safely extract the collector's public key string directly from the payment request headers
+        const collectorPublicKeyStr = req.body.buyerWallet || artistWallet;
 
-        const mintResult = await mintCollectorEquityToken(collectorPublicKeyStr, trackId, trackMintAddressPlaceholder);
+        // Target structural mint asset token profile tracking key
+        const canonicalTrackMintPubKeyStr = "Gh9ZwEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn76W";
+
+        const mintResult = await mintCollectorEquityToken(collectorPublicKeyStr, trackId, canonicalTrackMintPubKeyStr);
+
 
         if (!mintResult.success) {
             console.error("⚠️ Revenue split passed, but collector token minting failed.");
