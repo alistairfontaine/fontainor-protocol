@@ -67,10 +67,14 @@ export default function App() {
   const open = (rel) => setDetail(rel)
 
   const renderPage = () => {
+    // 🔒 FIXED: Intercept store array blocks to filter by asset type signatures cleanly
+    const pureMusicStore = { ...store, releases: store.releases.filter(r => r.type === 'release') };
+    const journalisticStore = { ...store, releases: store.releases.filter(r => r.type === 'editorial') };
+
     switch (base) {
-      case 'following': return <BrowsePage store={store} onOpen={open} title="Following" sub="Releases and posts from accounts, hubs, and tags you follow." tabs emptyMsg="Nothing in your feed yet." />
-      case 'recent-posts': return <PostsPage />
-      case 'recent-releases': return <BrowsePage store={store} onOpen={open} title="Recent Releases" sub="The latest releases published on Fontainor." emptyMsg="No releases yet." />
+      case 'following': return <BrowsePage store={pureMusicStore} onOpen={open} title="Following" sub="Releases and posts from accounts, hubs, and tags you follow." tabs emptyMsg="Nothing in your feed yet." />
+      case 'recent-posts': return <BrowsePage store={journalisticStore} onOpen={open} title="Recent Posts" sub="The latest articles and journal columns published on Fontainor." emptyMsg="No articles yet." />
+      case 'recent-releases': return <BrowsePage store={pureMusicStore} onOpen={open} title="Recent Releases" sub="The latest releases published on Fontainor." emptyMsg="No releases yet." />
       case 'discover': return <BrowsePage store={store} onOpen={open} title="Discover" sub="Personalized recommendations based on your listening." emptyMsg="Play some music and recommendations will appear." />
       case 'staff-picks': return <BrowsePage store={store} onOpen={open} title="Staff Picks" sub="Selections from the Fontainor team." emptyMsg="No staff picks yet." />
       case 'now-listening': return <BrowsePage store={store} onOpen={open} title="Now Listening" sub="What people are listening to right now on Fontainor." emptyMsg="Nobody's listening right now." />

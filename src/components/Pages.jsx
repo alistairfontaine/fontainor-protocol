@@ -101,8 +101,10 @@ export function PopularTagsPage({ store, onOpen }) {
 }
 
 export function EditorialPage({ store, onOpen }) {
-  const list = store.releases
+  // 🔒 FIXED: Filter out release assets to keep the column strictly journalistic
+  const list = store.releases.filter(r => r.type === 'editorial');
   return (
+
     <main>
       <Head title="Editorial" sub="Features, reviews, and picks from the Fontainor community." />
       {list.length ? (

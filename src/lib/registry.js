@@ -8,12 +8,17 @@ export function normalizeOne(a) {
   const eq = a.equity || {}
   const priceObj = (a.price && typeof a.price === 'object') ? a.price : {}
   const edObj = (a.editions && typeof a.editions === 'object') ? a.editions : {}
+  const evaluatedAudio = pick(a, 'audioUri', 'audio', 'audioUrl', 'animation_url') || null;
+  const determinedType = a.type || (evaluatedAudio ? 'release' : 'editorial');
+
   return {
+    type: determinedType, // 🔒 FIXED: Explicit type discriminator separating music from journalism
     id: pick(a, 'assetId', 'id', 'catalogNumber') || '\u2014',
     title: pick(a, 'name', 'title') || 'Untitled',
     artist: pick(a, 'artist', 'creator') || 'Unknown artist',
     label: pick(a, 'label', 'hub', 'publisher') || null,
     tags: Array.isArray(a.tags) ? a.tags : [],
+
     // new schema: coverUri ; legacy: cover/image/etc
     coverUrl: pick(a, 'coverUri', 'cover', 'coverUrl', 'image', 'image_url', 'artwork') || null,
     // new schema: audioUri ; legacy: audio/audioUrl
@@ -71,8 +76,9 @@ export function parseRegistryText(text) {
 //   { id, title, artist, price:{amount,currency}, editions:{total}, status, date,
 //     audioUri?, coverUri? }
 // Anything else gets rejected with a 400 by the Zod gatekeeper.
-export function buildAsset({ title, artist, price = 0, currency = 'USD', total = 0, audioUri = '', coverUri = '' }) {
+export function buildAsset({ type = 'release', title, artist, price = 0, currency = 'USD', total = 0, audioUri = '', coverUri = '', desc = '' }) {
   const asset = {
+    type: type || 'release', // 🔒 FIXED: Preserve structural type bounds during asset instantiation
     id: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
     title,
     artist,
@@ -80,13 +86,13 @@ export function buildAsset({ title, artist, price = 0, currency = 'USD', total =
     editions: { total: Number(total) || 0 },
     status: 'REGISTERED_ON_FONTAINOR',
     date: new Date().toISOString(),
-    // Fix: If the string is empty or just whitespace, set it to null.
-    // Zod's .nullable() allows null, but .url() crashes on ""
+    desc: desc || '',
     audioUri: (audioUri && audioUri.trim().length > 0) ? audioUri : null,
     coverUri: (coverUri && coverUri.trim().length > 0) ? coverUri : null,
   }
   return asset
 }
+
 
 // ---- formatters ----
 export const priceLabel = (p) => {

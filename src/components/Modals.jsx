@@ -170,6 +170,127 @@ export function PublishModal({ store, uploader, onClose }) {
               const file = e.target.files?.[0];
               if (!file) return;
               setBusy(true);
+              const result = await uploader.uploadTrack(file);
+              setBusy(false);
+              if (result.success) {
+                setForm(f => ({ ...f, coverUri: result.audioUri }));
+                console.log(`📸 [Artwork Engine] Cover successfully etched at: ${result.audioUri}`);
+              } else {
+                alert(`Artwork upload failed: ${result.error}`);
+              }
+            }}
+          />
+        </div>
+
+        <div className="field"><label>Cover URI (Auto-populated upon selection)</label><input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" /></div>
+        <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
+          {busy || uploader.isUploading ? 'Streaming track…' : 'Publish to protocol'}
+        </button>
+        {note
+          ? <div className={'mnote ' + (note.ok ? 'okmsg' : 'warnmsg')}>
+              {note.ok ? '✓ ' : ''}{note.msg}{!note.ok && ' Your release was added to this preview only.'}
+              {note.details && <ValidationDetails details={note.details} />}
+            </div>
+          : <div className="mnote">This streams chunks to the server registry system. Make sure the backend is active on port 3000.</div>}
+
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 📰 NINA-STYLE JOURNALISTIC EDITORIAL WRITER MODAL 📰
+ * Lets authenticated protocol users publish full articles, text posts,
+ * and critical reviews directly to the decentralized registry layers.
+ */
+export function PostModal({ store, onClose }) {
+  const [form, setForm] = useState({ title: '', artist: store.user?.name || '', body: '', tags: '' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const submit = async () => {
+    if (!form.title.trim() || !form.body.trim()) return
+    setBusy(true); setError(null)
+
+    // Format text posts inside the shared schema matrix structure with explicit type labels
+    const postAsset = {
+      type: 'editorial',
+      id: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+      title: form.title.trim(),
+      artist: form.artist.trim(),
+      desc: form.body.trim(),
+      tags: form.tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 0),
+      price: { amount: 0, currency: 'USD' },
+      editions: { total: 0 },
+      status: 'REGISTERED_ON_FONTAINOR',
+      date: new Date().toISOString()
+    }
+
+    const res = await store.publish(postAsset)
+    setBusy(false)
+
+    if (res.ok) {
+      onClose('recent-posts')
+    } else {
+      setError(res.msg || "Failed to commit article payload to network.")
+    }
+  }
+
+  if (busy || store.uploadState === 'uploading') {
+    return (
+      <div className="modal">
+        <div className="sheet etching">
+          <div className="etch-spinner" />
+          <h2>Etching journal entry onto protocol…</h2>
+          <p className="msub">Committing your editorial text directly to Arweave. Please don’t close this window.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="modal" onClick={(e) => { if (e.target.classList.contains('modal')) onClose() }}>
+      <div className="sheet" style={{ maxWidth: 650 }}>
+        <button className="mclose" onClick={() => onClose()}>×</button>
+        <h2>Write an Editorial Post</h2>
+        <p className="msub">Publish text articles, audio reviews, and picks directly to the decentralized network layer.</p>
+
+        {error && <div className="loadnote warn" style={{ margin: '0 0 14px' }}>{error}</div>}
+
+        <div className="field"><label>Article Title</label><input value={form.title} onChange={set('title')} placeholder="e.g. Exploring the Emo Shoegaze Revival" /></div>
+        <div className="field"><label>Author / Pen Name</label><input value={form.artist} onChange={set('artist')} placeholder="Your author handle" /></div>
+
+        <div className="field">
+          <label>Article Body Content</label>
+          <textarea
+            value={form.body}
+            onChange={set('body')}
+            placeholder="Write your journalistic article, full-length critique, or community picks here..."
+            style={{ width: '100%', minHeight: 180, border: '1px solid var(--line)', borderRadius: 7, padding: '11px 12px', fontSize: 14, fontFamily: 'var(--sans)', resize: 'vertical' }}
+          />
+        </div>
+
+        <div className="field"><label>Tags (Comma-separated)</label><input value={form.tags} onChange={set('tags')} placeholder="e.g. ambient, review, lofi" /></div>
+
+        <button className="primary" onClick={submit} disabled={!form.title.trim() || !form.body.trim()}>
+          Publish Article to Protocol
+        </button>
+      </div>
+    </div>
+  )
+}
+/></div>
+        <div className="field">
+          <label>Upload Cover Artwork Image (PNG, JPG, GIF)</label>
+          <input
+            type="file"
+            accept="image/png,image/jpeg,image/gif"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBusy(true);
               // Reuse your verified binary chunk uploader loop to store artwork bytes on the blockchain
               const result = await uploader.uploadTrack(file);
               setBusy(false);
@@ -200,3 +321,87 @@ export function PublishModal({ store, uploader, onClose }) {
     </div>
   )
 }
+
+/**
+ * 📰 NINA-STYLE JOURNALISTIC EDITORIAL WRITER MODAL 📰
+ * Lets authenticated protocol users publish full articles, text posts,
+ * and critical reviews directly to the decentralized registry layers.
+ */
+export function PostModal({ store, onClose }) {
+  const [form, setForm] = useState({ title: '', artist: store.user?.name || '', body: '', tags: '' })
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState(null)
+
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const submit = async () => {
+    if (!form.title.trim() || !form.body.trim()) return
+    setBusy(true); setError(null)
+
+    // Format text posts inside the shared schema matrix structure
+    const postAsset = {
+      id: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+      title: form.title.trim(),
+      artist: form.artist.trim(),
+      desc: form.body.trim(), // Article text mapped onto standard description fields
+      tags: form.tags.split(',').map(t => t.trim().toLowerCase()).filter(t => t.length > 0),
+      price: { amount: 0, currency: 'USD' }, // Journalistic texts remain open and free access
+      editions: { total: 0 },
+      status: 'REGISTERED_ON_FONTAINOR',
+      date: new Date().toISOString()
+    }
+
+    const res = await store.publish(postAsset)
+    setBusy(false)
+
+    if (res.ok) {
+      onClose('recent-posts')
+    } else {
+      setError(res.msg || "Failed to commit article payload to network.")
+    }
+  }
+
+  if (busy || store.uploadState === 'uploading') {
+    return (
+      <div className="modal">
+        <div className="sheet etching">
+          <div className="etch-spinner" />
+          <h2>Etching journal entry onto protocol…</h2>
+          <p className="msub">Committing your editorial text directly to Arweave. Please don’t close this window.</p>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="modal" onClick={(e) => { if (e.target.classList.contains('modal')) onClose() }}>
+      <div className="sheet" style={{ maxWidth: 650 }}>
+        <button className="mclose" onClick={() => onClose()}>×</button>
+        <h2>Write an Editorial Post</h2>
+        <p className="msub">Publish text articles, audio reviews, and picks directly to the decentralized network layer.</p>
+
+        {error && <div className="loadnote warn" style={{ margin: '0 0 14px' }}>{error}</div>}
+
+        <div className="field"><label>Article Title</label><input value={form.title} onChange={set('title')} placeholder="e.g. Exploring the Emo Shoegaze Revival" /></div>
+        <div className="field"><label>Author / Pen Name</label><input value={form.artist} onChange={set('artist')} placeholder="Your author handle" /></div>
+
+        <div className="field">
+          <label>Article Body Content</label>
+          <textarea
+            value={form.body}
+            onChange={set('body')}
+            placeholder="Write your journalistic article, full-length critique, or community picks here..."
+            style={{ width: '100%', minHeight: 180, border: '1px solid var(--line)', borderRadius: 7, padding: '11px 12px', fontSize: 14, fontFamily: 'var(--sans)', resize: 'vertical' }}
+          />
+        </div>
+
+        <div className="field"><label>Tags (Comma-separated)</label><input value={form.tags} onChange={set('tags')} placeholder="e.g. ambient, review, lofi" /></div>
+
+        <button className="primary" onClick={submit} disabled={!form.title.trim() || !form.body.trim()}>
+          Publish Article to Protocol
+        </button>
+      </div>
+    </div>
+  )
+}
+
