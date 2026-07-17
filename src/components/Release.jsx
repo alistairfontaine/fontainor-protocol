@@ -49,9 +49,17 @@ export function ReleaseCard({ rel, isFav, onOpen, onPlay, onFav, onTag }) {
         </div>
       )}
       <div className="price">{priceLabel(rel.price)} · {edLabel(rel.editions)}</div>
+
+      {/* 💎 PHASE IV: DYNAMIC COLLECTOR EQUITY TOKEN VAULT BADGE 💎 */}
+      {rel.social && rel.social.ledger && rel.social.ledger.length > 0 && rel.social.ledger[0].mintTx && (
+        <div style={{ fontSize: '11px', fontFamily: 'var(--mono)', color: 'var(--blue)', marginTop: '4px', background: 'var(--soft)', padding: '2px 6px', borderRadius: '4px', display: 'inline-block' }}>
+          🔒 Equity Token Minted
+        </div>
+      )}
     </div>
   )
 }
+
 
 export function ReleaseGrid({ items, store, onOpen }) {
   if (!items.length) return null
