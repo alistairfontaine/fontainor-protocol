@@ -305,8 +305,13 @@ export function PostModal({ store, onClose }) {
           />
         </div>
 
-        <div className="field"><label>Cover URI (Auto-populated upon selection)</label><input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" /></div>
+        <div className="field">
+          <label>Cover URI (Auto-populated upon selection)</label>
+          <input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" />
+        </div>
+
         <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
+
 
           {busy || uploader.isUploading ? 'Streaming track…' : 'Publish to protocol'}
         </button>
