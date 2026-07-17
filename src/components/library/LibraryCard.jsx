@@ -1,5 +1,6 @@
 import React from 'react'
 import { coverSVG, priceLabel, edLabel, isSold } from '../../lib/registry.js'
+import { resolveAudioUri } from '../../lib/api.js'
 
 const PlayIcon = () => (<svg width="18" height="18" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>)
 const StarIcon = () => (<svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-7L2 9.2l7.1-.6L12 2l2.9 6.6 7.1.6-5.4 4.8 1.6 7z" /></svg>)
@@ -7,15 +8,14 @@ const StarIcon = () => (<svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-
 // Memoized so react-window re-renders stay cheap while scrolling.
 export const LibraryCard = React.memo(function LibraryCard({ rel, isFav, onOpen, onPlay, onFav }) {
   const sold = isSold(rel.editions)
-  // confirmed schema: coverUri (nullable). fall back to generated SVG.
-  const { resolveAudioUri } = require('../../lib/api.js');
+
+  // 🔒 FIXED: Evaluate both coverUrl and coverUri properties using clean top-level imports
   const rawGraphicSource = rel.coverUrl || rel.coverUri || '';
   const verifiedArtworkPath = resolveAudioUri(rawGraphicSource);
 
   const cover = verifiedArtworkPath
     ? <img src={verifiedArtworkPath} alt="" loading="lazy" />
     : <span style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: coverSVG(rel.id || rel.title) }} />
-
 
   return (
     <div className="lib-card" onClick={onOpen}>
