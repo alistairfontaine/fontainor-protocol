@@ -8,9 +8,14 @@ const StarIcon = () => (<svg viewBox="0 0 24 24"><path d="M12 17.3l-6.2 3.7 1.6-
 export const LibraryCard = React.memo(function LibraryCard({ rel, isFav, onOpen, onPlay, onFav }) {
   const sold = isSold(rel.editions)
   // confirmed schema: coverUri (nullable). fall back to generated SVG.
-  const cover = rel.coverUrl
-    ? <img src={rel.coverUrl} alt="" loading="lazy" />
+  const { resolveAudioUri } = require('../../lib/api.js');
+  const rawGraphicSource = rel.coverUrl || rel.coverUri || '';
+  const verifiedArtworkPath = resolveAudioUri(rawGraphicSource);
+
+  const cover = verifiedArtworkPath
+    ? <img src={verifiedArtworkPath} alt="" loading="lazy" />
     : <span style={{ position: 'absolute', inset: 0 }} dangerouslySetInnerHTML={{ __html: coverSVG(rel.id || rel.title) }} />
+
 
   return (
     <div className="lib-card" onClick={onOpen}>
