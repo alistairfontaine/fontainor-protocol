@@ -63,7 +63,9 @@ export async function uploadInChunks(file, opts = {}) {
       { name: "App-Name", value: "Fontainor" }
     ];
 
-    const receipt = await irys.uploadFile(file, { tags });
+    // Convert File to ArrayBuffer for browser crypto compatibility
+    const fileBuffer = await file.arrayBuffer();
+    const receipt = await irys.uploadFile(fileBuffer, { tags });
 
     onProgress({ percent: 100, etaMs: 0 });
 
