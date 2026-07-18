@@ -152,23 +152,15 @@ export function PublishModal({ store, uploader, onClose }) {
           <div style={{ flex: 1 }}><label>Editions</label><input type="number" min="0" step="1" value={form.total} onChange={set('total')} placeholder="0" /></div>
         </div>
         <div className="field">
-          <label>Upload Audio Track File (WAV, FLAC, MP3, OGG)</label>
+          <label>Audio Arweave TX ID</label>
           <input
-            type="file"
-            accept="audio/wav,audio/flac,audio/mpeg,audio/ogg"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setBusy(true);
-              const result = await uploader.uploadTrack(file);
-              setBusy(false);
-              if (result.success) {
-                setForm(f => ({ ...f, audioUri: result.audioUri }));
-              } else {
-                alert(`Audio upload failed: ${result.error}`);
-              }
-            }}
+            value={form.audioUri}
+            onChange={set('audioUri')}
+            placeholder="https://arweave.net/AbC123... or just the TX ID"
           />
+          <div className="mnote" style={{marginTop:4,fontSize:12}}>
+            Upload your audio to <a href="https://ardrive.io" target="_blank" rel="noopener noreferrer">ArDrive</a> or <a href="https://irys.xyz" target="_blank" rel="noopener noreferrer">Irys</a>, then paste the link here.
+          </div>
         </div>
 
         <div className="field">
@@ -177,24 +169,15 @@ export function PublishModal({ store, uploader, onClose }) {
         </div>
 
         <div className="field">
-          <label>Upload Cover Artwork Image (PNG, JPG, GIF)</label>
+          <label>Cover Artwork Arweave TX ID</label>
           <input
-            type="file"
-            accept="image/png,image/jpeg,image/gif"
-            onChange={async (e) => {
-              const file = e.target.files?.[0];
-              if (!file) return;
-              setBusy(true);
-              const result = await uploader.uploadTrack(file);
-              setBusy(false);
-              if (result.success) {
-                setForm(f => ({ ...f, coverUri: result.audioUri }));
-                console.log(`📸 [Artwork Engine] Cover successfully etched at: ${result.audioUri}`);
-              } else {
-                alert(`Artwork upload failed: ${result.error}`);
-              }
-            }}
+            value={form.coverUri || ''}
+            onChange={set('coverUri')}
+            placeholder="https://arweave.net/AbC123... or just the TX ID"
           />
+          <div className="mnote" style={{marginTop:4,fontSize:12}}>
+            Upload cover art to <a href="https://ardrive.io" target="_blank" rel="noopener noreferrer">ArDrive</a> or <a href="https://irys.xyz" target="_blank" rel="noopener noreferrer">Irys</a>, then paste the link here.
+          </div>
         </div>
 
         <div className="field">

@@ -9,7 +9,10 @@ export function useStore() {
   const [source, setSource] = useState('')        // api | file | sample
   const [repaired, setRepaired] = useState(false)
   const [loading, setLoading] = useState(true)
-  const [user, setUser] = useState(null)          // { name, handle, via }
+  const [user, setUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('fontainor_user')) }
+    catch (e) { return null }
+  })          // { name, handle, via }
   const [favVer, setFavVer] = useState(0)          // bump to re-render on fav change
   const [histVer, setHistVer] = useState(0)
   // ---- mint / upload status (for the Minting UX) ----
@@ -125,10 +128,18 @@ export function useStore() {
 
   useEffect(() => () => { stopSim(); clearAudio() }, [])
 
+      const setUserPersisted = useCallback((u) => {
+    setUser(u)
+    if (u) localStorage.setItem('fontainor_user', JSON.stringify(u))
+    else localStorage.removeItem('fontainor_user')
+  }, [])
+
+  const logout = useCallback(() => setUserPersisted(null), [setUserPersisted])
+
   // ---- auth ----
   const signInEmail = useCallback((email) => {
     const name = email.split('@')[0]
-    setUser({ name: name.charAt(0).toUpperCase() + name.slice(1), handle: '@' + name, via: 'email' })
+    setUserPersisted({ name: name.charAt(0).toUpperCase() + name.slice(1), handle: '@' + name, via: 'email' })
   }, [])
   const connectWallet = useCallback(async () => {
        try {
@@ -202,7 +213,7 @@ export function useStore() {
         throw new Error(authData.message || "Backend rejected signature");
       }
 
-      setUser({ name: address, handle: authData.handle, via: 'wallet' });
+      setUserPersisted({ name: address, handle: authData.handle, via: 'wallet' });
       return { success: true, wallet: address };
 
     } catch (err) {
@@ -211,7 +222,7 @@ export function useStore() {
     }
   }, [])
 
-  const logout = useCallback(() => setUser(null), [])
+
   // ---- Web3 Blockchain Purchase & Support Orchestrator ----
   const support = useCallback(async (rel, amount, currency = 'SOL') => {
     /* 🪙 PART III: ON-CHAIN CRYPTOGRAPHIC PAYMENT SIGNING LOOP 🪙 */
