@@ -58,7 +58,7 @@ function toRawArray(currentRaw) {
 // ---- Fetch-Append-Push publish (the leader's manifest protocol) ----
 // 1. fetch the current registry array from the backend
 // 2. append the new asset
-// 3. POST the entire updated array to /upload
+// 3. UPLOAD the entire updated array to Irys (browser-side, user pays SOL)
 // Returns { ok, msg, txId, fullArray }
 export async function publishManifest(newAsset) {
   // 1) FETCH current registry (raw, un-normalized) so we append to real history
@@ -77,114 +77,91 @@ export async function publishManifest(newAsset) {
 
   const payload = JSON.stringify(fullArray)
 
-  // If the host page exposes triggerUpload(content), prefer it (leader's hook)
-  if (typeof window.triggerUpload === 'function') {
-    try {
-      const r = await window.triggerUpload(payload)
-      const txId = extractTxId(r) || null
-      return { ok: true, msg: 'Sent via triggerUpload().', txId, fullArray }
-    } catch (e) {
-      return { ok: false, msg: 'triggerUpload() failed: ' + (e?.message || e), txId: null, fullArray }
-    }
-  }
-
   // ---- dev-only mock mode for the UI smoke test (?mock=ok|writefail|400|timeout) ----
-  // Returns the EXACT spec response shapes with a realistic delay, flowing through
-  // the same branching below — so the smoke test exercises the production logic.
-  // Remove before production (like the perf buttons).
   const mockMode = new URLSearchParams(location.search).get('mock')
-  const mockFetch = async () => {
+  if (mockMode) {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
-    if (mockMode === 'ok') {
-      await wait(2500)
-      return { ok: true, status: 200, json: async () => ({ success: true, txId: 'MOCKTX_' + Date.now().toString(36) + '_mainnet' }) }
+    try {
+      let res, body = {};
+      if (mockMode === 'ok') {
+        await wait(2500)
+        res = { ok: true, status: 200 }
+        body = { success: true, txId: 'MOCKTX_' + Date.now().toString(36) + '_mainnet' }
+      } else if (mockMode === 'writefail') {
+        await wait(2500)
+        res = { ok: false, status: 500 }
+        body = { success: false, error: 'Mock: Irys node rejected the write.', code: 'MOCK_WRITE_ERR' }
+      } else if (mockMode === '400') {
+        await wait(1200)
+        res = { ok: false, status: 400 }
+        body = { error: 'Mock: payload failed registrySchema.', details: null }
+      } else if (mockMode === 'timeout') {
+        await wait(UPLOAD_TIMEOUT_MS + 500)
+        throw Object.assign(new Error('mock timeout'), { name: 'AbortError' })
+      }
+
+      if (res.status === 400) {
+        return { ok: false, failure: 'validation', msg: body.error || 'Validation rejected.', code: '400', details: body.details || null, txId: null, fullArray, status: 400 }
+      }
+      if (body && body.success === false) {
+        return { ok: false, failure: 'write', msg: body.error || 'Write failed.', code: body.code || 'ERR', txId: null, fullArray, status: res.status }
+      }
+      if (!res.ok) {
+        return { ok: false, failure: 'write', msg: body.error || ('Upload returned ' + res.status), code: String(res.status), txId: null, fullArray, status: res.status }
+      }
+      return { ok: true, msg: 'Permanently etched onto Arweave.', txId: body.txId || null, fullArray }
+    } catch (e) {
+      if (e && (e.name === 'AbortError' || /abort/i.test(String(e.message)))) {
+        return { ok: false, failure: 'timeout', msg: 'The write took longer than ' + (UPLOAD_TIMEOUT_MS / 1000) + 's and timed out.', code: 'TIMEOUT', txId: null, fullArray }
+      }
+      return { ok: false, failure: 'network', msg: 'Mock error: ' + (e?.message || e), code: 'NETWORK', txId: null, fullArray }
     }
-    if (mockMode === 'writefail') {
-      await wait(2500)
-      return { ok: false, status: 500, json: async () => ({ success: false, error: 'Mock: Irys node rejected the write.', code: 'MOCK_WRITE_ERR' }) }
-    }
-    if (mockMode === '400') {
-      await wait(1200)
-      return { ok: false, status: 400, json: async () => ({ error: 'Mock: payload failed registrySchema.', details: null }) }
-    }
-    if (mockMode === 'timeout') {
-      await wait(UPLOAD_TIMEOUT_MS + 500) // hold Etching for the full 30s window, then abort
-      const e = new Error('mock timeout'); e.name = 'AbortError'; throw e
-    }
-    return null
   }
 
-  // 3) PUSH the full array to /upload
-  //    Storage spec (PROTOCOL_STORAGE_SPEC.md):
-  //      success: { success:true,  txId:"string" }
-  //      failure: { success:false, error:"string", code:"string" }   (write error)
-  //      400:     validation rejection (Zod { error, details })
-  //      timeout: 30s
-  const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), UPLOAD_TIMEOUT_MS)
+  // 3) UPLOAD manifest to Irys via browser
   try {
-    const res = mockMode
-      ? await mockFetch()
-      : await fetch(API_BASE + '/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: payload,
-          signal: ctrl.signal,
-        })
-    clearTimeout(timer)
+    const provider = window?.solana || window?.phantom?.solana;
+    if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
-    let body = {}
-    try { body = await res.json() } catch (e) { /* server might return text */ }
+    const { WebIrys } = await import("@irys/sdk");
+    const irys = new WebIrys({
+      url: "https://node1.irys.xyz",
+      token: "solana",
+      wallet: { provider, name: "phantom" }
+    });
+    await irys.ready();
 
-    // 400 = validation rejection (distinct UX from a write failure)
-    if (res.status === 400) {
-      return {
-        ok: false, failure: 'validation',
-        msg: (body && body.error) ? body.error : 'Validation rejected the payload.',
-        code: (body && body.code) || '400',
-        details: (body && body.details) || null,
-        txId: null, fullArray, status: 400,
-      }
+    const receipt = await irys.upload(payload, {
+      tags: [
+        { name: "Content-Type", value: "application/json" },
+        { name: "App-Name", value: "Fontainor" },
+        { name: "Type", value: "registry-manifest" }
+      ]
+    });
+
+    const txId = receipt.id;
+
+    // Notify server of new manifest
+    try {
+      await fetch(API_BASE + '/api/v1/publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ txId })
+      });
+    } catch (e) {
+      console.warn('Could not notify server of new manifest:', e);
     }
 
-    // spec write error: { success:false, error, code } (may arrive with 5xx or 200)
-    if (body && body.success === false) {
-      return {
-        ok: false, failure: 'write',
-        msg: body.error || 'Write to Arweave failed.',
-        code: body.code || String(res.status || 'ERR'),
-        txId: null, fullArray, status: res.status,
-      }
-    }
-
-    // any other non-OK status with no spec body
-    if (!res.ok) {
-      return {
-        ok: false, failure: 'write',
-        msg: (body && body.error) ? body.error : ('Upload endpoint returned ' + res.status + '.'),
-        code: (body && body.code) || String(res.status),
-        txId: null, fullArray, status: res.status,
-      }
-    }
-
-    // success: spec says { success:true, txId }
-    const txId = extractTxId(body)
-    return { ok: true, msg: 'Permanently etched onto Arweave.', txId, fullArray }
+    return { ok: true, msg: 'Permanently etched onto Arweave.', txId, fullArray };
   } catch (e) {
-    clearTimeout(timer)
-    // AbortError = we hit the 30s timeout
-    if (e && (e.name === 'AbortError' || /abort/i.test(String(e.message)))) {
-      return {
-        ok: false, failure: 'timeout',
-        msg: 'The write took longer than ' + (UPLOAD_TIMEOUT_MS / 1000) + 's and timed out.',
-        code: 'TIMEOUT', txId: null, fullArray,
-      }
+    const msg = e.message || '';
+    if (msg.includes('balance') || msg.includes('fund') || msg.includes('insufficient') || msg.includes('not enough')) {
+      return { ok: false, failure: 'write', msg: 'Not enough SOL to store the manifest on Arweave. Please add SOL to your wallet.', code: 'FUNDING', txId: null, fullArray };
     }
-    return {
-      ok: false, failure: 'network',
-      msg: 'Could not reach ' + API_BASE + '/upload (' + (e?.message || e) + ').',
-      code: 'NETWORK', txId: null, fullArray,
+    if (msg.includes('cancel') || msg.includes('abort') || msg.includes('rejected')) {
+      return { ok: false, failure: 'write', msg: 'Upload cancelled by user.', code: 'CANCELLED', txId: null, fullArray };
     }
+    return { ok: false, failure: 'write', msg: e.message || 'Irys upload failed.', code: 'IRYS_ERR', txId: null, fullArray };
   }
 }
 

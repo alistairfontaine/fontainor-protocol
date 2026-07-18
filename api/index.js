@@ -131,24 +131,22 @@ async function fetchRegistryFromGateway(txId) {
 
 // 1. Registry Ingress Gate
 app.get('/registry', async (req, res) => {
-    // 🔒 IMMUTABLE PRODUCTION CORS HEADERS: Force clearance across all network origins
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, content-type, Authorization, X-Upload-Id, X-Chunk-Index, X-Total-Chunks');
     res.setHeader('Access-Control-Allow-Credentials', 'true');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
-        // Return a clean inline memory array layout so the frontend browse pages illuminate instantly
-        return res.json([]);
+        const txId = readManifestPointer();
+        if (!txId) return res.json([]);
+        const data = await fetchRegistryFromGateway(txId);
+        return res.json(data);
     } catch (error) {
+        console.error('Registry fetch error:', error.message);
         return res.status(200).json([]);
     }
 });
-
 
 // 2. Upload (Manifest)
 app.post('/upload', validateUpload, async (req, res) => {
@@ -350,6 +348,25 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
         return res.status(500).json({ success: false, message: authError.message });
     }
 });
+// 6. Publish Manifest Pointer Update
+app.post('/api/v1/publish', async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    try {
+        const { txId } = req.body;
+        if (!txId || typeof txId !== 'string' || txId.length < 10) {
+            return res.status(400).json({ success: false, error: 'Invalid txId' });
+        }
+        writeManifestPointer(txId);
+        return res.json({ success: true, txId });
+    } catch (error) {
+        return res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });

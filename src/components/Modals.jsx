@@ -212,7 +212,7 @@ export function PublishModal({ store, uploader, onClose }) {
             {note.details && <ValidationDetails details={note.details} />}
           </div>
         ) : (
-          <div className="mnote">This streams chunks to the server registry system. Make sure the backend is active on port 3000.</div>
+          <div className="mnote">Files upload directly to Arweave via Irys. You will pay a small SOL fee for permanent storage.</div>
         )}
 
       </div>
