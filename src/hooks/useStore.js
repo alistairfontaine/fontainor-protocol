@@ -152,23 +152,24 @@ export function useStore() {
         return { success: false, error: "NO_WALLET" };
       }
 
-      let publicKey;
-      try {
-        if (provider.isConnected && provider.publicKey) {
-          publicKey = provider.publicKey;
-        } else {
+      // Firefox workaround: if Phantom already authorized this site, publicKey exists
+      // without needing connect() (which crashes when service worker is dead)
+      let publicKey = provider.publicKey;
+
+      if (!publicKey) {
+        try {
           const resp = await provider.connect();
           publicKey = resp.publicKey;
-        }
-      } catch (connectErr) {
-        console.error('[Fontainor] Phantom connect() failed:', connectErr);
-        if (provider.publicKey) {
+        } catch (connectErr) {
+          console.error('[Fontainor] connect() failed:', connectErr);
+          // Last resort: check again in case it connected despite the error
           publicKey = provider.publicKey;
-        } else {
-          return {
-            success: false,
-            error: "Phantom connection failed. Refresh with Phantom unlocked, or try Chrome/Brave."
-          };
+          if (!publicKey) {
+            return {
+              success: false,
+              error: "Phantom is not responding. Fix: (1) Click the Phantom icon in your toolbar and unlock it. (2) Restart Firefox. (3) Or try Brave browser."
+            };
+          }
         }
       }
 
@@ -180,13 +181,12 @@ export function useStore() {
       try {
         signed = await provider.signMessage(encoded, "utf8");
       } catch (signErr) {
-        console.error('[Fontainor] Phantom signMessage() failed:', signErr);
+        console.error('[Fontainor] signMessage() failed:', signErr);
         return {
           success: false,
-          error: "Message signing cancelled. Please approve the signature request in Phantom."
+          error: "Signing cancelled. Please approve the signature in Phantom."
         };
       }
-
       const authRes = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
