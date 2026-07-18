@@ -32,7 +32,7 @@ async function getIrys() {
   if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
   // Load browser-native Irys from CDN — no bundling, no polyfills
-  const { WebIrys } = await import('https://esm.sh/@irys/sdk');
+  const { WebIrys } = await import('https://cdn.skypack.dev/@irys/sdk');
 
   const irys = new WebIrys({
     url: "https://node1.irys.xyz",

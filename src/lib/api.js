@@ -123,7 +123,7 @@ export async function publishManifest(newAsset) {
     const provider = window?.solana || window?.phantom?.solana;
     if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
-    const { WebIrys } = await import('https://esm.sh/@irys/sdk');
+    const { WebIrys } = await import('https://cdn.skypack.dev/@irys/sdk');
     const irys = new WebIrys({
       url: "https://node1.irys.xyz",
       token: "solana",
