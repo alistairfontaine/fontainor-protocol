@@ -1,8 +1,12 @@
 import { parseRegistryText } from './registry.js'
 
-// Backend base URL. Override at runtime with ?api=http://host:port
+// Backend base URL. Dynamically targets the live domain when deployed
 export const API_BASE =
-  new URLSearchParams(location.search).get('api') || 'http://localhost:3000'
+  new URLSearchParams(location.search).get('api') ||
+  (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3000'
+    : window.location.origin);
+
 
 // Storage spec (PROTOCOL_STORAGE_SPEC.md): 30s timeout threshold for a write.
 export const UPLOAD_TIMEOUT_MS = 30000
