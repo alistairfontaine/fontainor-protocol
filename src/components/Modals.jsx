@@ -162,12 +162,6 @@ export function PublishModal({ store, uploader, onClose }) {
             Upload your audio to <a href="https://ardrive.io" target="_blank" rel="noopener noreferrer">ArDrive</a> or <a href="https://irys.xyz" target="_blank" rel="noopener noreferrer">Irys</a>, then paste the link here.
           </div>
         </div>
-
-        <div className="field">
-          <label>Audio URI (Auto-populated upon selection)</label>
-          <input value={form.audioUri} onChange={set('audioUri')} placeholder="Select a file or enter address manually" />
-        </div>
-
         <div className="field">
           <label>Cover Artwork Arweave TX ID</label>
           <input
