@@ -148,7 +148,7 @@ export function useStore() {
       const encodedChallengeBuffer = new TextEncoder().encode(challengeMessageStr);
 
       // Request the Phantom extension window to securely sign the message bytes locally
-      const signedChallengeData = await window.solana.signMessage(encodedChallengeBuffer, "utf8");
+      const signedChallengeData = await window.solana.signMessage(encodedChallengeBuffer);
 
       // Transmit the cryptographic payload straight into your server identity gates
       const authResponse = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
