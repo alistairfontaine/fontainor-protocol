@@ -153,17 +153,39 @@ export function useStore() {
       }
 
       let publicKey;
-      if (provider.isConnected && provider.publicKey) {
-        publicKey = provider.publicKey;
-      } else {
-        const resp = await provider.connect();
-        publicKey = resp.publicKey;
+      try {
+        if (provider.isConnected && provider.publicKey) {
+          publicKey = provider.publicKey;
+        } else {
+          const resp = await provider.connect();
+          publicKey = resp.publicKey;
+        }
+      } catch (connectErr) {
+        console.error('[Fontainor] Phantom connect() failed:', connectErr);
+        if (provider.publicKey) {
+          publicKey = provider.publicKey;
+        } else {
+          return {
+            success: false,
+            error: "Phantom connection failed. Refresh with Phantom unlocked, or try Chrome/Brave."
+          };
+        }
       }
 
       const address = publicKey.toString();
       const msg = "Authenticate Fontainor Sovereign Session";
       const encoded = new TextEncoder().encode(msg);
-      const signed = await provider.signMessage(encoded, "utf8");
+
+      let signed;
+      try {
+        signed = await provider.signMessage(encoded, "utf8");
+      } catch (signErr) {
+        console.error('[Fontainor] Phantom signMessage() failed:', signErr);
+        return {
+          success: false,
+          error: "Message signing cancelled. Please approve the signature request in Phantom."
+        };
+      }
 
       const authRes = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
         method: 'POST',
@@ -185,7 +207,7 @@ export function useStore() {
 
     } catch (err) {
       console.error("Wallet auth failed:", err.message);
-      return { success: false, error: err.message };
+      return { success: false, error: err.message || "Unknown wallet error" };
     }
   }, [])
 
