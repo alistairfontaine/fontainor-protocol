@@ -1,7 +1,5 @@
-import { WebIrys } from "@irys/sdk";
-
-export const MAX_FILE_BYTES = 52_428_800;
-export const ACCEPTED_TYPES = ['audio/wav', 'audio/flac', 'audio/mpeg', 'audio/ogg'];
+export const MAX_FILE_BYTES = 52_428_800
+export const ACCEPTED_TYPES = ['audio/wav', 'audio/flac', 'audio/mpeg', 'audio/ogg']
 
 export function validateFile(file) {
   if (!file) return { ok: false, code: 'validation', message: 'No file selected.' }
@@ -33,6 +31,9 @@ async function getIrys() {
   const provider = window?.solana || window?.phantom?.solana;
   if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
+  // Load browser-native Irys from CDN — no bundling, no polyfills
+  const { WebIrys } = await import('https://esm.sh/@irys/sdk');
+
   const irys = new WebIrys({
     url: "https://node1.irys.xyz",
     token: "solana",
@@ -63,10 +64,8 @@ export async function uploadInChunks(file, opts = {}) {
       { name: "App-Name", value: "Fontainor" }
     ];
 
-    // Convert File to ArrayBuffer for browser crypto compatibility
-    const fileBuffer = await file.arrayBuffer();
-    const data = Buffer.from(fileBuffer);
-    const receipt = await irys.upload(data, { tags });
+    // Pass the raw File object — esm.sh version handles this correctly
+    const receipt = await irys.uploadFile(file, { tags });
 
     onProgress({ percent: 100, etaMs: 0 });
 

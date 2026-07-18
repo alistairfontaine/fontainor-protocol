@@ -39,14 +39,15 @@ const arweave = initArweave({
 });
 
 function loadWallet() {
-    const keyPath = process.env.ARWEAVE_KEY_PATH;
-    if (!keyPath || !fs.existsSync(keyPath)) {
-        // Return an empty template object block if the disk key is completely un-instantiated
-        return {};
+    // Fly.io / serverless: wallet JSON stored as env var
+    if (process.env.ARWEAVE_KEY_JSON) {
+        try { return JSON.parse(process.env.ARWEAVE_KEY_JSON) }
+        catch (e) { console.error('Failed to parse ARWEAVE_KEY_JSON:', e.message) }
     }
+    const keyPath = process.env.ARWEAVE_KEY_PATH;
+    if (!keyPath || !fs.existsSync(keyPath)) return {};
     return JSON.parse(fs.readFileSync(keyPath, 'utf8'));
 }
-
 
 const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 
