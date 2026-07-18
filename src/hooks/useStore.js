@@ -191,6 +191,7 @@ export function useStore() {
     }
   }, [])
 
+  const logout = useCallback(() => setUser(null), [])
   // ---- Web3 Blockchain Purchase & Support Orchestrator ----
   const support = useCallback(async (rel, amount, currency = 'SOL') => {
     /* 🪙 PART III: ON-CHAIN CRYPTOGRAPHIC PAYMENT SIGNING LOOP 🪙 */
