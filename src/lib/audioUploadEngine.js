@@ -65,7 +65,8 @@ export async function uploadInChunks(file, opts = {}) {
 
     // Convert File to ArrayBuffer for browser crypto compatibility
     const fileBuffer = await file.arrayBuffer();
-    const receipt = await irys.upload(fileBuffer, { tags });
+    const data = new Uint8Array(fileBuffer);
+    const receipt = await irys.upload(data, { tags });
 
     onProgress({ percent: 100, etaMs: 0 });
 
