@@ -152,20 +152,18 @@ export function useStore() {
         return { success: false, error: "NO_WALLET" };
       }
 
-      window.solana = provider; // normalize
-
       let publicKey;
-      if (window.solana.isConnected && window.solana.publicKey) {
-        publicKey = window.solana.publicKey;
+      if (provider.isConnected && provider.publicKey) {
+        publicKey = provider.publicKey;
       } else {
-        const resp = await window.solana.connect();
+        const resp = await provider.connect();
         publicKey = resp.publicKey;
       }
 
       const address = publicKey.toString();
       const msg = "Authenticate Fontainor Sovereign Session";
       const encoded = new TextEncoder().encode(msg);
-      const signed = await window.solana.signMessage(encoded, "utf8");
+      const signed = await provider.signMessage(encoded, "utf8");
 
       const authRes = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
         method: 'POST',
