@@ -5,7 +5,7 @@ export async function uploadData(dataObject) {
     const walletKey = JSON.parse(process.env.WALLET_KEY);
 
     const irys = new NodeIrys({
-        url: "https://devnet.irys.xyz",
+        url: "https://node1.irys.xyz",
         token: "arweave",
         key: walletKey,
         config: { providerUrl: "https://arweave.net" }

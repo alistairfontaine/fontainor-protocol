@@ -2,8 +2,8 @@ import Arweave from 'arweave';
 import fs from 'fs';
 
 const arweave = Arweave.init({
-  host: 'localhost',
-  port: 1984,
+  host: 'arweave.net',
+  port: 443,
   protocol: 'http'
 });
 

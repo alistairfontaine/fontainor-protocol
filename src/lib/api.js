@@ -97,7 +97,7 @@ export async function publishManifest(newAsset) {
     const wait = (ms) => new Promise((r) => setTimeout(r, ms))
     if (mockMode === 'ok') {
       await wait(2500)
-      return { ok: true, status: 200, json: async () => ({ success: true, txId: 'MOCKTX_' + Date.now().toString(36) + '_devnet' }) }
+      return { ok: true, status: 200, json: async () => ({ success: true, txId: 'MOCKTX_' + Date.now().toString(36) + '_mainnet' }) }
     }
     if (mockMode === 'writefail') {
       await wait(2500)

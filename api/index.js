@@ -19,9 +19,6 @@ try {
     validateUpload = validatorModule.validateUpload;
 } catch (e) { console.warn("⚠️ Local validator module deferred."); }
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
 // --- App Setup ---
 const app = express();
 // Middleware configuration: accept raw binary streams up to 100MB to accommodate compiled files safely
@@ -36,9 +33,9 @@ app.use(express.static(__dirname));
 
 // --- Arweave Setup ---
 const arweave = initArweave({
-    host: process.env.AR_HOST || 'localhost',
-    port: Number(process.env.AR_PORT || 1984),
-    protocol: process.env.AR_PROTOCOL || 'http',
+    host: process.env.AR_HOST || 'arweave.net',
+    port: Number(process.env.AR_PORT || 443),
+    protocol: process.env.AR_PROTOCOL || 'https',
 });
 
 function loadWallet() {
@@ -51,7 +48,7 @@ function loadWallet() {
 }
 
 
-const GATEWAY = process.env.AR_GATEWAY || `${process.env.AR_PROTOCOL || 'http'}://${process.env.AR_HOST || 'localhost'}:${process.env.AR_PORT || 1984}`;
+const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 
 // --- Manifest Pointer Logic ---
 const POINTER_FILE = path.join(__dirname, 'pointer.json');
@@ -210,7 +207,7 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
                 await arweave.transactions.sign(transaction, wallet);
                 const txId = transaction.id;
 
-                // 4. Broadcast the signed transaction bytes straight onto the ArLocal node
+                // 4. Broadcast the signed transaction bytes to Arweave mainnet
                 let finalTxId = txId;
 
                 try {
@@ -220,14 +217,15 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
                         throw new Error(`Node rejected with status: ${response.status}`);
                     }
 
-                    // 5. Force a local block generation mine tick to settle the audio data instantly
-                    await fetch(`${GATEWAY}/mine`);
-                    console.log(`🎯 [Blockchain] Native Audio upload successful! Permanent TxID: ${txId}`);
+                    console.log(`🎯 [Blockchain] Audio upload successful! Permanent TxID: ${txId}`);
                 } catch (nodeError) {
-                    // 🔥 SANDBOX RECOVERY LATCH: If ArLocal database pool hits a timeout, fall back soft to prevent loop freeze
-                    console.warn(`⚠️ ArLocal node connection lag/fault: ${nodeError.message}`);
-                    finalTxId = `sandbox_recover_${Date.now()}_${Math.random().toString(36).substring(2,7)}`;
-                    console.log(`🛡️ [Sandbox Recovery] Issued localized fallback TxID: ${finalTxId}`);
+                    console.error(`❌ Arweave upload failed: ${nodeError.message}`);
+                    uploadBuffer.delete(uploadId);
+                    return res.status(502).json({
+                        success: false,
+                        error: "BLOCKCHAIN_WRITE_FAILED",
+                        message: nodeError.message
+                    });
                 }
 
                 // Wipe the volatile in-memory storage buffer array space to prevent heap leakage
@@ -352,36 +350,6 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
         return res.status(500).json({ success: false, message: authError.message });
     }
 });
-
-        if (!publicKey || !signature) {
-            return res.status(400).json({ success: false, message: "Missing wallet verification payload." });
-        }
-
-        // Dynamically parse tweetnacl to handle cryptographic signature checking without storage state overhead
-        const nacl = await import('tweetnacl');
-        const encodedMessage = new TextEncoder().encode(message || "Authenticate Fontainor Sovereign Session");
-
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
-
-        const isWalletOwnerVerified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
-
-        if (!isWalletOwnerVerified) {
-            return res.status(401).json({ success: false, message: "Cryptographic signature validation rejected." });
-        }
-
-        console.log(`✓ [Sovereign Account Verified] Free account tier opened for wallet: ${publicKey}`);
-        return res.json({
-            success: true,
-            wallet: publicKey,
-            handle: `@${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
-        });
-    } catch (authError) {
-        console.error("❌ Sovereign Auth Breakdown:", authError.message);
-        return res.status(500).json({ success: false, message: authError.message });
-    }
-});
-
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });

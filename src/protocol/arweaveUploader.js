@@ -7,7 +7,7 @@ export function sha256Hex(data) {
   return createHash('sha256').update(buf).digest('hex');
 }
 
-export function initArweave({ host = 'localhost', port = 1984, protocol = 'http' } = {}) {
+export function initArweave({ host = 'arweave.net', port = 443, protocol = 'https' } = {}) {
   return Arweave.init({ host, port, protocol });
 }
 

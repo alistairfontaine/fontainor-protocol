@@ -7,7 +7,7 @@ import { uploadInChunks } from '../lib/audioUploadEngine.js';
  * Binds the pure binary chunk logic engine securely to your React UI viewports.
  * Enforces strict button busy-locks and provides real-time progress indicators.
  */
-export function useAudioUploader(apiBase = 'http://localhost:3000') {
+export function useAudioUploader(apiBase = '') {
   const [isUploading, setIsUploading] = useState(false);
 
   const [progress, setProgress] = useState(0); // Tracks 0-100 percentage ratios

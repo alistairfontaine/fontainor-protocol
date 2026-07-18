@@ -1,3 +1,4 @@
+import { API_BASE } from '../lib/api.js'
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { loadRegistry, publishManifest, FALLBACK, resolveAudioUri } from '../lib/api.js'
 import { normalize, normalizeOne, buildAsset } from '../lib/registry.js'
@@ -197,7 +198,7 @@ export function useStore() {
 
       // Initialize the web3 connection layer to talk directly to the Solana network gateway
       const { Connection, Transaction, SystemProgram, PublicKey } = await import('@solana/web3.js');
-      const connection = new Connection("https://api.devnet.solana.com", "confirmed");
+      const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed");
 
       const buyerPubKey = new PublicKey(window.solana.publicKey.toString());
 

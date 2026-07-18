@@ -28,9 +28,9 @@ export function shouldAutoFund({ host, enabled }) {
  */
 export async function devFundArLocal(arweave, wallet, opts = {}) {
   const {
-    host = 'localhost',
+    host = 'arweave.net',
     enabled = false,
-    endpoint = 'http://localhost:1984',
+    endpoint = 'https://arweave.net',
     minWinston = 1_000_000_000_000n, // ~1 AR
     mintWinston = 10_000_000_000_000n, // ~10 AR
     fetchImpl = fetch,
