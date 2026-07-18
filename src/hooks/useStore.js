@@ -131,17 +131,28 @@ export function useStore() {
     setUser({ name: name.charAt(0).toUpperCase() + name.slice(1), handle: '@' + name, via: 'email' })
   }, [])
   const connectWallet = useCallback(async () => {
-    try {
+       try {
+      console.log('[Fontainor] connectWallet started. window.solana?', !!window?.solana, 'window.phantom?', !!window?.phantom)
+
+      // Firefox/Chrome compatibility: check both injection paths
+      let provider = window?.solana;
+      if (!provider && window?.phantom?.solana) {
+        provider = window.phantom.solana;
+      }
+
       let attempts = 0;
-      while (!window?.solana?.isPhantom && attempts < 20) {
+      while (!provider?.isPhantom && attempts < 30) {
         await new Promise(r => setTimeout(r, 100));
+        provider = window?.solana || window?.phantom?.solana;
         attempts++;
       }
 
-      if (!window?.solana?.isPhantom) {
-        alert("Phantom Wallet not detected. Please install it from phantom.app");
+      if (!provider?.isPhantom) {
+        alert("Phantom Wallet not detected. Try refreshing with Phantom unlocked, or use Chrome/Brave.");
         return { success: false, error: "NO_WALLET" };
       }
+
+      window.solana = provider; // normalize
 
       let publicKey;
       if (window.solana.isConnected && window.solana.publicKey) {

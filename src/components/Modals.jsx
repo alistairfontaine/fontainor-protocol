@@ -26,50 +26,55 @@ function ValidationDetails({ details }) {
 }
 
 export function AuthModal({ store, mode, setMode, onClose }) {
-  const [email, setEmail] = useState('')
-  const [pass, setPass] = useState('')
-  const isSignup = mode === 'signup'
+  const [connecting, setConnecting] = useState(false)
+  const [err, setErr] = useState(null)
 
-  const submit = () => {
-    if (!email || email.indexOf('@') < 0) return
-    store.signInEmail(email)
-    onClose('profile')
-  }
   const wallet = async () => {
-  const result = await store.connectWallet();
-  if (result.success) {
-    onClose('profile');
+    setErr(null)
+    setConnecting(true)
+    try {
+      console.log('[Fontainor] Wallet button clicked')
+      const result = await store.connectWallet()
+      console.log('[Fontainor] connectWallet result:', result)
+      if (result?.success) {
+        onClose('profile')
+      } else {
+        setErr(result?.error || 'Could not connect wallet.')
+      }
+    } catch (e) {
+      console.error('[Fontainor] Wallet button crashed:', e)
+      setErr(e.message || 'Unexpected error.')
+    } finally {
+      setConnecting(false)
+    }
   }
-}
 
   return (
     <div className="modal" onClick={(e) => { if (e.target.classList.contains('modal')) onClose() }}>
-      <div className="sheet">
+      <div className="sheet" style={{ textAlign: 'center', maxWidth: 420 }}>
         <button className="mclose" onClick={() => onClose()}>×</button>
-        <h2>{isSignup ? 'Create your Fontainor account' : 'Log in to Fontainor'}</h2>
-        <p className="msub">{isSignup ? 'Join with email or your wallet.' : 'Welcome back. Continue with email or your wallet.'}</p>
-        <div className="field"><label>Email</label>
-          <input type="email" placeholder="you@example.com" value={email}
-            onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+        <h2>Connect Wallet</h2>
+        <p className="msub">Sign in with your Solana wallet to publish, collect, and earn.</p>
+
+        {err && <div className="loadnote warn" style={{ margin: '14px 0' }}>{err}</div>}
+
+        <button
+          className="wallet"
+          onClick={wallet}
+          disabled={connecting}
+          style={{ width: '100%', marginTop: 20 }}
+        >
+          <span className="dot" />
+          {connecting ? 'Connecting...' : 'Connect Phantom Wallet'}
+        </button>
+
+        <div className="mnote" style={{ marginTop: 20 }}>
+          🔒 No email or password needed. Your wallet is your identity.
         </div>
-        <div className="field"><label>Password</label>
-          <input type="password" placeholder="••••••••" value={pass}
-            onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} />
-        </div>
-        <button className="primary" onClick={submit}>{isSignup ? 'Create account' : 'Continue with email'}</button>
-        <div className="ordiv">or</div>
-        <button className="wallet" onClick={wallet}><span className="dot" /> Connect wallet (Phantom · Solana)</button>
-        <div className="toggle">
-          {isSignup
-            ? <>Already have an account? <a onClick={() => setMode('login')}>Log in</a></>
-            : <>New here? <a onClick={() => setMode('signup')}>Create an account</a></>}
-        </div>
-        <div className="mnote">🔒 Production Release — Secure Sovereign Authentication enabled. Sessions are cryptographically signed by your private keys for free. No centralized tracking trackers active.</div>
       </div>
     </div>
   )
 }
-
 export function PublishModal({ store, uploader, onClose }) {
   const [form, setForm] = useState({ title: '', artist: store.user?.name || '', price: 0, currency: 'USD', total: 0, audioUri: '', coverUri: '' })
   const [busy, setBusy] = useState(false)
