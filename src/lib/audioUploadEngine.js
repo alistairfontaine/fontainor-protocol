@@ -27,21 +27,21 @@ export function fmtBytes(n) {
   return (n / (1024 * 1024)).toFixed(1) + ' MB'
 }
 
-async function getIrys() {
+async function getBundlr() {
   const provider = window?.solana || window?.phantom?.solana;
   if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
-  // Load browser-native Irys from CDN — no bundling, no polyfills
-  const { WebIrys } = await import('https://cdn.skypack.dev/@irys/sdk');
+  // Legacy Bundlr client — actually works in browsers
+  const Bundlr = (await import('@bundlr-network/client')).default;
 
-  const irys = new WebIrys({
-    url: "https://node1.irys.xyz",
-    token: "solana",
-    wallet: { provider, name: "phantom" }
-  });
+  const bundlr = new Bundlr(
+    "https://node1.bundlr.network",  // Bundlr mainnet node
+    "solana",
+    provider
+  );
 
-  await irys.ready();
-  return irys;
+  await bundlr.ready();
+  return bundlr;
 }
 
 export async function uploadInChunks(file, opts = {}) {
@@ -53,29 +53,29 @@ export async function uploadInChunks(file, opts = {}) {
   if (shouldCancel()) return { ok: false, code: 'cancelled', message: 'Upload cancelled.' };
 
   try {
-    onProgress({ percent: 5, etaMs: 5000 });
+    onProgress({ percent: 10, etaMs: 8000 });
 
-    const irys = await getIrys();
+    const bundlr = await getBundlr();
 
-    onProgress({ percent: 25, etaMs: 8000 });
+    onProgress({ percent: 40, etaMs: 6000 });
 
     const tags = [
       { name: "Content-Type", value: file.type || "application/octet-stream" },
       { name: "App-Name", value: "Fontainor" }
     ];
 
-    // Pass the raw File object — esm.sh version handles this correctly
-    const receipt = await irys.uploadFile(file, { tags });
+    // uploadFile accepts raw File objects in the browser
+    const response = await bundlr.uploadFile(file, { tags });
 
     onProgress({ percent: 100, etaMs: 0 });
 
-    const txId = receipt.id;
+    const txId = response.id;
     return { ok: true, audioUri: `https://arweave.net/${txId}` };
 
   } catch (err) {
-    console.error('[Fontainor] Irys upload failed:', err);
+    console.error('[Fontainor] Bundlr upload failed:', err);
     const msg = err.message || '';
-    if (msg.includes('balance') || msg.includes('fund') || msg.includes('insufficient') || msg.includes('not enough')) {
+    if (msg.includes('balance') || msg.includes('fund') || msg.includes('insufficient') || msg.includes('not enough') || msg.includes('greater than')) {
       return {
         ok: false,
         code: 'funding',

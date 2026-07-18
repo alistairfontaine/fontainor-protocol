@@ -123,15 +123,15 @@ export async function publishManifest(newAsset) {
     const provider = window?.solana || window?.phantom?.solana;
     if (!provider) throw new Error('Wallet not connected. Please connect Phantom first.');
 
-    const { WebIrys } = await import('https://cdn.skypack.dev/@irys/sdk');
-    const irys = new WebIrys({
-      url: "https://node1.irys.xyz",
-      token: "solana",
-      wallet: { provider, name: "phantom" }
-    });
-    await irys.ready();
+    const Bundlr = (await import('@bundlr-network/client')).default;
+    const bundlr = new Bundlr(
+      "https://node1.bundlr.network",
+      "solana",
+      provider
+    );
+    await bundlr.ready();
 
-    const receipt = await irys.upload(payload, {
+    const response = await bundlr.upload(payload, {
       tags: [
         { name: "Content-Type", value: "application/json" },
         { name: "App-Name", value: "Fontainor" },
@@ -139,7 +139,7 @@ export async function publishManifest(newAsset) {
       ]
     });
 
-    const txId = receipt.id;
+    const txId = response.id;
 
     // Notify server of new manifest
     try {
