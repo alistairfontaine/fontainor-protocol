@@ -131,58 +131,54 @@ export function useStore() {
     setUser({ name: name.charAt(0).toUpperCase() + name.slice(1), handle: '@' + name, via: 'email' })
   }, [])
   const connectWallet = useCallback(async () => {
-    /* 🪙 PART III: NON-CUSTODIAL WEB3 WALLET AUTHENTICATION 🪙 */
     try {
-      const isPhantomAvailable = window?.solana?.isPhantom;
-
-      if (!isPhantomAvailable) {
-        alert("Phantom Wallet extension not detected! Please install the browser extension to interact with the protocol.");
-        return;
+      let attempts = 0;
+      while (!window?.solana?.isPhantom && attempts < 20) {
+        await new Promise(r => setTimeout(r, 100));
+        attempts++;
       }
 
-      // Trigger the secure on-screen cryptographic permission handshake request popup
-      const response = await window.solana.connect();
-      const actualSolanaAddress = response.publicKey.toString();
+      if (!window?.solana?.isPhantom) {
+        alert("Phantom Wallet not detected. Please install it from phantom.app");
+        return { success: false, error: "NO_WALLET" };
+      }
 
-      console.log(`📡 [Sovereign Auth] Dispatching cryptographic challenge request for address: ${actualSolanaAddress}`);
-      const challengeMessageStr = "Authenticate Fontainor Sovereign Session";
-      const encodedChallengeBuffer = new TextEncoder().encode(challengeMessageStr);
+      let publicKey;
+      if (window.solana.isConnected && window.solana.publicKey) {
+        publicKey = window.solana.publicKey;
+      } else {
+        const resp = await window.solana.connect();
+        publicKey = resp.publicKey;
+      }
 
-      // Request the Phantom extension window to securely sign the message bytes locally
-      const signedChallengeData = await window.solana.signMessage(encodedChallengeBuffer);
+      const address = publicKey.toString();
+      const msg = "Authenticate Fontainor Sovereign Session";
+      const encoded = new TextEncoder().encode(msg);
+      const signed = await window.solana.signMessage(encoded, "utf8");
 
-      // Transmit the cryptographic payload straight into your server identity gates
-      const authResponse = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
+      const authRes = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          publicKey: JSON.stringify(Array.from(response.publicKey.toBytes())),
-          signature: JSON.stringify(Array.from(signedChallengeData.signature)),
-          message: challengeMessageStr
+          publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
+          signature: JSON.stringify(Array.from(signed.signature)),
+          message: msg
         })
       });
 
-      const authResult = await authResponse.json();
-
-      if (!authResponse.ok || !authResult.success) {
-        throw new Error(authResult.message || "Protocol backend rejected identity verification signature.");
+      const authData = await authRes.json();
+      if (!authRes.ok || !authData.success) {
+        throw new Error(authData.message || "Backend rejected signature");
       }
 
-      // Bind the genuine cryptographic account credentials directly to the active viewport state structures
-      setUser({
-        name: actualSolanaAddress,
-        handle: authResult.handle,
-        via: 'wallet'
-      });
+      setUser({ name: address, handle: authData.handle, via: 'wallet' });
+      return { success: true, wallet: address };
 
-      console.log(`✓ [Web3 Auth Secured] Free sovereign profile verified and active for: ${actualSolanaAddress}`);
-    } catch (authError) {
-      console.error("❌ Non-Custodial Web3 wallet authentication rejected:", authError.message);
-      alert(`Identity Handshake Cancelled: ${authError.message}`);
+    } catch (err) {
+      console.error("Wallet auth failed:", err.message);
+      return { success: false, error: err.message };
     }
   }, [])
-
-  const logout = useCallback(() => setUser(null), [])
 
   // ---- Web3 Blockchain Purchase & Support Orchestrator ----
   const support = useCallback(async (rel, amount, currency = 'SOL') => {

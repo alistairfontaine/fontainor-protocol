@@ -35,7 +35,12 @@ export function AuthModal({ store, mode, setMode, onClose }) {
     store.signInEmail(email)
     onClose('profile')
   }
-  const wallet = () => { store.connectWallet(); onClose('profile') }
+  const wallet = async () => {
+  const result = await store.connectWallet();
+  if (result.success) {
+    onClose('profile');
+  }
+}
 
   return (
     <div className="modal" onClick={(e) => { if (e.target.classList.contains('modal')) onClose() }}>
