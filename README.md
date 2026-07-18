@@ -2,51 +2,46 @@
   <img src="assets/logo.png" alt="Fontainor Protocol Full-Stack Header Logo" width="800" height="240">
 </p>
 
-# Fontainor Protocol (v0.4-development)
+# Fontainor Protocol (v0.5.0-Mainnet Build)
 
-Fontainor is a high-performance, decentralized music registry and asset equity protocol built to run permanently on Arweave. It provides a completely sovereign computing architecture for artists and curators, delivering direct on-chain streaming ingress and asset validation with zero central authority tracking.
-
-> 📖 **Architectural Engineering Manifestos:** For deep-dive breakdowns on system specifications, project trajectories, and codebase conventions, inspect the newly organized documentation tree:
-> - 📐 [Subsystem Architecture Design Specification](docs/ARCHITECTURE.md)
-> - 🗺️ [Monolithic Order of Operations (OOO) Roadmap](docs/ROADMAP.md)
-> - 📜 [AI Developer Collaborator Handoff Standards](docs/CLAUDE.md)
+Fontainor is a high-performance, decentralized music equity registry and asset distribution protocol built on Arweave with trustless financial settlement via Solana. It provides a serverless platform for creators, allowing them to publish media and manage editorial content, with protocol nodes handling data-etching and payment splits.
 
 ---
 
-## 🔧 Core Architectural Strengths
-* **Lean Sequential Audio Ingress:** Slices massive WAV, FLAC, and MP3 files down to compact 256KB fragments inside browser memory space, streaming them via pure binary octet-streams to protect server thread heaps from bloat.
-* **Native Cryptographic Signing:** Leverages direct `arweave-js` transaction parameters to sign and mine compiled bytes, removing layer-2 abstraction bottlenecks completely.
-* **Elastic Ledger Validation:** Employs an array-safe, flexible validation gate that handles mixed-generation transaction structures with 100% backward and forward compatibility.
-* **10-TxID Rolling History Log:** Maintains a bounded, persistent queue stack of historical transaction blocks directly on disk to provide instant rollback recovery layers.
+## 📐 Core Architectural Strengths
+
+* **Serverless Audio Ingress Chunker:** Handles large files by breaking them into 256KB chunks in the browser for efficient, memory-safe streaming to Arweave.
+* **Cryptographic Sovereign Identity:** Uses Phantom wallet signature verification for authentication, bypassing the need for a backend database.
+* **Omni-Asset Stablecoin Transfers:** Supports native SOL, USDC, and USDT, executing a 98% artist / 2% treasury split directly on the Solana Mainnet-Beta network.
+* **Type-Segregated Registry Mapping:** Explicitly separates `release` (audio) and `editorial` (text) content for efficient data management.
+* **Disaster Recovery:** Implements a 10-TxID rolling rollback log to ensure data persistence.
 
 ---
 
-## 🛠️ Required Protocol Distribution Stack
-* **Runtime Environment:** `Node.js` (ES Module format configuration)
-* **Interface Layer:** `React 18` + `Vite`
-* **Validation Subsystem:** `Zod v4`
-* **Cryptographic Ledger SDK:** `arweave` native client
-* **Local Sandbox Testnet:** `arlocal` background ledger network service (Port 1984)
+## 🏁 Quickstart Production Build Instructions
+
+### 📦 1. Clone and Install Dependencies
+```bash
+git clone https://github.com
+cd fontainor-protocol
+git checkout production-mainnet
+npm install
+```
+
+### 🔑 2. Configure Environment Rules
+Create a `.env` file in your root folder for the Authority Keypair (use a strict `SOLANA_PRIVATE_KEY` array configuration).
+```text
+SOLANA_RPC_URL="https://solana.com"
+SOLANA_PRIVATE_KEY="[...]"
+```
+
+### 🚀 3. Compile the Serverless Bundle
+```bash
+npm run build
+```
+This prepares the `dist/` folder, ready for deployment to Vercel.
 
 ---
 
-## 🏁 Quickstart Full-Stack Local Sandbox Execution
-
-To ignite the integrated protocol workstation panel on your local machine, run the following commands across three independent terminal lanes inside the repository tree:
-
-### 📡 1. Boot up the Local Blockchain Ledger Node
-```bash
-npm run arlocal
-```
-
-### 🧠 2. Ignite the Protocol Backend Server
-```bash
-npm start
-```
-
-### 🎨 3. Launch the Frontend Vite User Interface Viewport
-```bash
-npm run dev
-```
-
-Once the Vite dashboard fires open, hold **`Ctrl` and click `http://localhost:5173/`** inside your terminal string to open the panel, drop your local tracks onto the workspace, and watch your audio bytes lock directly to on-chain blocks!
+## 📜 Open-Source Protocol Standards
+Fontainor is MIT-licensed, offering an un-censorable platform for creators to own their work and for users to stream music permanently.

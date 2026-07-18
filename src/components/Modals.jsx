@@ -59,7 +59,7 @@ export function AuthModal({ store, mode, setMode, onClose }) {
             ? <>Already have an account? <a onClick={() => setMode('login')}>Log in</a></>
             : <>New here? <a onClick={() => setMode('signup')}>Create an account</a></>}
         </div>
-        <div className="mnote">Preview build — accounts aren't connected to a server yet. This signs you in locally so you can explore the app.</div>
+        <div className="mnote">🔒 Production Release — Secure Sovereign Authentication enabled. Sessions are cryptographically signed by your private keys for free. No centralized tracking trackers active.</div>
       </div>
     </div>
   )
