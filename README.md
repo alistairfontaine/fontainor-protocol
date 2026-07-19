@@ -8,6 +8,8 @@ Fontainor is a high-performance, decentralized music equity registry and asset d
 
 ---
 
+Production Link:** [https://fontainor-protocol.verce.app](https://fontainor-protocol.vercel.app)
+
 ## 📐 Core Architectural Strengths
 
 * **Serverless Audio Ingress Chunker:** Handles large files by breaking them into 256KB chunks in the browser for efficient, memory-safe streaming to Arweave.
