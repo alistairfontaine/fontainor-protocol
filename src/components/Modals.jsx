@@ -173,12 +173,6 @@ export function PublishModal({ store, uploader, onClose }) {
             Upload cover art to <a href="https://ardrive.io" target="_blank" rel="noopener noreferrer">ArDrive</a> or <a href="https://irys.xyz" target="_blank" rel="noopener noreferrer">Irys</a>, then paste the link here.
           </div>
         </div>
-
-        <div className="field">
-          <label>Cover URI (Auto-populated upon selection)</label>
-          <input value={form.coverUri || ''} onChange={set('coverUri')} placeholder="Select an image file or enter address manually" />
-        </div>
-
         <button className="primary" disabled={busy || uploader.isUploading} onClick={submit}>
           {busy || uploader.isUploading ? 'Streaming track…' : 'Publish to protocol'}
         </button>
