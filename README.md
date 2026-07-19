@@ -8,7 +8,7 @@ Fontainor is a high-performance, decentralized music equity registry and asset d
 
 ---
 
-Production Link:** [https://fontainor-protocol.vercel.app](https://fontainor-protocol.vercel.app)
+**Production Link:** [https://fontainor-protocol.vercel.app](https://fontainor-protocol.vercel.app)
 
 ## 📐 Core Architectural Strengths
 
