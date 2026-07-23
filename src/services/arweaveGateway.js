@@ -1,52 +1,43 @@
-// AT THE VERY TOP OF arweaveGateway.js
-require('dotenv').config(); 
+import dotenv from 'dotenv';
+import { WebIrys } from "@irys/sdk";
 
-const { WebIrys } = require("@irys/sdk");
-
-async function uploadToArweave(registryData) {
-    // This line pulls the WALLET_KEY out of your .env file
-    const walletKey = JSON.parse(process.env.WALLET_KEY); 
-
-    const irys = new WebIrys({ 
-        url: "https://node1.irys.xyz", 
-        token: "arweave", 
-        key: walletKey 
-    });
-    // ... rest of your logic ...
-}
+dotenv.config();
 
 /**
  * Arweave Gateway Service
- * Handles persisting the Registry to the permanent web.
+ * Handles persisting the Registry to the permanent web via Irys.
  */
-
-const { WebIrys } = require("@irys/sdk");
-
-async function uploadToArweave(registryData) {
+export async function uploadToArweave(registryData) {
     console.log("Preparing to anchor registry to Arweave...");
 
-    // 1. Initialize Irys (Mainnet or Devnet)
-    const irys = new WebIrys({ 
-        url: "https://node1.irys.xyz", 
-        token: "arweave", 
-        key: process.env.WALLET_KEY // You'll need to set this securely
+    let walletKey;
+    try {
+        walletKey = JSON.parse(process.env.WALLET_KEY);
+    } catch (e) {
+        walletKey = process.env.WALLET_KEY;
+    }
+
+    if (!walletKey) {
+        throw new Error("WALLET_KEY is missing from environment configuration.");
+    }
+
+    const irys = new WebIrys({
+        url: "https://irys.xyz",
+        token: "arweave",
+        key: walletKey
     });
 
-    // 2. Prepare the data
     const data = JSON.stringify(registryData);
-    
-    // 3. Upload
+
     try {
         const receipt = await irys.upload(data, {
             tags: [{ name: "Content-Type", value: "application/json" }]
         });
-        
+
         console.log(`Registry permanently anchored! ID: ${receipt.id}`);
-        return receipt.id; // This is your link to the immutable registry
-    } catch (e) {
-        console.error("Upload failed:", e);
-        throw e;
+        return receipt.id;
+    } catch (error) {
+        console.error("Arweave upload failed:", error);
+        throw error;
     }
 }
-
-module.exports = { uploadToArweave };
