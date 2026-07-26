@@ -54,3 +54,7 @@
 - PRODUCTION URL: https://fontainor-protocol-two.vercel.app
 - VERIFIED live: split bundles served, cache headers active (assets immutable, covers/audio 7d+SWR), audio Range 206, headless click-through = play/next/persist/0 reloads, first load ~1s.
 - Note: fontainor-protocol.vercel.app (user's original link) is the OLD upstream project — the "reload on every click" complaint was about that MPA. New SPA has no reloads.
+
+## Follow-up — "still reloading" report (2026-07-26 19:02)
+- Re-verified live with marker test (window.__marker survives client-side nav only): all 8 internal links on fontainor-protocol-two.vercel.app keep marker alive = zero full reloads. VERIFIED.
+- Old upstream fontainor-protocol.vercel.app confirmed visually distinct (light theme/blue buttons, login/signup) — user almost certainly still opening old URL (history/autocomplete). Sent side-by-side screenshots + "dark = new, white = old" check to DM thread 1785092558.
