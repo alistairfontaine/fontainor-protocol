@@ -6,13 +6,15 @@ import ReactDOM from 'react-dom/client'
 // up the fresh build instead of leaving a dead screen.
 window.addEventListener('vite:preloadError', (e) => {
   e.preventDefault()
-  const KEY = 'fontainor:chunk-reload'
-  if (sessionStorage.getItem(KEY) !== '1') {
-    sessionStorage.setItem(KEY, '1')
+  const KEY = 'fontainor:chunk-reload-at'
+  const last = Number(sessionStorage.getItem(KEY) || 0)
+  // at most one auto-reload per 15s — prevents a reload loop if the chunk
+  // is genuinely unreachable (the ErrorBoundary takes over instead)
+  if (Date.now() - last > 15_000) {
+    sessionStorage.setItem(KEY, String(Date.now()))
     window.location.reload()
   }
 })
-window.addEventListener('load', () => sessionStorage.removeItem('fontainor:chunk-reload'))
 import { HashRouter } from 'react-router-dom'
 import App from './App'
 import './styles/index.css'

@@ -63,3 +63,8 @@
 - Black screen on /#/release/... : could NOT repro on live with fresh browser (renders fine, no console errors). Root cause: user's tab predated one of today's 3 redeploys; release route became lazy in perf pass -> old chunk URLs 404 -> dynamic import fails -> dead screen until manual reload. Fix: window 'vite:preloadError' -> one guarded auto-reload; ErrorBoundary around routes (auto-reload on chunk errors, styled ":(" screen + reload button otherwise).
 - Expanded player: PlayerContext gains shuffle state + shuffled order (Fisher-Yates, current pinned first, appends new releases) + upNext(8); queue panel in PlayerBar (Now Playing, clickable Up Next, shuffle/in-order indicator); shuffle buttons desktop+mobile; panel closes with player.
 - VERIFIED headless: see features.json F19/F20 evidence.
+
+## Iteration — "favorites still broken" follow-up
+- Fresh-profile REAL click Home->Favorites on live -two: works, 0 errors (desktop). His tab runs a pre-fix build -> still black-screens until one manual refresh; fix can't retro-apply to already-loaded tabs.
+- Stale-tab simulation (load app, rename lazy chunks = redeploy, click Favorites) exposed reload LOOP in my guard (sessionStorage flag cleared on every load -> 194 reloads). Fixed: timestamp guard, max one auto-reload per 15s (main.tsx + ErrorBoundary). Re-sim: exactly 1 reload, RECOVERED OK.
+- Note: mobile bottom nav has no Favorites tab (Home/Library/Publish/Editorial/Profile) - sidebar only on lg+. Potential UX gap if he browses on phone.

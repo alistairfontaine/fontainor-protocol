@@ -21,9 +21,10 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error) {
     if (CHUNK_ERROR.test(error.message)) {
-      const KEY = 'fontainor:chunk-reload'
-      if (sessionStorage.getItem(KEY) !== '1') {
-        sessionStorage.setItem(KEY, '1')
+      const KEY = 'fontainor:chunk-reload-at'
+      const last = Number(sessionStorage.getItem(KEY) || 0)
+      if (Date.now() - last > 15_000) {
+        sessionStorage.setItem(KEY, String(Date.now()))
         window.location.reload()
       }
     }
