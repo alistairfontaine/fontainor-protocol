@@ -152,7 +152,7 @@
       "name": "Stale-chunk black screen fix",
       "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy."
+      "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
     }
   ]
 }
