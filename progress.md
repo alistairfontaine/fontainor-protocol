@@ -39,3 +39,11 @@
 - PlayerBar: prev/next buttons flanking play/pause; new IconPrev/IconNext.
 - VERIFIED: npm run ci green; headless: play→next→next→prev switches tracks (Genesis→Night Bus→Solder→Night Bus); seek-to-end auto-advances (Genesis→Night Bus, still playing); nav across 4 routes: 0 reloads, bar persists.
 - Gotcha: python http.server lacks Range support → audio seek resets to 0 locally; use /tmp/rangeserver.py for dist verification.
+
+## Iteration — performance pass (F18)
+- Route code splitting via React.lazy (Home kept in main chunk); Suspense spinner fallback.
+- vite manualChunks vendor (react/react-dom/router) → long-term cacheable 179KB chunk; main JS 267KB→46KB.
+- Images: loading=lazy + decoding=async everywhere; article hero fetchPriority=high; covers recompressed q72 (828→612KB), editorial heroes ≤900w.
+- vercel.json: Cache-Control immutable for /assets, 7d+SWR for /covers & /audio.
+- SINGLE_FILE=1 env in vite.config.ts → inlineDynamicImports build for self-contained previews (dist-preview/, gitignored? no — left untracked).
+- Preview republished same URL (fontainor-v06-preview), verified: data-URI covers render, player queue works, 0 reloads.

@@ -12,6 +12,7 @@ export function Cover({ rel, className = '' }: { rel: Release; className?: strin
         src={rel.coverUrl}
         alt={`${rel.title} cover art`}
         loading="lazy"
+        decoding="async"
         onError={() => setBroken(true)}
         className={`h-full w-full object-cover ${className}`}
       />

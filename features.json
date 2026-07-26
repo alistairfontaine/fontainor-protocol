@@ -125,6 +125,20 @@
       "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
       "passes": true,
       "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
+    },
+    {
+      "id": "F17",
+      "name": "Persistent player: queue, prev/next, auto-advance",
+      "description": "Spotify-style: global player survives route changes; registry-order queue with wrap-around prev/next in PlayerBar; prev restarts track past 3s; track end auto-plays next (real audio + simulated path).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless vs dist: play->next->next->prev = Genesis->Night Bus->Solder->Night Bus; seek-to-end auto-advances to next track still playing; nav across /library /editorial /faq /: 0 page reloads, player bar persists. CI green."
+    },
+    {
+      "id": "F18",
+      "name": "Performance pass",
+      "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
     }
   ]
 }

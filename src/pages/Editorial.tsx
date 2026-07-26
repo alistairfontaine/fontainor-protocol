@@ -41,7 +41,7 @@ export function EditorialList() {
                   <img
                     src={a.coverUrl}
                     alt=""
-                    loading="lazy"
+                    loading="lazy" decoding="async"
                     className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
                   />
                 </div>
@@ -108,7 +108,7 @@ export function EditorialArticle() {
 
       {article.coverUrl && (
         <div className="mt-8 overflow-hidden rounded-card shadow-card">
-          <img src={article.coverUrl} alt="" className="aspect-[3/2] w-full object-cover" />
+          <img src={article.coverUrl} alt="" decoding="async" fetchPriority="high" className="aspect-[3/2] w-full object-cover" />
         </div>
       )}
 

@@ -9,3 +9,4 @@ dist/
 *.swo
 *.log
 test-ledger/
+dist-preview/

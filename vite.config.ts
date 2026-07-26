@@ -4,6 +4,20 @@ import tailwindcss from '@tailwindcss/vite'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: process.env.SINGLE_FILE
+    ? {
+        // one-file build used for self-contained HTML previews
+        rollupOptions: { output: { inlineDynamicImports: true } },
+      }
+    : {
+        rollupOptions: {
+          output: {
+            manualChunks: {
+              vendor: ['react', 'react-dom', 'react-router-dom'],
+            },
+          },
+        },
+      },
   server: {
     port: 5173,
     proxy: {
