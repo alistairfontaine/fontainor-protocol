@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
+import { useRegistry } from './RegistryContext'
 import { useHistoryLog } from './collections'
 
 interface PlayerState {
@@ -9,8 +10,12 @@ interface PlayerState {
   pos: number
   cur: number
   dur: number
+  /** whether prev/next have somewhere to go */
+  hasQueue: boolean
   play: (rel: Release) => void
   toggle: () => void
+  next: () => void
+  prev: () => void
   seek: (fraction: number) => void
   close: () => void
 }
@@ -18,6 +23,7 @@ interface PlayerState {
 const Ctx = createContext<PlayerState | null>(null)
 
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
+const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Release | null>(null)
@@ -28,6 +34,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const simRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { push: pushHistory } = useHistoryLog()
+  const { music } = useRegistry()
+
+  // Queue = the playable catalog, in registry order. Kept in refs so the
+  // audio 'ended' listener always sees fresh data without re-binding.
+  const queueRef = useRef<Release[]>([])
+  useEffect(() => {
+    queueRef.current = music
+  }, [music])
+  const currentRef = useRef<Release | null>(null)
+  useEffect(() => {
+    currentRef.current = current
+  }, [current])
+  const playRef = useRef<(rel: Release) => void>(() => {})
 
   const stopSim = () => {
     if (simRef.current) {
@@ -41,6 +60,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audioRef.current = null
   }
 
+  const stepFrom = (offset: 1 | -1): Release | null => {
+    const q = queueRef.current
+    const c = currentRef.current
+    if (!q.length) return null
+    const i = c ? q.findIndex((r) => r.id === c.id) : -1
+    if (i === -1) return q[0]
+    return q[(i + offset + q.length) % q.length]
+  }
+
   const startSim = useCallback((from: number) => {
     stopSim()
     let t = from
@@ -48,8 +76,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       t += 0.25
       if (t >= DEMO_DURATION) {
         stopSim()
-        setPlaying(false)
         t = DEMO_DURATION
+        // auto-advance, same as real audio 'ended'
+        const n = stepFrom(1)
+        if (n) playRef.current(n)
+        else setPlaying(false)
+        return
       }
       setCur(t)
       setPos(t / DEMO_DURATION)
@@ -61,6 +93,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       stopSim()
       clearAudio()
       setCurrent(rel)
+      currentRef.current = rel
       pushHistory(rel.id)
       setPos(0)
       setCur(0)
@@ -74,7 +107,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setDur(a.duration || 0)
           setPos(a.duration ? a.currentTime / a.duration : 0)
         })
-        a.addEventListener('ended', () => setPlaying(false))
+        a.addEventListener('ended', () => {
+          const n = stepFrom(1)
+          if (n) playRef.current(n)
+          else setPlaying(false)
+        })
         a.addEventListener('error', () => {
           // fall back to simulated playback so the UI stays honest but usable
           audioRef.current = null
@@ -94,6 +131,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     },
     [pushHistory, startSim],
   )
+  useEffect(() => {
+    playRef.current = play
+  }, [play])
 
   const toggle = useCallback(() => {
     if (!current) return
@@ -106,6 +146,28 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setPlaying((p) => !p)
   }, [current, playing, cur, startSim])
+
+  const next = useCallback(() => {
+    const n = stepFrom(1)
+    if (n) play(n)
+  }, [play])
+
+  const prev = useCallback(() => {
+    // Spotify behavior: past a few seconds in, "previous" restarts the track
+    if (cur > RESTART_THRESHOLD) {
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0
+        if (playing) void audioRef.current.play()
+      } else {
+        setCur(0)
+        setPos(0)
+        if (playing) startSim(0)
+      }
+      return
+    }
+    const p = stepFrom(-1)
+    if (p) play(p)
+  }, [cur, playing, play, startSim])
 
   const seek = useCallback(
     (fraction: number) => {
@@ -125,6 +187,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     stopSim()
     clearAudio()
     setCurrent(null)
+    currentRef.current = null
     setPlaying(false)
     setPos(0)
     setCur(0)
@@ -141,8 +204,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current])
 
   const value = useMemo<PlayerState>(
-    () => ({ current, playing, pos, cur, dur, play, toggle, seek, close }),
-    [current, playing, pos, cur, dur, play, toggle, seek, close],
+    () => ({ current, playing, pos, cur, dur, hasQueue: music.length > 1, play, toggle, next, prev, seek, close }),
+    [current, playing, pos, cur, dur, music.length, play, toggle, next, prev, seek, close],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

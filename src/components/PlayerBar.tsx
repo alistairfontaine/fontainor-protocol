@@ -3,10 +3,10 @@ import { Link } from 'react-router-dom'
 import { fmtTime } from '../lib/registry'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconClose, IconPause, IconPlay } from './icons'
+import { IconClose, IconNext, IconPause, IconPlay, IconPrev } from './icons'
 
 export function PlayerBar() {
-  const { current, playing, pos, cur, dur, toggle, seek, close } = usePlayer()
+  const { current, playing, pos, cur, dur, hasQueue, toggle, next, prev, seek, close } = usePlayer()
   const barRef = useRef<HTMLDivElement>(null)
 
   const onSeek = useCallback(
@@ -48,13 +48,31 @@ export function PlayerBar() {
       </div>
 
       <div className="mx-auto flex h-[66px] max-w-[1360px] items-center gap-3.5 px-4 sm:px-6">
-        <button
-          onClick={toggle}
-          className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full bg-accent text-accent-ink transition-colors hover:bg-accent-hi"
-          aria-label={playing ? 'Pause' : 'Play'}
-        >
-          {playing ? <IconPause size={20} /> : <IconPlay size={20} />}
-        </button>
+        <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <button
+            onClick={prev}
+            disabled={!hasQueue}
+            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
+            aria-label="Previous track"
+          >
+            <IconPrev size={19} />
+          </button>
+          <button
+            onClick={toggle}
+            className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full bg-accent text-accent-ink transition-colors hover:bg-accent-hi"
+            aria-label={playing ? 'Pause' : 'Play'}
+          >
+            {playing ? <IconPause size={20} /> : <IconPlay size={20} />}
+          </button>
+          <button
+            onClick={next}
+            disabled={!hasQueue}
+            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
+            aria-label="Next track"
+          >
+            <IconNext size={19} />
+          </button>
+        </div>
 
         <Link to={`/release/${encodeURIComponent(current.id)}`} className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
           <Cover rel={current} />

@@ -84,6 +84,20 @@ export const IconPause = ({ size = 24, className }: IconProps) => (
   </svg>
 )
 
+export const IconNext = ({ size = 24, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M5 6.1c0-1.16 1.26-1.88 2.26-1.3l9.02 5.2a1.5 1.5 0 0 1 0 2.6l-9.02 5.2A1.5 1.5 0 0 1 5 16.5V6.1Z" />
+    <rect x="17.2" y="4.5" width="2.6" height="15" rx="1.1" />
+  </svg>
+)
+
+export const IconPrev = ({ size = 24, className }: IconProps) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M19 6.1c0-1.16-1.26-1.88-2.26-1.3l-9.02 5.2a1.5 1.5 0 0 0 0 2.6l9.02 5.2A1.5 1.5 0 0 0 19 16.5V6.1Z" />
+    <rect x="4.2" y="4.5" width="2.6" height="15" rx="1.1" />
+  </svg>
+)
+
 export const IconHeart = ({ filled, ...p }: IconProps) => (
   <Svg {...p}>
     <path

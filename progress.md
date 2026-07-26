@@ -32,3 +32,10 @@
 - F16: src/pages/Static.tsx (About/Terms/Privacy/Contact/FAQ/404), Footer in AppShell. HashRouter + existing vercel.json SPA rewrite = free-tier safe, no server code added.
 - UX fixes: empty live /registry now falls through to bundled snapshot (fresh Vercel deploys look full, not empty); removed demo-revealing snapshot banner; editorial cards/articles show hero imagery.
 - Verification: local headless chromium against `python http.server` on dist (NOTE: vite preview + nohup inside tool-wrapped bash dies with the job; use setsid + system python; stale servers on old ports can serve stale dist — always curl-verify registry.json first).
+
+## Iteration — persistent player queue + prev/next (F17)
+- User feedback: music stops on navigation on the OLD live site (fontainor-protocol.vercel.app = original frontend, full-page-reload MPA). New v06 SPA already persists player across routes (VERIFIED: headless click-through, 0 page loads, player bar alive on /library /editorial /faq /).
+- Added queue-based prev/next to PlayerContext (registry-order queue, wrap-around; prev restarts track past 3s like Spotify) + auto-advance on track end (real audio 'ended' + simulated path).
+- PlayerBar: prev/next buttons flanking play/pause; new IconPrev/IconNext.
+- VERIFIED: npm run ci green; headless: play→next→next→prev switches tracks (Genesis→Night Bus→Solder→Night Bus); seek-to-end auto-advances (Genesis→Night Bus, still playing); nav across 4 routes: 0 reloads, bar persists.
+- Gotcha: python http.server lacks Range support → audio seek resets to 0 locally; use /tmp/rangeserver.py for dist verification.
