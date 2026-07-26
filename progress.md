@@ -47,3 +47,10 @@
 - vercel.json: Cache-Control immutable for /assets, 7d+SWR for /covers & /audio.
 - SINGLE_FILE=1 env in vite.config.ts → inlineDynamicImports build for self-contained previews (dist-preview/, gitignored? no — left untracked).
 - Preview republished same URL (fontainor-v06-preview), verified: data-URI covers render, player queue works, 0 reloads.
+
+## Iteration — F13 production deploy DONE
+- Re-auth to Vercel via GitHub OAuth (GitHub Mobile 2FA approved by user, number 16).
+- Vercel production env tracked `main`; changed Branch Tracking to v06-development in project settings; empty commit 6a11d52 triggered production deploy.
+- PRODUCTION URL: https://fontainor-protocol-two.vercel.app
+- VERIFIED live: split bundles served, cache headers active (assets immutable, covers/audio 7d+SWR), audio Range 206, headless click-through = play/next/persist/0 reloads, first load ~1s.
+- Note: fontainor-protocol.vercel.app (user's original link) is the OLD upstream project — the "reload on every click" complaint was about that MPA. New SPA has no reloads.

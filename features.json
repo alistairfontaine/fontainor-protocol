@@ -102,8 +102,8 @@
       "title": "Preview deployment",
       "acceptance": "Fork deploys on Vercel; preview URL shared with user; frontend + api/ function both work there.",
       "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
-      "passes": false,
-      "evidence": ""
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: production live at https://fontainor-protocol-two.vercel.app (Vercel team tapiwas-projects-71e009e5, production branch set to v06-development, deploy 6a11d52). curl: html 200 w/ split bundles; /assets immutable cache; /covers+/audio 7d cache; /audio range 206; /registry 200 (empty -> app falls back to bundled snapshot). Headless click-through on live: 10 tracks, real audio 1:30 playing, next-track works, 0 reloads across 5 routes, player persists, first load networkidle 1.03s."
     },
     {
       "id": "F14",
