@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import bs58 from 'bs58';
 import { validateUpload } from './validator.js';
 import { initArweave, uploadManifest } from './src/protocol/arweaveUploader.js';
 import { devFundArLocal } from './src/protocol/devFundArLocal.js';
@@ -324,11 +325,15 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
             return res.status(401).json({ success: false, message: "Cryptographic signature validation rejected." });
         }
 
-        console.log(`✓ [Sovereign Account Verified] Free account tier opened for wallet: ${publicKey}`);
+        // Derive the base58 address from the *verified* public key bytes so the
+        // handle is human-readable (raw `publicKey` is a JSON byte-array string and
+        // produces garbage handles like "@[132...,72]") and cannot be spoofed.
+        const displayKey = bs58.encode(publicKeyBytes);
+        console.log(`✓ [Sovereign Account Verified] Free account tier opened for wallet: ${displayKey}`);
         return res.json({
             success: true,
-            wallet: publicKey,
-            handle: `@${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
+            wallet: displayKey,
+            handle: `@${displayKey.slice(0, 4)}...${displayKey.slice(-4)}`
         });
     } catch (authError) {
         console.error("❌ Sovereign Auth Breakdown:", authError.message);

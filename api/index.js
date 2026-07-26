@@ -4,6 +4,7 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import bs58 from 'bs58';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -340,10 +341,14 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
             return res.status(401).json({ success: false, message: "Cryptographic signature validation rejected." });
         }
 
+        // Derive the base58 address from the *verified* public key bytes so the
+        // handle is human-readable (raw `publicKey` is a JSON byte-array string and
+        // produces garbage handles like "@[132...,72]") and cannot be spoofed.
+        const displayKey = bs58.encode(publicKeyBytes);
         return res.json({
             success: true,
-            wallet: publicKey,
-            handle: `@${publicKey.slice(0, 4)}...${publicKey.slice(-4)}`
+            wallet: displayKey,
+            handle: `@${displayKey.slice(0, 4)}...${displayKey.slice(-4)}`
         });
     } catch (authError) {
         return res.status(500).json({ success: false, message: authError.message });
