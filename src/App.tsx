@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect } from 'react'
+import { Suspense, lazy, useEffect, useState } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -9,21 +9,74 @@ import { PlayerProvider } from './state/PlayerContext'
 import { RegistryProvider } from './state/RegistryContext'
 
 // Route-level code splitting: Home stays in the main chunk (first paint),
-// everything else loads on demand.
-const Library = lazy(() => import('./pages/Library'))
-const ReleaseDetail = lazy(() => import('./pages/ReleaseDetail'))
-const Publish = lazy(() => import('./pages/Publish'))
-const Profile = lazy(() => import('./pages/Profile'))
-const EditorialList = lazy(() => import('./pages/Editorial').then((m) => ({ default: m.EditorialList })))
-const EditorialArticle = lazy(() => import('./pages/Editorial').then((m) => ({ default: m.EditorialArticle })))
-const Favorites = lazy(() => import('./pages/Collections').then((m) => ({ default: m.Favorites })))
-const History = lazy(() => import('./pages/Collections').then((m) => ({ default: m.History })))
-const About = lazy(() => import('./pages/Static').then((m) => ({ default: m.About })))
-const Terms = lazy(() => import('./pages/Static').then((m) => ({ default: m.Terms })))
-const Privacy = lazy(() => import('./pages/Static').then((m) => ({ default: m.Privacy })))
-const Contact = lazy(() => import('./pages/Static').then((m) => ({ default: m.Contact })))
-const Faq = lazy(() => import('./pages/Static').then((m) => ({ default: m.Faq })))
-const NotFound = lazy(() => import('./pages/Static').then((m) => ({ default: m.NotFound })))
+// everything else loads on demand. One loader per chunk so the lazy()
+// wrappers and the idle warm-up below share the same module requests.
+const routeLoaders = {
+  library: () => import('./pages/Library'),
+  releaseDetail: () => import('./pages/ReleaseDetail'),
+  publish: () => import('./pages/Publish'),
+  profile: () => import('./pages/Profile'),
+  editorial: () => import('./pages/Editorial'),
+  collections: () => import('./pages/Collections'),
+  static: () => import('./pages/Static'),
+}
+
+const Library = lazy(routeLoaders.library)
+const ReleaseDetail = lazy(routeLoaders.releaseDetail)
+const Publish = lazy(routeLoaders.publish)
+const Profile = lazy(routeLoaders.profile)
+const EditorialList = lazy(() => routeLoaders.editorial().then((m) => ({ default: m.EditorialList })))
+const EditorialArticle = lazy(() => routeLoaders.editorial().then((m) => ({ default: m.EditorialArticle })))
+const Favorites = lazy(() => routeLoaders.collections().then((m) => ({ default: m.Favorites })))
+const History = lazy(() => routeLoaders.collections().then((m) => ({ default: m.History })))
+const About = lazy(() => routeLoaders.static().then((m) => ({ default: m.About })))
+const Terms = lazy(() => routeLoaders.static().then((m) => ({ default: m.Terms })))
+const Privacy = lazy(() => routeLoaders.static().then((m) => ({ default: m.Privacy })))
+const Contact = lazy(() => routeLoaders.static().then((m) => ({ default: m.Contact })))
+const Faq = lazy(() => routeLoaders.static().then((m) => ({ default: m.Faq })))
+const NotFound = lazy(() => routeLoaders.static().then((m) => ({ default: m.NotFound })))
+
+/** Warm every route chunk right after first paint so in-app navigation
+ * never depends on the network. On flaky connections (or QUIC-hostile
+ * networks) the click-time chunk fetch can hang or fail → dark screen;
+ * prefetching while the connection is known-good sidesteps that entirely.
+ * Failed warms retry with backoff until everything is cached. */
+function useWarmRouteChunks() {
+  useEffect(() => {
+    let disposed = false
+    let delay = 2_000
+    let remaining = Object.values(routeLoaders)
+
+    const warm = async () => {
+      if (disposed) return
+      const failed: typeof remaining = []
+      for (const load of remaining) {
+        try {
+          await load()
+        } catch {
+          failed.push(load)
+        }
+      }
+      remaining = failed
+      if (remaining.length > 0 && delay < 120_000) {
+        delay *= 2
+        setTimeout(() => void warm(), delay)
+      }
+    }
+
+    const start = () => {
+      const idle: (cb: () => void) => void =
+        'requestIdleCallback' in window ? (cb) => window.requestIdleCallback(cb) : (cb) => setTimeout(cb, 1_500)
+      idle(() => void warm())
+    }
+    if (document.readyState === 'complete') start()
+    else window.addEventListener('load', start, { once: true })
+
+    return () => {
+      disposed = true
+    }
+  }, [])
+}
 
 function ScrollToTop() {
   const { pathname } = useLocation()
@@ -31,15 +84,37 @@ function ScrollToTop() {
   return null
 }
 
+/** Spinner while a route chunk loads. If the fetch is hanging (dead
+ * connection, stalled QUIC socket) we say so after 6s instead of leaving
+ * a dark page with a tiny spinner. */
 function RouteFallback() {
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    const t = setTimeout(() => setSlow(true), 6_000)
+    return () => clearTimeout(t)
+  }, [])
   return (
-    <div className="flex min-h-[40vh] items-center justify-center" aria-busy="true">
+    <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 px-6 text-center" aria-busy="true">
       <div className="h-6 w-6 animate-spin rounded-full border-2 border-line border-t-accent" />
+      {slow && (
+        <>
+          <p className="max-w-sm text-sm text-muted">
+            Still loading — your connection seems slow. A reload usually fixes it.
+          </p>
+          <button
+            onClick={() => window.location.reload()}
+            className="cursor-pointer rounded-btn bg-accent px-5 py-2.5 text-sm font-semibold text-accent-ink transition-colors hover:bg-accent-hi"
+          >
+            Reload page
+          </button>
+        </>
+      )}
     </div>
   )
 }
 
 export default function App() {
+  useWarmRouteChunks()
   return (
     <AuthProvider>
       <RegistryProvider>
