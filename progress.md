@@ -102,3 +102,9 @@ VERIFIED repro: patching scrollTo to return `{cancel(){}}` in headless Chromium 
 Fix: block-bodied effect (no implicit return) + comment forbidding implicit-return effects codebase-wide.
 VERIFIED fix: `npm run ci` green; rebuilt dist served locally; same patched-scrollTo sim across 7 navigations = 0 pageerrors, 0 errlog entries, scrollY=0 (scroll-to-top still works); stock browser also clean.
 Lesson (permanent): NEVER write `useEffect(() => someCall(), deps)` — always a block body. Any DOM API can be monkey-patched by extensions to return truthy values.
+
+## 2026-07-26 — Iteration: full codebase analysis + F8 (wallet auth) VERIFIED + handle bug fixed
+User asked: does wallet connect work? + wants a fullscreen player + full codebase analysis.
+Analysis: F1-F7, F10, F13-F20 pass. Failing: F9 (publish flow unverified), F11 (durable registry — live GET /registry returns []), F12 (repo hygiene: dist/ committed, README quickstart wrong). No fullscreen/expanded player exists (PlayerBar.tsx is bottom-bar only; grep: zero fullscreen/expand hits) — candidate new feature pending user scoping.
+F8 wallet auth VERIFIED end-to-end (evidence in features.json): live endpoint sig-verification test + headless Chromium full-flow test with faithful Phantom mock against the deployed site. Found handle bug: server built handle by slicing the JSON byte-array string publicKey -> '@[249...130]'. Fixed in 249a63e: bs58-encode the VERIFIED publicKeyBytes (bs58 already a dep) in api/index.js + server.js; wallet field now also clean base58; not spoofable (derived from verified bytes, not client string). npm run ci green. Post-deploy live re-test: handle '@4EgH...JJXX', profile renders, session persists.
+Note: Playwright CDN unreachable from sandbox — use cached chromium_headless_shell-1228 via launch({executablePath}).

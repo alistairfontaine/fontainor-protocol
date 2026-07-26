@@ -62,8 +62,8 @@
       "title": "Phantom wallet auth + profile",
       "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
       "verify": "npm run ci",
-      "passes": false,
-      "evidence": ""
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
     },
     {
       "id": "F9",
