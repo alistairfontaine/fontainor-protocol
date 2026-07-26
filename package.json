@@ -3,7 +3,7 @@
   "private": true,
   "version": "2.0.0",
   "type": "module",
-  "description": "Fontainor Protocol — sovereign music registry frontend",
+  "description": "Fontainor Protocol \u2014 sovereign music registry frontend",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "ci": "npm run typecheck && npm run build",
     "arlocal": "arlocal",
-    "start": "node server.js"
+    "start": "node api-server.js"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",

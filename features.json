@@ -1,180 +1,180 @@
 {
-  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
-  "features": [
-    {
-      "id": "F1",
-      "title": "CI gate + TypeScript/Tailwind scaffold",
-      "acceptance": "npm run ci (typecheck + build) passes on a fresh clone; old src/ removed; new app boots with vite dev.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: `npm run ci` (tsc --noEmit && vite build) exit 0; old src/*.jsx and committed dist/ removed from git; new TS entry src/main.tsx builds (dist/assets/index-B0Ccyi3T.js)."
-    },
-    {
-      "id": "F2",
-      "title": "Design system & visual identity",
-      "acceptance": "Design tokens (color, type ramp, spacing scale, radius ladder) defined once and used by all components; passes uxpeak rubric self-score with 0 blocker fails; dark music-forward identity distinct from old Bandcamp-clone look.",
-      "verify": "npm run ci && test -f src/styles/tokens.css",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: tokens in src/styles/index.css (@theme); npm run ci green; desktop+mobile screenshots reviewed against uxpeak hard rules (accent only on CTAs/active, radius ladder, 44px targets, value>label hierarchy). New dark identity distinct from old light Bandcamp look."
-    },
-    {
-      "id": "F3",
-      "title": "App shell: responsive nav + routing",
-      "acceptance": "Desktop sidebar + mobile bottom nav (44px targets), real routes for home/library/editorial/publish/profile/release detail, 404 handled, works at 375px and 1440px widths.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: rendered at 1440px (sidebar) and 375px (5-tab bottom nav w/ raised Publish CTA, 24px icons, 11px labels, safe-area) via headless chromium screenshots; react-router routes for all surfaces + 404."
-    },
-    {
-      "id": "F4",
-      "title": "Home feed (releases + editorial)",
-      "acceptance": "Home fetches /registry, renders release and editorial cards with skeleton loading and designed empty states; source banner (api/file/sample) preserved.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: home renders seeded /registry data (release grid + editorial strip), skeletons while loading, designed empty-state hero when registry empty; source banner logic ported (api/file/sample)."
-    },
-    {
-      "id": "F5",
-      "title": "Release detail + persistent audio player",
-      "acceptance": "Release page with cover/metadata/tags; global player bar persists across routes, play/pause/seek works with audioUri, keyboard accessible.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (headless test): card play \u2192 persistent player bar appears, time advances (0:01\u21920:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
-    },
-    {
-      "id": "F6",
-      "title": "Library with working search/sort/filter",
-      "acceptance": "Virtualized grid (react-window) handles 500+ items; text search, sort (date/title/artist/price) and type filter actually filter results; global top-bar search wired to it.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' \u2192 /library?q=techno \u2192 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
-    },
-    {
-      "id": "F7",
-      "title": "Editorial reading view",
-      "acceptance": "Editorial list + article page with proper reading typography (body 140-170% line-height).",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: editorial list + article view render seeded articles with 17px/170% reading typography (screenshot)."
-    },
-    {
-      "id": "F8",
-      "title": "Phantom wallet auth + profile",
-      "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
-    },
-    {
-      "id": "F9",
-      "title": "Publish flow",
-      "acceptance": "Multi-step publish modal/page: metadata form (validated), cover + audio via chunk upload or TX-ID paste, POST /manifest, success/error/timeout states incl. mock modes (?mock=ok|writefail|400|timeout).",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (demo mode \u2014 user has no funded Arweave wallet, chose mock publish): full publish flow live-tested headless against deployed site \u2014 wallet login -> #/publish shows demo-mode banner, form validated, submit -> 'Adding to the registry\u2026' -> done screen 'Published \u2014 demo mode.' with TX DEMO_*; publication persisted to localStorage (fontainor_local_pubs_v1), merged into registry view, visible in Library AND Profile 'Your publications' (commit ea0bb6c). Real-chain path (uploadAudioChunks + POST /upload + ?mock modes) unchanged and gated behind DEMO_PUBLISH=false; flipping to real Arweave needs only a funded wallet + DEMO_PUBLISH flip. npm run ci green."
-    },
-    {
-      "id": "F10",
-      "title": "Favorites & history persisted",
-      "acceptance": "Favorites and listening history survive reload (localStorage), surfaced on their own pages.",
-      "verify": "npm run ci",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (headless test): favorite saved on release page persists across full page reload (localStorage store); history uses identical store (ASSUMED)."
-    },
-    {
-      "id": "F11",
-      "title": "Backend: durable registry + seed",
-      "acceptance": "GET /registry returns seeded demo catalog on the preview deployment (not []); manifest pointer survives cold starts (durable store or REGISTRY_MANIFEST env fallback documented); write path validated with Zod as before.",
-      "verify": "curl -s $PREVIEW_URL/registry | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>0'",
-      "passes": false,
-      "evidence": ""
-    },
-    {
-      "id": "F12",
-      "title": "Repo hygiene",
-      "acceptance": "dist/, *.swo, validator logs, test-ledger removed from git; .gitignore covers them; README quickstart corrected (real clone URL, real branch).",
-      "verify": "git ls-files | grep -E 'dist/|\\.swo|validator.*\\.log|test-ledger' | wc -l | grep -q '^0$'",
-      "passes": false,
-      "evidence": ""
-    },
-    {
-      "id": "F13",
-      "title": "Preview deployment",
-      "acceptance": "Fork deploys on Vercel; preview URL shared with user; frontend + api/ function both work there.",
-      "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: production live at https://fontainor-protocol-two.vercel.app (Vercel team tapiwas-projects-71e009e5, production branch set to v06-development, deploy 6a11d52). curl: html 200 w/ split bundles; /assets immutable cache; /covers+/audio 7d cache; /audio range 206; /registry 200 (empty -> app falls back to bundled snapshot). Headless click-through on live: 10 tracks, real audio 1:30 playing, next-track works, 0 reloads across 5 routes, player persists, first load networkidle 1.03s."
-    },
-    {
-      "id": "F14",
-      "name": "Demo catalog: real audio + artwork",
-      "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
-    },
-    {
-      "id": "F15",
-      "name": "Recommendations (Made for you + More like this)",
-      "description": "Client-side engine (src/lib/recommend.ts): taste profile from favorites (w=3) + recency-weighted history, tag/artist affinity scoring, freshness tiebreak, per-card reasons, cold-start hides rail. Home rail + release-page similar section.",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 headless: after favoriting+playing Solder (techno/industrial/electronic), home rail shows Static Bloom/Terraform EP/Night Bus to Kumasi with 'Because you played Solder'; More-like-this shows #electronic matches. Cold start: rail absent in fresh context."
-    },
-    {
-      "id": "F16",
-      "name": "Supporting pages + footer",
-      "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
-    },
-    {
-      "id": "F17",
-      "name": "Persistent player: queue, prev/next, auto-advance",
-      "description": "Spotify-style: global player survives route changes; registry-order queue with wrap-around prev/next in PlayerBar; prev restarts track past 3s; track end auto-plays next (real audio + simulated path).",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 headless vs dist: play->next->next->prev = Genesis->Night Bus->Solder->Night Bus; seek-to-end auto-advances to next track still playing; nav across /library /editorial /faq /: 0 page reloads, player bar persists. CI green."
-    },
-    {
-      "id": "F18",
-      "name": "Performance pass",
-      "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
-    },
-    {
-      "id": "F19",
-      "name": "Expanded player: queue panel + shuffle",
-      "description": "Queue button on player bar opens Spotify-style panel: Now Playing, Up Next (next 8, clickable to jump), 'Shuffle on / Playing in order' indicator. Shuffle toggle (Fisher-Yates, current track pinned first; next/prev/auto-advance follow shuffled order; new releases appended).",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26 headless vs dist: panel shows Now Playing + 8 up-next rows; shuffle toggle flips indicator; clicking up-next row 'Solder' starts playing Solder; disable shuffle returns to registry order; panel persists across navigation; 0 page errors. Screenshot reviewed. CI green."
-    },
-    {
-      "id": "F20",
-      "name": "Stale-chunk black screen fix",
-      "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
-    },
-    {
-      "id": "F21",
-      "title": "Fullscreen Now Playing + Media Session (background/notification controls)",
-      "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
-      "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
-      "passes": true,
-      "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
-    },
-    {
-      "id": "F22",
-      "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
-      "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
-      "passes": true,
-      "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
-    },
-    {
-      "id": "F23",
-      "title": "Reliable, smooth touch gestures (Android) + swipe-down-anywhere close + compact mobile footer",
-      "acceptance": "Mini player: touch-action none (page-scroll flicks over it never misfire); opens only on a deliberate upward swipe decided at touchend (dominant vertical direction + >=48px distance OR fast fling), or tap; subtle GPU lift follows the finger. Fullscreen player: swipe-down ANYWHERE on the sheet (not just header) drags it with the finger via direct rAF transform writes (no React re-render per frame), closes on >110px or a fast fling, settles back otherwise; queue list and seek slider are drag-exempt (data-nodrag). Footer: compact single-row 3-column layout on phones.",
-      "passes": true,
-      "evidence": "2026-07-26 headless vs dist: gesture-fix-test.mjs 12/12 (touch-action none, diagonal/slow/downward swipes don't open, deliberate swipe opens, mid-drag transform translate3d follows finger, settle-back under threshold, artwork-area swipe closes, queue-list swipe doesn't close, footer 314px, 0 pageerrors) + spotify-player-test.mjs 12/12 regression. npm run ci green."
-    }
-  ]
+ "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
+ "features": [
+  {
+   "id": "F1",
+   "title": "CI gate + TypeScript/Tailwind scaffold",
+   "acceptance": "npm run ci (typecheck + build) passes on a fresh clone; old src/ removed; new app boots with vite dev.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: `npm run ci` (tsc --noEmit && vite build) exit 0; old src/*.jsx and committed dist/ removed from git; new TS entry src/main.tsx builds (dist/assets/index-B0Ccyi3T.js)."
+  },
+  {
+   "id": "F2",
+   "title": "Design system & visual identity",
+   "acceptance": "Design tokens (color, type ramp, spacing scale, radius ladder) defined once and used by all components; passes uxpeak rubric self-score with 0 blocker fails; dark music-forward identity distinct from old Bandcamp-clone look.",
+   "verify": "npm run ci && test -f src/styles/tokens.css",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: tokens in src/styles/index.css (@theme); npm run ci green; desktop+mobile screenshots reviewed against uxpeak hard rules (accent only on CTAs/active, radius ladder, 44px targets, value>label hierarchy). New dark identity distinct from old light Bandcamp look."
+  },
+  {
+   "id": "F3",
+   "title": "App shell: responsive nav + routing",
+   "acceptance": "Desktop sidebar + mobile bottom nav (44px targets), real routes for home/library/editorial/publish/profile/release detail, 404 handled, works at 375px and 1440px widths.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: rendered at 1440px (sidebar) and 375px (5-tab bottom nav w/ raised Publish CTA, 24px icons, 11px labels, safe-area) via headless chromium screenshots; react-router routes for all surfaces + 404."
+  },
+  {
+   "id": "F4",
+   "title": "Home feed (releases + editorial)",
+   "acceptance": "Home fetches /registry, renders release and editorial cards with skeleton loading and designed empty states; source banner (api/file/sample) preserved.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: home renders seeded /registry data (release grid + editorial strip), skeletons while loading, designed empty-state hero when registry empty; source banner logic ported (api/file/sample)."
+  },
+  {
+   "id": "F5",
+   "title": "Release detail + persistent audio player",
+   "acceptance": "Release page with cover/metadata/tags; global player bar persists across routes, play/pause/seek works with audioUri, keyboard accessible.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 (headless test): card play \u2192 persistent player bar appears, time advances (0:01\u21920:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
+  },
+  {
+   "id": "F6",
+   "title": "Library with working search/sort/filter",
+   "acceptance": "Virtualized grid (react-window) handles 500+ items; text search, sort (date/title/artist/price) and type filter actually filter results; global top-bar search wired to it.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' \u2192 /library?q=techno \u2192 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
+  },
+  {
+   "id": "F7",
+   "title": "Editorial reading view",
+   "acceptance": "Editorial list + article page with proper reading typography (body 140-170% line-height).",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: editorial list + article view render seeded articles with 17px/170% reading typography (screenshot)."
+  },
+  {
+   "id": "F8",
+   "title": "Phantom wallet auth + profile",
+   "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
+  },
+  {
+   "id": "F9",
+   "title": "Publish flow",
+   "acceptance": "Multi-step publish modal/page: metadata form (validated), cover + audio via chunk upload or TX-ID paste, POST /manifest, success/error/timeout states incl. mock modes (?mock=ok|writefail|400|timeout).",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 (demo mode \u2014 user has no funded Arweave wallet, chose mock publish): full publish flow live-tested headless against deployed site \u2014 wallet login -> #/publish shows demo-mode banner, form validated, submit -> 'Adding to the registry\u2026' -> done screen 'Published \u2014 demo mode.' with TX DEMO_*; publication persisted to localStorage (fontainor_local_pubs_v1), merged into registry view, visible in Library AND Profile 'Your publications' (commit ea0bb6c). Real-chain path (uploadAudioChunks + POST /upload + ?mock modes) unchanged and gated behind DEMO_PUBLISH=false; flipping to real Arweave needs only a funded wallet + DEMO_PUBLISH flip. npm run ci green."
+  },
+  {
+   "id": "F10",
+   "title": "Favorites & history persisted",
+   "acceptance": "Favorites and listening history survive reload (localStorage), surfaced on their own pages.",
+   "verify": "npm run ci",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 (headless test): favorite saved on release page persists across full page reload (localStorage store); history uses identical store (ASSUMED)."
+  },
+  {
+   "id": "F11",
+   "title": "Backend: durable registry + seed",
+   "acceptance": "GET /registry returns seeded demo catalog on the preview deployment (not []); manifest pointer survives cold starts (durable store or REGISTRY_MANIFEST env fallback documented); write path validated with Zod as before.",
+   "verify": "curl -s $PREVIEW_URL/registry | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>0'",
+   "passes": false,
+   "evidence": ""
+  },
+  {
+   "id": "F12",
+   "title": "Repo hygiene",
+   "acceptance": "dist/, *.swo, validator logs, test-ledger removed from git; .gitignore covers them; README quickstart corrected (real clone URL, real branch).",
+   "verify": "git ls-files | grep -E 'dist/|\\.swo|validator.*\\.log|test-ledger' | wc -l | grep -q '^0$'",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: git ls-files has 0 hits for dist/|.swo|validator logs|test-ledger; .gitignore covers dist/, *.swo, *.log, test-ledger/; 20 dead files removed (solana-install.sh 806K, stray server log, legacy one-off scripts, stale docs, unused logo2, empty-ref vault/genesis/services); README quickstart corrected (real clone URL tapiwamakandigona/fontainor-protocol, real branch v06-development, real commands); LICENSE merge-conflict markers resolved. npm run ci green after removals."
+  },
+  {
+   "id": "F13",
+   "title": "Preview deployment",
+   "acceptance": "Fork deploys on Vercel; preview URL shared with user; frontend + api/ function both work there.",
+   "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: production live at https://fontainor-protocol-two.vercel.app (Vercel team tapiwas-projects-71e009e5, production branch set to v06-development, deploy 6a11d52). curl: html 200 w/ split bundles; /assets immutable cache; /covers+/audio 7d cache; /audio range 206; /registry 200 (empty -> app falls back to bundled snapshot). Headless click-through on live: 10 tracks, real audio 1:30 playing, next-track works, 0 reloads across 5 routes, player persists, first load networkidle 1.03s."
+  },
+  {
+   "id": "F14",
+   "name": "Demo catalog: real audio + artwork",
+   "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
+  },
+  {
+   "id": "F15",
+   "name": "Recommendations (Made for you + More like this)",
+   "description": "Client-side engine (src/lib/recommend.ts): taste profile from favorites (w=3) + recency-weighted history, tag/artist affinity scoring, freshness tiebreak, per-card reasons, cold-start hides rail. Home rail + release-page similar section.",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 headless: after favoriting+playing Solder (techno/industrial/electronic), home rail shows Static Bloom/Terraform EP/Night Bus to Kumasi with 'Because you played Solder'; More-like-this shows #electronic matches. Cold start: rail absent in fresh context."
+  },
+  {
+   "id": "F16",
+   "name": "Supporting pages + footer",
+   "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
+  },
+  {
+   "id": "F17",
+   "name": "Persistent player: queue, prev/next, auto-advance",
+   "description": "Spotify-style: global player survives route changes; registry-order queue with wrap-around prev/next in PlayerBar; prev restarts track past 3s; track end auto-plays next (real audio + simulated path).",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 headless vs dist: play->next->next->prev = Genesis->Night Bus->Solder->Night Bus; seek-to-end auto-advances to next track still playing; nav across /library /editorial /faq /: 0 page reloads, player bar persists. CI green."
+  },
+  {
+   "id": "F18",
+   "name": "Performance pass",
+   "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
+  },
+  {
+   "id": "F19",
+   "name": "Expanded player: queue panel + shuffle",
+   "description": "Queue button on player bar opens Spotify-style panel: Now Playing, Up Next (next 8, clickable to jump), 'Shuffle on / Playing in order' indicator. Shuffle toggle (Fisher-Yates, current track pinned first; next/prev/auto-advance follow shuffled order; new releases appended).",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26 headless vs dist: panel shows Now Playing + 8 up-next rows; shuffle toggle flips indicator; clicking up-next row 'Solder' starts playing Solder; disable shuffle returns to registry order; panel persists across navigation; 0 page errors. Screenshot reviewed. CI green."
+  },
+  {
+   "id": "F20",
+   "name": "Stale-chunk black screen fix",
+   "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
+  },
+  {
+   "id": "F21",
+   "title": "Fullscreen Now Playing + Media Session (background/notification controls)",
+   "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
+   "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
+  },
+  {
+   "id": "F22",
+   "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
+   "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
+   "passes": true,
+   "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
+  },
+  {
+   "id": "F23",
+   "title": "Reliable, smooth touch gestures (Android) + swipe-down-anywhere close + compact mobile footer",
+   "acceptance": "Mini player: touch-action none (page-scroll flicks over it never misfire); opens only on a deliberate upward swipe decided at touchend (dominant vertical direction + >=48px distance OR fast fling), or tap; subtle GPU lift follows the finger. Fullscreen player: swipe-down ANYWHERE on the sheet (not just header) drags it with the finger via direct rAF transform writes (no React re-render per frame), closes on >110px or a fast fling, settles back otherwise; queue list and seek slider are drag-exempt (data-nodrag). Footer: compact single-row 3-column layout on phones.",
+   "passes": true,
+   "evidence": "2026-07-26 headless vs dist: gesture-fix-test.mjs 12/12 (touch-action none, diagonal/slow/downward swipes don't open, deliberate swipe opens, mid-drag transform translate3d follows finger, settle-back under threshold, artwork-area swipe closes, queue-list swipe doesn't close, footer 314px, 0 pageerrors) + spotify-player-test.mjs 12/12 regression. npm run ci green."
+  }
+ ]
 }

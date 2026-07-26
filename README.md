@@ -2,13 +2,13 @@
   <img src="assets/logo.png" alt="Fontainor Protocol Full-Stack Header Logo" width="800" height="240">
 </p>
 
-# Fontainor Protocol (v0.5.0-Mainnet Build)
+# Fontainor Protocol
 
 Fontainor is a high-performance, decentralized music equity registry and asset distribution protocol built on Arweave with trustless financial settlement via Solana. It provides a serverless platform for creators, allowing them to publish media and manage editorial content, with protocol nodes handling data-etching and payment splits.
 
 ---
 
-**Production Link:** [https://fontainor-protocol.vercel.app](https://fontainor-protocol.vercel.app)
+**Production Link:** [https://fontainor-protocol-two.vercel.app](https://fontainor-protocol-two.vercel.app)
 
 ## 📐 Core Architectural Strengths
 
@@ -16,32 +16,45 @@ Fontainor is a high-performance, decentralized music equity registry and asset d
 * **Cryptographic Sovereign Identity:** Uses Phantom wallet signature verification for authentication, bypassing the need for a backend database.
 * **Omni-Asset Stablecoin Transfers:** Supports native SOL, USDC, and USDT, executing a 98% artist / 2% treasury split directly on the Solana Mainnet-Beta network.
 * **Type-Segregated Registry Mapping:** Explicitly separates `release` (audio) and `editorial` (text) content for efficient data management.
-* **Disaster Recovery:** Implements a 10-TxID rolling rollback log to ensure data persistence.
 
 ---
 
-## 🏁 Quickstart Production Build Instructions
+## 🏁 Quickstart
 
-### 📦 1. Clone and Install Dependencies
+### 📦 1. Clone and install
+
 ```bash
-git clone https://github.com
+git clone https://github.com/tapiwamakandigona/fontainor-protocol.git
 cd fontainor-protocol
-git checkout production-mainnet
+git checkout v06-development
 npm install
 ```
 
-### 🔑 2. Configure Environment Rules
-Create a `.env` file in your root folder for the Authority Keypair (use a strict `SOLANA_PRIVATE_KEY` array configuration).
-```text
-SOLANA_RPC_URL="https://solana.com"
-SOLANA_PRIVATE_KEY="[...]"
+### 🚀 2. Run locally
+
+```bash
+npm run dev        # frontend (Vite)
+node api-server.js # API (Express, same function Vercel runs)
 ```
 
-### 🚀 3. Compile the Serverless Bundle
+### ✅ 3. Verify and build
+
 ```bash
-npm run build
+npm run ci         # typecheck + production build → dist/
 ```
-This prepares the `dist/` folder, ready for deployment to Vercel.
+
+Deployment: pushes to `v06-development` auto-deploy to Vercel (static `dist/` + `api/index.js` serverless function, see `vercel.json`).
+
+---
+
+## 🗂 Repo layout
+
+- `src/` — React + TypeScript frontend (Vite, Tailwind v4)
+- `api/` — Express serverless function (registry / upload / payment)
+- `public/` — static assets incl. demo audio, covers, and fallback `registry.json`
+- `api-server.js` — runs the same API locally (`npm start`)
+- `docs/` — architecture, changelog, and design docs
+- State files: `PROJECT.md` (decisions), `features.json` (definition of done), `progress.md` (append-only log)
 
 ---
 

@@ -118,9 +118,6 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
  * Main orchestration entry point.
  * Coordinates verified payment validation before triggering local social database mutations.
  */
-
- * Coordinates verified payment validation before triggering local social database mutations.
- */
 export async function handlePaymentProcessing(registry, paymentDetails) {
     console.log("--- Starting Cryptographic Payment Orchestration ---");
 
