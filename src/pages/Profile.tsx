@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
-import { IconPublish, IconSpinner, IconWallet } from '../components/icons'
+import { IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { shortAddress, useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -61,9 +61,25 @@ export default function Profile() {
         }
       />
 
-      <div className="mb-8 rounded-card border border-line bg-surface p-4">
+      <div className="mb-6 rounded-card border border-line bg-surface p-4">
         <span className="text-[12px] text-faint">Wallet address</span>
         <p className="mt-1 break-all text-[13px] tabular-nums text-body">{user.address}</p>
+      </div>
+
+      {/* quick links — the sidebar is desktop-only, so surface these here for mobile */}
+      <div className="mb-8 grid grid-cols-2 gap-3 lg:hidden">
+        <Link
+          to="/favorites"
+          className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3.5 text-sm font-medium text-body transition-colors hover:bg-raised hover:text-ink"
+        >
+          <IconHeart size={18} className="text-accent" /> Favorites
+        </Link>
+        <Link
+          to="/history"
+          className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3.5 text-sm font-medium text-body transition-colors hover:bg-raised hover:text-ink"
+        >
+          <IconHistory size={18} className="text-accent" /> History
+        </Link>
       </div>
 
       <h2 className="mb-4 text-xl font-semibold">Your publications</h2>

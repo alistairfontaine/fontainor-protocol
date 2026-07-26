@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { IconArweave, IconCheck, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Banner, Button, Chip, EmptyState, PageHead } from '../components/ui'
-import { publishManifest, uploadAudioChunks, type PublishResult } from '../lib/api'
+import { DEMO_PUBLISH, publishDemo, publishManifest, uploadAudioChunks, type PublishResult } from '../lib/api'
 import { buildAsset, type AssetType } from '../lib/registry'
 import { useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -86,15 +86,20 @@ export default function Publish() {
     let finalAudioUri = audioUri.trim()
 
     if (type === 'release' && audioMode === 'file' && audioFile) {
-      setPhase('uploading')
-      setProgress(0)
-      const up = await uploadAudioChunks(audioFile, setProgress)
-      if (!up.ok) {
-        setPhase('form')
-        setResult({ ok: false, failure: 'write', msg: up.error ?? 'Audio upload failed.', txId: null })
-        return
+      if (DEMO_PUBLISH) {
+        // demo mode: no Arweave writer — play the file from this session's memory
+        finalAudioUri = URL.createObjectURL(audioFile)
+      } else {
+        setPhase('uploading')
+        setProgress(0)
+        const up = await uploadAudioChunks(audioFile, setProgress)
+        if (!up.ok) {
+          setPhase('form')
+          setResult({ ok: false, failure: 'write', msg: up.error ?? 'Audio upload failed.', txId: null })
+          return
+        }
+        finalAudioUri = up.audioUri ?? ''
       }
-      finalAudioUri = up.audioUri ?? ''
     }
 
     setPhase('etching')
@@ -109,7 +114,7 @@ export default function Publish() {
       audioUri: type === 'release' ? finalAudioUri : '',
       coverUri: coverUri.trim(),
     })
-    const res = await publishManifest(asset)
+    const res = DEMO_PUBLISH ? await publishDemo(asset) : await publishManifest(asset)
     setResult(res)
     if (res.ok) {
       setPhase('done')
@@ -126,12 +131,14 @@ export default function Publish() {
           <IconSpinner size={26} />
         </div>
         <h1 className="mt-5 text-2xl font-semibold">
-          {phase === 'uploading' ? 'Uploading audio…' : 'Etching onto Arweave…'}
+          {phase === 'uploading' ? 'Uploading audio…' : DEMO_PUBLISH ? 'Adding to the registry…' : 'Etching onto Arweave…'}
         </h1>
         <p className="mt-2 text-sm text-muted">
           {phase === 'uploading'
             ? 'Streaming your track in 256KB chunks to the permanent store.'
-            : 'Committing the updated registry manifest. This can take a few moments — keep the tab open.'}
+            : DEMO_PUBLISH
+              ? 'Demo mode — recording your release locally. No chain write happens yet.'
+              : 'Committing the updated registry manifest. This can take a few moments — keep the tab open.'}
         </p>
         {phase === 'uploading' && (
           <div className="mx-auto mt-6 h-1.5 w-full overflow-hidden rounded-full bg-raised">
@@ -148,7 +155,7 @@ export default function Publish() {
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-card bg-ok/10 text-ok">
           <IconCheck size={28} />
         </div>
-        <h1 className="mt-5 text-2xl font-semibold">Published, permanently.</h1>
+        <h1 className="mt-5 text-2xl font-semibold">{DEMO_PUBLISH ? 'Published — demo mode.' : 'Published, permanently.'}</h1>
         <p className="mt-2 text-sm text-muted">{result.msg}</p>
         {result.txId && (
           <p className="mt-4 break-all rounded-btn bg-surface px-4 py-3 text-[12px] tabular-nums text-muted ring-1 ring-line">
@@ -183,6 +190,13 @@ export default function Publish() {
         title="Publish"
         sub="One write, permanent record. Your release is stored on Arweave and listed in the registry."
       />
+
+      {DEMO_PUBLISH && (
+        <Banner tone="info">
+          Demo mode: no Arweave wallet is funded yet, so publishes are saved in this browser and appear across the app —
+          they are not written on-chain. Everything moves to real permanent storage once a wallet is configured.
+        </Banner>
+      )}
 
       {result && !result.ok && (
         <Banner tone="warn">
@@ -256,7 +270,14 @@ export default function Publish() {
                   <input className={inputCls} value={audioUri} onChange={(e) => setAudioUri(e.target.value)} placeholder="https://arweave.net/…" />
                 </Field>
               ) : (
-                <Field label="" hint="Uploaded in 256KB chunks and written to Arweave by the registry node.">
+                <Field
+                  label=""
+                  hint={
+                    DEMO_PUBLISH
+                      ? 'Demo mode: the file plays from this session only and won\u2019t survive a reload — paste a hosted audio URL for something that persists.'
+                      : 'Uploaded in 256KB chunks and written to Arweave by the registry node.'
+                  }
+                >
                   <input
                     type="file"
                     accept="audio/*"
@@ -277,7 +298,15 @@ export default function Publish() {
           <div className="flex items-center gap-2.5 text-[13px] text-muted">
             <IconArweave size={18} className="text-accent" />
             <span>
-              Writes are <span className="font-medium text-body">permanent</span> and public.
+              {DEMO_PUBLISH ? (
+                <>
+                  Demo publish — stored <span className="font-medium text-body">in this browser</span>, not on-chain.
+                </>
+              ) : (
+                <>
+                  Writes are <span className="font-medium text-body">permanent</span> and public.
+                </>
+              )}
             </span>
           </div>
           <Badge tone="accent">98% to you</Badge>

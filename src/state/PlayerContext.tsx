@@ -29,6 +29,51 @@ const Ctx = createContext<PlayerState | null>(null)
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
 const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
 
+// ── Media Session (Android/desktop notification + lock-screen controls) ──
+// Real <audio> playback keeps playing when the browser is backgrounded; the
+// Media Session API adds track metadata + cover art + working controls there.
+const hasMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator
+
+function setMediaMetadata(rel: Release) {
+  if (!hasMediaSession) return
+  try {
+    const artwork: MediaImage[] = []
+    if (rel.coverUrl) {
+      // absolute URL so the artwork resolves inside the browser's media UI
+      const src = new URL(rel.coverUrl, location.origin).href
+      artwork.push({ src, sizes: '512x512', type: 'image/jpeg' })
+    }
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: rel.title,
+      artist: rel.artist,
+      album: rel.label ?? 'Fontainor',
+      artwork,
+    })
+  } catch {
+    /* metadata is best-effort — never let it break playback */
+  }
+}
+
+function setMediaPlaybackState(playing: boolean) {
+  if (!hasMediaSession) return
+  try {
+    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
+  } catch {
+    /* best-effort */
+  }
+}
+
+function setMediaPosition(duration: number, position: number) {
+  if (!hasMediaSession || typeof navigator.mediaSession.setPositionState !== 'function') return
+  try {
+    if (isFinite(duration) && duration > 0) {
+      navigator.mediaSession.setPositionState({ duration, position: Math.min(position, duration), playbackRate: 1 })
+    }
+  } catch {
+    /* best-effort */
+  }
+}
+
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Release | null>(null)
   const [playing, setPlaying] = useState(false)
@@ -112,14 +157,20 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setPos(0)
       setCur(0)
 
+      setMediaMetadata(rel)
+
       if (rel.audio) {
         const a = new Audio(rel.audio)
         audioRef.current = a
-        a.addEventListener('loadedmetadata', () => setDur(a.duration || 0))
+        a.addEventListener('loadedmetadata', () => {
+          setDur(a.duration || 0)
+          setMediaPosition(a.duration || 0, 0)
+        })
         a.addEventListener('timeupdate', () => {
           setCur(a.currentTime)
           setDur(a.duration || 0)
           setPos(a.duration ? a.currentTime / a.duration : 0)
+          setMediaPosition(a.duration || 0, a.currentTime)
         })
         a.addEventListener('ended', () => {
           const n = stepFrom(1)
@@ -200,6 +251,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => {
     stopSim()
     clearAudio()
+    if (hasMediaSession) {
+      try {
+        navigator.mediaSession.metadata = null
+        navigator.mediaSession.playbackState = 'none'
+      } catch {
+        /* best-effort */
+      }
+    }
     setCurrent(null)
     currentRef.current = null
     setPlaying(false)
@@ -211,6 +270,55 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     stopSim()
     clearAudio()
+  }, [])
+
+  // media notification play/pause state mirrors ours
+  useEffect(() => {
+    if (current) setMediaPlaybackState(playing)
+  }, [playing, current])
+
+  // Media Session action handlers (notification / lock-screen buttons).
+  // Registered once; handlers read the latest callbacks through a ref.
+  const actionsRef = useRef({ playing: false, toggle: () => {}, next: () => {}, prev: () => {}, seek: (_f: number) => {} })
+  useEffect(() => {
+    actionsRef.current = { playing, toggle, next, prev, seek }
+  }, [playing, toggle, next, prev, seek])
+  useEffect(() => {
+    if (!hasMediaSession) return
+    const ms = navigator.mediaSession
+    const bind = (action: MediaSessionAction, handler: MediaSessionActionHandler) => {
+      try {
+        ms.setActionHandler(action, handler)
+      } catch {
+        /* action not supported on this platform */
+      }
+    }
+    bind('play', () => {
+      if (!actionsRef.current.playing) actionsRef.current.toggle()
+    })
+    bind('pause', () => {
+      if (actionsRef.current.playing) actionsRef.current.toggle()
+    })
+    bind('previoustrack', () => {
+      actionsRef.current.prev()
+    })
+    bind('nexttrack', () => {
+      actionsRef.current.next()
+    })
+    bind('seekto', (details) => {
+      const a = audioRef.current
+      const d = a?.duration
+      if (details.seekTime != null && d && isFinite(d) && d > 0) actionsRef.current.seek(details.seekTime / d)
+    })
+    return () => {
+      for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as MediaSessionAction[]) {
+        try {
+          ms.setActionHandler(action, null)
+        } catch {
+          /* ignore */
+        }
+      }
+    }
   }, [])
 
   useEffect(() => {

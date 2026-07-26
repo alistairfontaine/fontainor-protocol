@@ -3,13 +3,15 @@ import { Link } from 'react-router-dom'
 import { fmtTime } from '../lib/registry'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconClose, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { NowPlaying } from './NowPlaying'
+import { IconChevronUp, IconClose, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
 
 export function PlayerBar() {
   const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close } =
     usePlayer()
   const barRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false)
+  const [expanded, setExpanded] = useState(false)
 
   const onSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -21,9 +23,12 @@ export function PlayerBar() {
     [seek],
   )
 
-  // close the queue panel when playback is closed
+  // close the queue panel + fullscreen view when playback is closed
   useEffect(() => {
-    if (!current) setOpen(false)
+    if (!current) {
+      setOpen(false)
+      setExpanded(false)
+    }
   }, [current])
 
   if (!current) return null
@@ -151,9 +156,17 @@ export function PlayerBar() {
             </button>
           </div>
 
-          <Link to={`/release/${encodeURIComponent(current.id)}`} className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
+          <button
+            onClick={() => setExpanded(true)}
+            className="group relative h-11 w-11 shrink-0 cursor-pointer overflow-hidden rounded-chip"
+            aria-label="Open fullscreen player"
+            title="Now playing"
+          >
             <Cover rel={current} />
-          </Link>
+            <span className="absolute inset-0 grid place-items-center bg-bg/60 opacity-0 transition-opacity group-hover:opacity-100">
+              <IconChevronUp size={20} className="text-ink" />
+            </span>
+          </button>
 
           <div className="min-w-0 flex-1">
             <Link to={`/release/${encodeURIComponent(current.id)}`} className="block truncate text-sm font-medium text-ink hover:text-accent">
@@ -161,6 +174,15 @@ export function PlayerBar() {
             </Link>
             <span className="block truncate text-[13px] text-muted">{current.artist}</span>
           </div>
+
+          <button
+            onClick={() => setExpanded(true)}
+            className="hidden h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-faint transition-colors hover:bg-raised hover:text-body sm:grid"
+            aria-label="Open fullscreen player"
+            title="Fullscreen player"
+          >
+            <IconChevronUp size={19} />
+          </button>
 
           <span className="hidden shrink-0 text-[12px] tabular-nums text-muted sm:block">
             {fmtTime(cur)} / {fmtTime(dur)}
@@ -199,6 +221,8 @@ export function PlayerBar() {
           </button>
         </div>
       </div>
+
+      <NowPlaying open={expanded} onClose={() => setExpanded(false)} />
     </div>
   )
 }

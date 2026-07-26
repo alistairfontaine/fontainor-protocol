@@ -1,3 +1,4 @@
+import { addLocalPublication } from './localPublish'
 import { parseRegistryText, type Release } from './registry'
 
 // Same-origin in production (vercel.json rewrites /registry → api function);
@@ -40,6 +41,11 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
   return { data: fallback, source: 'sample', repaired: false }
 }
 
+// Demo publish mode: no funded Arweave wallet yet, so publishes are stored in
+// the browser (localStorage) and merged into the registry view. Set to false
+// once a funded wallet keyfile is configured server-side.
+export const DEMO_PUBLISH = true
+
 export type PublishFailure = 'validation' | 'write' | 'timeout' | 'network'
 
 export interface PublishResult {
@@ -58,6 +64,21 @@ function toRawArray(currentRaw: unknown): unknown[] {
   if (o && Array.isArray(o.assets)) return (o.assets as unknown[]).slice()
   if (o && typeof o === 'object') return [o]
   return []
+}
+
+/** Demo-mode publish: persist to the browser, no chain write. */
+export async function publishDemo(newAsset: Record<string, unknown>): Promise<PublishResult> {
+  await new Promise((r) => setTimeout(r, 900)) // let the etching state read as deliberate
+  try {
+    addLocalPublication(newAsset)
+  } catch {
+    /* storage best-effort */
+  }
+  return {
+    ok: true,
+    msg: 'Published in demo mode — saved in this browser, visible across the app. It will move on-chain once an Arweave wallet is funded.',
+    txId: 'DEMO_' + Date.now().toString(36).toUpperCase(),
+  }
 }
 
 /** Append the new asset to the current registry and POST the full manifest. */

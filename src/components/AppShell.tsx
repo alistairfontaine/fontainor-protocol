@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Footer } from './Footer'
-import { IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
+import { IconClose, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
 import { PlayerBar } from './PlayerBar'
 
 // ── top bar ─────────────────────────────────────────────────
@@ -51,6 +51,63 @@ function SearchBox() {
         aria-label="Search the registry"
       />
     </div>
+  )
+}
+
+/** Mobile search: icon button in the header expands a full-width input row (RESP-01). */
+function MobileSearch() {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const ref = useRef<HTMLInputElement>(null)
+
+  // sync with /library?q=… like the desktop box
+  useEffect(() => {
+    if (location.pathname === '/library') {
+      const params = new URLSearchParams(location.search)
+      setQ(params.get('q') ?? '')
+    }
+  }, [location])
+
+  useEffect(() => {
+    if (open) ref.current?.focus()
+  }, [open])
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className={`grid h-10 w-10 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised sm:hidden ${
+          open ? 'bg-raised text-ink' : 'text-body'
+        }`}
+        aria-label={open ? 'Close search' : 'Search'}
+        aria-expanded={open}
+      >
+        {open ? <IconClose size={19} /> : <IconSearch size={19} />}
+      </button>
+      {open && (
+        <div className="absolute inset-x-0 top-full border-b border-line bg-bg/95 px-4 py-2.5 backdrop-blur sm:hidden">
+          <div className="relative">
+            <IconSearch size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-faint" />
+            <input
+              ref={ref}
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  navigate(q ? `/library?q=${encodeURIComponent(q)}` : '/library')
+                  setOpen(false)
+                }
+              }}
+              placeholder="Search releases, artists, tags…"
+              className="h-11 w-full rounded-btn border border-line bg-surface pl-10 pr-4 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:outline-none"
+              aria-label="Search the registry"
+            />
+          </div>
+        </div>
+      )}
+    </>
   )
 }
 
@@ -176,7 +233,10 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
             fontainor<span className="text-accent">.</span>
           </NavLink>
           <SearchBox />
-          <div className="ml-auto flex items-center gap-2">{walletSlot}</div>
+          <div className="ml-auto flex items-center gap-2">
+            <MobileSearch />
+            {walletSlot}
+          </div>
         </div>
       </header>
 

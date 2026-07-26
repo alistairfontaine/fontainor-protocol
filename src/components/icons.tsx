@@ -136,6 +136,18 @@ export const IconClose = (p: IconProps) => (
   </Svg>
 )
 
+export const IconChevronDown = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m6 9.5 6 6 6-6" />
+  </Svg>
+)
+
+export const IconChevronUp = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="m6 14.5 6-6 6 6" />
+  </Svg>
+)
+
 export const IconBack = (p: IconProps) => (
   <Svg {...p}>
     <path d="m14.5 5.5-6.5 6.5 6.5 6.5" />
