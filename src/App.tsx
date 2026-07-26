@@ -26,7 +26,15 @@ import { RegistryProvider } from './state/RegistryContext'
 
 function ScrollToTop() {
   const { pathname } = useLocation()
-  useEffect(() => window.scrollTo(0, 0), [pathname])
+  // Body MUST be a block, never `() => window.scrollTo(...)`: an implicit
+  // return hands scrollTo's return value to React as the effect CLEANUP.
+  // Stock browsers return undefined, but smooth-scroll extensions patch
+  // window.scrollTo to return a truthy object — React then calls it on the
+  // next navigation → "TypeError: n is not a function" crash (seen live on
+  // #/library, 2026-07-26). Same rule for every effect in this codebase.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
   return null
 }
 
