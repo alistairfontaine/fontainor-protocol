@@ -10,6 +10,9 @@ export default defineConfig({
         rollupOptions: { output: { inlineDynamicImports: true } },
       }
     : {
+        // sourcemaps stay on so minified stacks from user error reports
+        // (errlog / error screen) can be decoded — repo is public anyway
+        sourcemap: true,
         rollupOptions: {
           output: {
             manualChunks: {

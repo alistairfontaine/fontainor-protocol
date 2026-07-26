@@ -85,3 +85,12 @@
 - Hardening 1 (index.css): fade-up keyframes no longer animate opacity (transform only). A paused/stalled CSS animation applies its FIRST keyframe regardless of fill-mode (verified empirically) — previously `from { opacity:0 }` left Home/Library/Release/etc. invisible over the dark bg if the compositor froze (broken GPU, energy-saver throttling). Do not add opacity back.
 - Hardening 2 (main.tsx): root-level ErrorBoundary around <App> — inner boundary only wraps <Routes>, so an uncaught error in AppShell/PlayerBar/providers previously unmounted the ENTIRE tree (React 18) → bare #0b0d12 body, silent. Plus a last-resort window error/unhandledrejection handler that injects an inline-styled "Something went wrong + Reload" screen if #root ever ends up empty.
 - VERIFIED: npm run ci green; frozen-animation sim (all animations paused before boot, nav to library/release/editorial/faq) = opacity 1 + full text on every route (previously opacity 0 on library/release); empty-root sim = last-resort screen renders.
+
+## 2026-07-26 — Iteration: automatic error recovery + diagnosable crashes (RESILIENCE-01)
+User still hit the error screen on his Chrome after bf3ce21 — good news: something IS throwing on his machine (boundary catches it; reload recovers). Code audit found no unguarded throw (localStorage parses, player, registry all defensive), so the fix is a recovery ladder + real diagnostics instead of a click-to-reload dead end:
+- `src/lib/errlog.ts` (new): every uncaught error recorded to localStorage (`fontainor:errlog`, last 10, inspect via `window.__fontainorErrors()`), with route/source/stack/UA.
+- `ErrorBoundary`: recovery ladder — (1) silent re-render retry after 150ms; (2) if it re-throws within 10s, ONE automatic reload (15s guard, shared with chunk-reload key); (3) only then the error screen, now with copyable error details; (4) hashchange resets the boundary so other pages stay reachable.
+- `main.tsx` last-resort path: same ladder (record → guarded auto-reload → detailed screen with stack).
+- `vite.config.ts`: prod sourcemaps ON so user-reported minified stacks are decodable.
+VERIFIED (headless Chromium against built dist): transient render error → silent recovery, 0 reloads, content renders, 1 errlog entry; persistent render error → exactly 1 auto-reload then detailed screen with stack + working Copy button (no reload loop); window-level crash with emptied #root and spent guard → detailed last-resort screen. `npm run ci` green.
+Next: when the user hits it again, the screen/errlog gives the exact throw site → root-cause fix.
