@@ -70,8 +70,8 @@
       "title": "Publish flow",
       "acceptance": "Multi-step publish modal/page: metadata form (validated), cover + audio via chunk upload or TX-ID paste, POST /manifest, success/error/timeout states incl. mock modes (?mock=ok|writefail|400|timeout).",
       "verify": "npm run ci",
-      "passes": false,
-      "evidence": ""
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 (demo mode \u2014 user has no funded Arweave wallet, chose mock publish): full publish flow live-tested headless against deployed site \u2014 wallet login -> #/publish shows demo-mode banner, form validated, submit -> 'Adding to the registry\u2026' -> done screen 'Published \u2014 demo mode.' with TX DEMO_*; publication persisted to localStorage (fontainor_local_pubs_v1), merged into registry view, visible in Library AND Profile 'Your publications' (commit ea0bb6c). Real-chain path (uploadAudioChunks + POST /upload + ?mock modes) unchanged and gated behind DEMO_PUBLISH=false; flipping to real Arweave needs only a funded wallet + DEMO_PUBLISH flip. npm run ci green."
     },
     {
       "id": "F10",
@@ -153,6 +153,14 @@
       "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
       "passes": true,
       "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
+    },
+    {
+      "id": "F21",
+      "title": "Fullscreen Now Playing + Media Session (background/notification controls)",
+      "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
+      "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
     }
   ]
 }
