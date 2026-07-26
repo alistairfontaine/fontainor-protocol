@@ -34,6 +34,7 @@ export function PlayerBar() {
   if (!current) return null
 
   return (
+    <>
     <div
       className="fixed inset-x-0 bottom-16 z-40 lg:bottom-0"
       style={{ marginBottom: 'var(--safe-bottom)' }}
@@ -221,8 +222,10 @@ export function PlayerBar() {
           </button>
         </div>
       </div>
-
-      <NowPlaying open={expanded} onClose={() => setExpanded(false)} />
     </div>
+
+    {/* rendered outside the z-40 bar so it stacks above the bottom nav */}
+    <NowPlaying open={expanded} onClose={() => setExpanded(false)} />
+    </>
   )
 }
