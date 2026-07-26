@@ -1,19 +1,25 @@
 {
   "name": "fontainor-web",
   "private": true,
-  "version": "0.2.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "Fontainor Protocol — sovereign music registry frontend",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "ci": "npm run typecheck && npm run build",
     "arlocal": "arlocal",
     "start": "node server.js"
   },
   "dependencies": {
     "@solana/spl-token": "^0.4.15",
     "@solana/web3.js": "^1.98.4",
+    "@tailwindcss/vite": "^4.3.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-window": "^1.8.8",
     "@upstash/redis": "^1.38.0",
     "arweave": "^1.15.7",
     "bs58": "^6.0.0",
@@ -23,7 +29,9 @@
     "multer": "^2.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-router-dom": "^7.18.1",
     "react-window": "^1.8.11",
+    "tailwindcss": "^4.3.3",
     "zod": "^4.4.3"
   },
   "devDependencies": {
@@ -32,7 +40,7 @@
     "arlocal": "^1.1.66",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",
-    "typescript": "^6.0.3",
+    "typescript": "~5.6",
     "vite": "^5.4.2"
   }
 }

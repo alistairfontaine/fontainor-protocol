@@ -4,3 +4,8 @@ walletKey.json
 wallet-key.json
 .arlocal
 
+
+dist/
+*.swo
+*.log
+test-ledger/

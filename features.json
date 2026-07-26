@@ -1,13 +1,13 @@
 {
-  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria — that's a spec change, report it.",
+  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
   "features": [
     {
       "id": "F1",
       "title": "CI gate + TypeScript/Tailwind scaffold",
       "acceptance": "npm run ci (typecheck + build) passes on a fresh clone; old src/ removed; new app boots with vite dev.",
       "verify": "npm run ci",
-      "passes": false,
-      "evidence": ""
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: `npm run ci` (tsc --noEmit && vite build) exit 0; old src/*.jsx and committed dist/ removed from git; new TS entry src/main.tsx builds (dist/assets/index-B0Ccyi3T.js)."
     },
     {
       "id": "F2",
