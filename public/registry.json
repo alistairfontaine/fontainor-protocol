@@ -1,1 +1,300 @@
-[]
+[
+  {
+    "type": "release",
+    "id": "FONT-4WHPZ2Q17",
+    "title": "Fontainor Genesis",
+    "artist": "Alistair Fontaine",
+    "price": {
+      "amount": 29.99,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 200,
+      "minted": 137
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-05-29T08:46:04.538Z",
+    "tags": [
+      "ambient",
+      "genesis"
+    ],
+    "desc": "The first record etched into the registry. Twelve movements recorded in a decommissioned water tower, mixed to tape, committed to Arweave in a single write.",
+    "audioUri": null,
+    "coverUri": null,
+    "label": "Fontainor"
+  },
+  {
+    "type": "release",
+    "id": "FONT-K2NA8DLM1",
+    "title": "Night Bus to Kumasi",
+    "artist": "Ama Serwaa",
+    "price": {
+      "amount": 9.5,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 500,
+      "minted": 212
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-06-03T21:12:00.000Z",
+    "tags": [
+      "highlife",
+      "electronic"
+    ],
+    "desc": "Highlife guitar loops over broken-beat drums. Recorded between Accra and Kumasi on an eight-hour ride.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-9QPRT03XE",
+    "title": "Solder",
+    "artist": "Vera Lindqvist",
+    "price": {
+      "amount": 14.0,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 150,
+      "minted": 150
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-06-11T10:30:00.000Z",
+    "tags": [
+      "techno",
+      "industrial"
+    ],
+    "desc": "Machine music for patient people. All synthesis from one rebuilt SH-101.",
+    "audioUri": null,
+    "coverUri": null,
+    "label": "Rautatehdas"
+  },
+  {
+    "type": "release",
+    "id": "FONT-MB7XW22AQ",
+    "title": "Field Notes, Vol. 1",
+    "artist": "The Cartographers",
+    "price": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "editions": {
+      "total": 0
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-06-18T16:05:00.000Z",
+    "tags": [
+      "field-recording",
+      "drone"
+    ],
+    "desc": "Free archive of location recordings: glaciers calving, substation hum, a market at dawn in Oaxaca.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-J5HHTR90Z",
+    "title": "Grape Soda",
+    "artist": "Marquis Dew",
+    "price": {
+      "amount": 4.99,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 1000,
+      "minted": 318
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-06-24T13:44:00.000Z",
+    "tags": [
+      "hip-hop",
+      "soul"
+    ],
+    "desc": "Summer singles chopped from thrift-store 45s. Loose, warm, unquantized.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-XC31LO8VN",
+    "title": "Aerials",
+    "artist": "Sana Whitfield",
+    "price": {
+      "amount": 19.0,
+      "currency": "SOL"
+    },
+    "editions": {
+      "total": 75,
+      "minted": 41
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-01T09:20:00.000Z",
+    "tags": [
+      "jazz",
+      "modal"
+    ],
+    "desc": "Quartet session cut live to two-track. No overdubs, one take per side.",
+    "audioUri": null,
+    "coverUri": null,
+    "label": "Blue Sable"
+  },
+  {
+    "type": "release",
+    "id": "FONT-P8D2VVK4S",
+    "title": "Terraform EP",
+    "artist": "0x61 Collective",
+    "price": {
+      "amount": 12.0,
+      "currency": "USDT"
+    },
+    "editions": {
+      "total": 300,
+      "minted": 96
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-08T19:58:00.000Z",
+    "tags": [
+      "bass",
+      "uk-garage"
+    ],
+    "desc": "Four cuts of sub-heavy garage from the collective's first on-chain session.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-QW09ZH55B",
+    "title": "Lullabies for Servers",
+    "artist": "Datacenter Choir",
+    "price": {
+      "amount": 7.77,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 250,
+      "minted": 229
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-14T02:13:00.000Z",
+    "tags": [
+      "ambient",
+      "generative"
+    ],
+    "desc": "Generative choir pieces trained on cooling-fan harmonics. Best played quietly, forever.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-RRT6Y1E0C",
+    "title": "Meridian Lines",
+    "artist": "Yusuf Adeyemi",
+    "price": {
+      "amount": 11.0,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 400,
+      "minted": 58
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-19T11:40:00.000Z",
+    "tags": [
+      "afrobeat",
+      "jazz"
+    ],
+    "desc": "Big-band afrobeat suite in three parts, recorded in Lagos with a nine-piece horn section.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "release",
+    "id": "FONT-ZK4M3NP7D",
+    "title": "Static Bloom",
+    "artist": "Petra & The Wire",
+    "price": {
+      "amount": 8.0,
+      "currency": "USDC"
+    },
+    "editions": {
+      "total": 600,
+      "minted": 0
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-24T15:25:00.000Z",
+    "tags": [
+      "shoegaze",
+      "noise-pop"
+    ],
+    "desc": "Debut on the registry: six songs of tape-saturated noise-pop, mastered loud on purpose.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "editorial",
+    "id": "FONT-ED001A",
+    "title": "Why we put our masters on Arweave",
+    "artist": "Alistair Fontaine",
+    "price": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "editions": {
+      "total": 0
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-06-20T12:00:00.000Z",
+    "tags": [
+      "protocol",
+      "essays"
+    ],
+    "desc": "When a streaming platform folds, its catalog goes with it. We have watched it happen four times in ten years.\n\nArweave changes the deal: you pay once, and the file outlives the company, the label, and probably you. That permanence changes how you think about a discography \u2014 it stops being inventory and becomes a record, in the oldest sense of the word.\n\nThis piece walks through what actually happens when you publish on Fontainor: the manifest, the transaction, the gateway, and why a 98/2 split is not a promotional stunt but a consequence of removing the middle.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "editorial",
+    "id": "FONT-ED002B",
+    "title": "Liner notes are coming back",
+    "artist": "Ama Serwaa",
+    "price": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "editions": {
+      "total": 0
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-05T12:00:00.000Z",
+    "tags": [
+      "culture",
+      "writing"
+    ],
+    "desc": "Streaming killed the liner note. There was nowhere to put it \u2014 no gatefold, no insert, just a thumbnail and a play button.\n\nA registry that stores text as readily as audio brings the form back. An editorial entry sits next to the release, permanently, written by the person who made the record. That proximity matters.\n\nHere is what I put in mine: who played what, where we slept, what the bus driver said at 3am outside Nkawkaw, and why track four is in 7/8.",
+    "audioUri": null,
+    "coverUri": null
+  },
+  {
+    "type": "editorial",
+    "id": "FONT-ED003C",
+    "title": "A field guide to edition pricing",
+    "artist": "Vera Lindqvist",
+    "price": {
+      "amount": 0,
+      "currency": "USD"
+    },
+    "editions": {
+      "total": 0
+    },
+    "status": "REGISTERED_ON_FONTAINOR",
+    "date": "2026-07-16T12:00:00.000Z",
+    "tags": [
+      "economics",
+      "artists"
+    ],
+    "desc": "Editions are the most misunderstood lever on the platform. Price low with a big edition and you optimize for reach; price high with a small one and you optimize for patronage.\n\nSolder sold out at 150 copies because the people who wanted it were the same people who would have bought the record twice on vinyl. Know which curve you are on.\n\nSome practical numbers from three releases, including the one that did not work.",
+    "audioUri": null,
+    "coverUri": null
+  }
+]
