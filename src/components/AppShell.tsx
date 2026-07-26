@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { Footer } from './Footer'
 import { IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
 import { PlayerBar } from './PlayerBar'
 
@@ -181,7 +182,10 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
 
       <div className="mx-auto flex max-w-[1360px] gap-6 px-4 sm:px-6">
         <Sidebar />
-        <main className="min-w-0 flex-1 py-7 pb-40 lg:pb-32">{children}</main>
+        <main className="min-w-0 flex-1 py-7 pb-40 lg:pb-32">
+          {children}
+          <Footer />
+        </main>
       </div>
 
       <PlayerBar />

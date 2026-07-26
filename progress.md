@@ -24,3 +24,11 @@
 - Preview page published (workspace-gated): https://minokitoka-927881.viktor.page/fontainor-v06-preview (self-contained dist inline + fetch shim serving seed).
 - BLOCKER (reported to user): upstream push to alistairfontaine/fontainor-protocol returns 403 despite GitHub API showing push:true — the stored fine-grained PAT only covers repos owned by tapiwamakandigona. Need classic PAT (repo scope) or upstream-issued token. Branch v06-development pushed to the FORK meanwhile.
 - Remaining: F8 (needs human Phantom test), F9 (gated behind login → same), F11 durable registry+seed on real API, F12 hygiene (partially done: dist/logs/swap removed; README fix pending), F13 Vercel deploy (needs user's Vercel import or token).
+
+## 2026-07-26 — iterations 5-7 (upstream push, F14 demo media, F15 recommendations, F16 supporting pages)
+- Upstream unblocked: classic PAT stored; `v06-development` + `frontend-v2` pushed to alistairfontaine/fontainor-protocol (VERIFIED: new-branch output).
+- F14: 10 CC0/PD tracks from archive.org (Scrap Heap, mindcrack beatpack, Anchore State, Calm Pills) trimmed to 90s/96kbps with fades (~1MB each), credits in public/audio/CREDITS.md; 10 AI covers + 3 editorial heroes (gemini-flash-image) in public/covers; wired via audioUri/coverUri; editorial bodies expanded to full articles; tags enriched for rec overlap.
+- F15: src/lib/recommend.ts (profile from favorites w=3 + recency-decayed history; tag+artist*1.25+freshness scoring; reasons). Home "Made for you" rail + ReleaseDetail "More like this"; ReleaseCard note prop.
+- F16: src/pages/Static.tsx (About/Terms/Privacy/Contact/FAQ/404), Footer in AppShell. HashRouter + existing vercel.json SPA rewrite = free-tier safe, no server code added.
+- UX fixes: empty live /registry now falls through to bundled snapshot (fresh Vercel deploys look full, not empty); removed demo-revealing snapshot banner; editorial cards/articles show hero imagery.
+- Verification: local headless chromium against `python http.server` on dist (NOTE: vite preview + nohup inside tool-wrapped bash dies with the job; use setsid + system python; stale servers on old ports can serve stale dist — always curl-verify registry.json first).

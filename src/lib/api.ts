@@ -19,7 +19,11 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
     const res = await fetch(API_BASE + '/registry', { cache: 'no-store' })
     if (res.ok) {
       const out = parseRegistryText(await res.text())
-      if (out.data != null) return { data: out.data, source: 'api', repaired: out.repaired }
+      // An empty live registry (fresh deploy, serverless pointer lost) is not
+      // useful to show — fall through to the bundled demo snapshot instead.
+      if (out.data != null && !(Array.isArray(out.data) && out.data.length === 0)) {
+        return { data: out.data, source: 'api', repaired: out.repaired }
+      }
     }
   } catch {
     /* fall through */

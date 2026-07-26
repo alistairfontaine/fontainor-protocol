@@ -5,7 +5,7 @@ import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { IconHeart, IconPlay } from './icons'
 
-export function ReleaseCard({ rel }: { rel: Release }) {
+export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
   const { play } = usePlayer()
   const { ids, toggle } = useFavorites()
   const navigate = useNavigate()
@@ -59,7 +59,8 @@ export function ReleaseCard({ rel }: { rel: Release }) {
       </div>
 
       {/* HIER-02: value (title) loud, metadata quiet */}
-      <Link to={href} className="mt-3 block truncate text-[15px] font-medium leading-snug text-ink hover:text-accent">
+      {note && <span className="mt-2.5 block truncate text-[11px] font-medium uppercase tracking-wider text-faint">{note}</span>}
+      <Link to={href} className={`block truncate text-[15px] font-medium leading-snug text-ink hover:text-accent ${note ? 'mt-0.5' : 'mt-3'}`}>
         {rel.title}
       </Link>
       <button

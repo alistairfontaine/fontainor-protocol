@@ -34,14 +34,26 @@ export function EditorialList() {
             <Link
               key={a.id}
               to={`/editorial/${encodeURIComponent(a.id)}`}
-              className="group block rounded-card border border-line bg-surface p-5 transition-colors hover:border-line-strong sm:p-6"
+              className="group flex overflow-hidden rounded-card border border-line bg-surface transition-colors hover:border-line-strong"
             >
-              <div className="flex items-baseline gap-3 text-[12px] text-faint">
-                <span>{fmtDate(a.date) ?? '—'}</span>
-                <span className="font-medium text-muted">{a.artist}</span>
+              {a.coverUrl && (
+                <div className="hidden w-44 shrink-0 overflow-hidden sm:block md:w-56">
+                  <img
+                    src={a.coverUrl}
+                    alt=""
+                    loading="lazy"
+                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-[1.03]"
+                  />
+                </div>
+              )}
+              <div className="min-w-0 p-5 sm:p-6">
+                <div className="flex items-baseline gap-3 text-[12px] text-faint">
+                  <span>{fmtDate(a.date) ?? '—'}</span>
+                  <span className="font-medium text-muted">{a.artist}</span>
+                </div>
+                <h2 className="mt-1.5 text-xl font-semibold text-ink group-hover:text-accent">{a.title}</h2>
+                {a.desc && <p className="mt-2 line-clamp-2 max-w-2xl text-sm leading-relaxed text-muted">{a.desc}</p>}
               </div>
-              <h2 className="mt-1.5 text-xl font-semibold text-ink group-hover:text-accent">{a.title}</h2>
-              {a.desc && <p className="mt-2 line-clamp-2 max-w-2xl text-sm leading-relaxed text-muted">{a.desc}</p>}
             </Link>
           ))}
         </div>
@@ -93,6 +105,12 @@ export function EditorialArticle() {
         {fmtDate(article.date) ?? ''} · <span className="font-medium text-muted">{article.artist}</span>
       </div>
       <h1 className="mt-2 text-3xl font-bold leading-[1.15] sm:text-4xl">{article.title}</h1>
+
+      {article.coverUrl && (
+        <div className="mt-8 overflow-hidden rounded-card shadow-card">
+          <img src={article.coverUrl} alt="" className="aspect-[3/2] w-full object-cover" />
+        </div>
+      )}
 
       {/* reading typography: 17px / 170% (TYPE-01) */}
       <div className="mt-8 space-y-5 text-[17px] leading-[1.7] text-body">

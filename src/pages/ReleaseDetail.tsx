@@ -1,8 +1,11 @@
+import { useMemo } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
+import { ReleaseCard } from '../components/ReleaseCard'
 import { IconArweave, IconBack, IconExternal, IconHeart, IconPause, IconPlay, IconTag } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
-import { edLabel, fmtDate, isSold, priceLabel, prettyStatus } from '../lib/registry'
+import { similarTo } from '../lib/recommend'
+import { edLabel, fmtDate, isSold, priceLabel, prettyStatus, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -155,6 +158,24 @@ export default function ReleaseDetail() {
           </div>
         </div>
       </div>
+
+      <MoreLikeThis rel={rel} all={releases} />
     </div>
+  )
+}
+
+/** F15: similar releases by shared tags / same artist. */
+function MoreLikeThis({ rel, all }: { rel: Release; all: Release[] }) {
+  const recs = useMemo(() => similarTo(rel, all, 5), [rel, all])
+  if (recs.length === 0) return null
+  return (
+    <section className="mt-16" aria-label="More like this">
+      <h2 className="mb-4 text-xl font-semibold">More like this</h2>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {recs.map((r) => (
+          <ReleaseCard key={r.rel.id} rel={r.rel} note={r.reason} />
+        ))}
+      </div>
+    </section>
   )
 }

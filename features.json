@@ -104,6 +104,27 @@
       "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
       "passes": false,
       "evidence": ""
+    },
+    {
+      "id": "F14",
+      "name": "Demo catalog: real audio + artwork",
+      "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
+    },
+    {
+      "id": "F15",
+      "name": "Recommendations (Made for you + More like this)",
+      "description": "Client-side engine (src/lib/recommend.ts): taste profile from favorites (w=3) + recency-weighted history, tag/artist affinity scoring, freshness tiebreak, per-card reasons, cold-start hides rail. Home rail + release-page similar section.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless: after favoriting+playing Solder (techno/industrial/electronic), home rail shows Static Bloom/Terraform EP/Night Bus to Kumasi with 'Because you played Solder'; More-like-this shows #electronic matches. Cold start: rail absent in fresh context."
+    },
+    {
+      "id": "F16",
+      "name": "Supporting pages + footer",
+      "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
     }
   ]
 }
