@@ -1,6 +1,7 @@
 import { Suspense, lazy, useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { WalletButton } from './components/WalletButton'
 import Home from './pages/Home'
 import { AuthProvider } from './state/AuthContext'
@@ -45,6 +46,7 @@ export default function App() {
         <PlayerProvider>
           <ScrollToTop />
           <AppShell walletSlot={<WalletButton />}>
+            <ErrorBoundary>
             <Suspense fallback={<RouteFallback />}>
               <Routes>
                 <Route path="/" element={<Home />} />
@@ -64,6 +66,7 @@ export default function App() {
                 <Route path="*" element={<NotFound />} />
               </Routes>
             </Suspense>
+            </ErrorBoundary>
           </AppShell>
         </PlayerProvider>
       </RegistryProvider>

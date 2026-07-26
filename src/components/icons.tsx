@@ -98,6 +98,21 @@ export const IconPrev = ({ size = 24, className }: IconProps) => (
   </svg>
 )
 
+export const IconShuffle = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M3 7h3.2c1.1 0 2.13.5 2.8 1.37l5.2 6.76A3.5 3.5 0 0 0 17 16.5H21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M3 16.5h3.2c1.1 0 2.13-.5 2.8-1.37l.9-1.17M13.1 9.54l1.1-1.42A3.5 3.5 0 0 1 17 7.5H21" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="m18.6 4.9 2.7 2.6-2.7 2.6M18.6 13.9l2.7 2.6-2.7 2.6" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
+export const IconQueue = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M4 6.5h16M4 12h16M4 17.5h9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="m16.5 15.2 4 2.3-4 2.3v-4.6Z" />
+  </Svg>
+)
+
 export const IconHeart = ({ filled, ...p }: IconProps) => (
   <Svg {...p}>
     <path

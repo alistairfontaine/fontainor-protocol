@@ -12,6 +12,10 @@ interface PlayerState {
   dur: number
   /** whether prev/next have somewhere to go */
   hasQueue: boolean
+  shuffle: boolean
+  /** next tracks in play order (max 8) */
+  upNext: Release[]
+  toggleShuffle: () => void
   play: (rel: Release) => void
   toggle: () => void
   next: () => void
@@ -35,13 +39,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const simRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { push: pushHistory } = useHistoryLog()
   const { music } = useRegistry()
+  const [shuffle, setShuffle] = useState(false)
+  const [order, setOrder] = useState<string[] | null>(null) // shuffled id order when shuffle is on
 
-  // Queue = the playable catalog, in registry order. Kept in refs so the
-  // audio 'ended' listener always sees fresh data without re-binding.
+  // Effective queue = shuffled order (if on) else registry order. Kept in a
+  // ref so the audio 'ended' listener always sees fresh data without re-binding.
+  const queue = useMemo(() => {
+    if (!order) return music
+    const byId = new Map(music.map((r) => [r.id, r]))
+    const inOrder = order.map((id) => byId.get(id)).filter((r): r is Release => !!r)
+    // append anything new that wasn't around when shuffle was toggled
+    const seen = new Set(order)
+    return [...inOrder, ...music.filter((r) => !seen.has(r.id))]
+  }, [music, order])
   const queueRef = useRef<Release[]>([])
   useEffect(() => {
-    queueRef.current = music
-  }, [music])
+    queueRef.current = queue
+  }, [queue])
   const currentRef = useRef<Release | null>(null)
   useEffect(() => {
     currentRef.current = current
@@ -203,9 +217,44 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     document.body.classList.toggle('has-player', current != null)
   }, [current])
 
+  const toggleShuffle = useCallback(() => {
+    setShuffle((on) => {
+      if (on) {
+        setOrder(null)
+        return false
+      }
+      // Fisher-Yates over the catalog, current track pinned first
+      const ids = queueRef.current.map((r) => r.id)
+      for (let i = ids.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1))
+        ;[ids[i], ids[j]] = [ids[j], ids[i]]
+      }
+      const cid = currentRef.current?.id
+      if (cid) {
+        const k = ids.indexOf(cid)
+        if (k > 0) {
+          ids.splice(k, 1)
+          ids.unshift(cid)
+        }
+      }
+      setOrder(ids)
+      return true
+    })
+  }, [])
+
+  const upNext = useMemo(() => {
+    if (!queue.length) return []
+    const i = current ? queue.findIndex((r) => r.id === current.id) : -1
+    const out: Release[] = []
+    for (let k = 1; k <= Math.min(8, queue.length - 1); k++) {
+      out.push(queue[(i + k + queue.length) % queue.length])
+    }
+    return out
+  }, [queue, current])
+
   const value = useMemo<PlayerState>(
-    () => ({ current, playing, pos, cur, dur, hasQueue: music.length > 1, play, toggle, next, prev, seek, close }),
-    [current, playing, pos, cur, dur, music.length, play, toggle, next, prev, seek, close],
+    () => ({ current, playing, pos, cur, dur, hasQueue: queue.length > 1, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close }),
+    [current, playing, pos, cur, dur, queue.length, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -58,3 +58,8 @@
 ## Follow-up — "still reloading" report (2026-07-26 19:02)
 - Re-verified live with marker test (window.__marker survives client-side nav only): all 8 internal links on fontainor-protocol-two.vercel.app keep marker alive = zero full reloads. VERIFIED.
 - Old upstream fontainor-protocol.vercel.app confirmed visually distinct (light theme/blue buttons, login/signup) — user almost certainly still opening old URL (history/autocomplete). Sent side-by-side screenshots + "dark = new, white = old" check to DM thread 1785092558.
+
+## Iteration — black screen fix (F20) + expanded player (F19)
+- Black screen on /#/release/... : could NOT repro on live with fresh browser (renders fine, no console errors). Root cause: user's tab predated one of today's 3 redeploys; release route became lazy in perf pass -> old chunk URLs 404 -> dynamic import fails -> dead screen until manual reload. Fix: window 'vite:preloadError' -> one guarded auto-reload; ErrorBoundary around routes (auto-reload on chunk errors, styled ":(" screen + reload button otherwise).
+- Expanded player: PlayerContext gains shuffle state + shuffled order (Fisher-Yates, current pinned first, appends new releases) + upNext(8); queue panel in PlayerBar (Now Playing, clickable Up Next, shuffle/in-order indicator); shuffle buttons desktop+mobile; panel closes with player.
+- VERIFIED headless: see features.json F19/F20 evidence.

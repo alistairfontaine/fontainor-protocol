@@ -139,6 +139,20 @@
       "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
       "passes": true,
       "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
+    },
+    {
+      "id": "F19",
+      "name": "Expanded player: queue panel + shuffle",
+      "description": "Queue button on player bar opens Spotify-style panel: Now Playing, Up Next (next 8, clickable to jump), 'Shuffle on / Playing in order' indicator. Shuffle toggle (Fisher-Yates, current track pinned first; next/prev/auto-advance follow shuffled order; new releases appended).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless vs dist: panel shows Now Playing + 8 up-next rows; shuffle toggle flips indicator; clicking up-next row 'Solder' starts playing Solder; disable shuffle returns to registry order; panel persists across navigation; 0 page errors. Screenshot reviewed. CI green."
+    },
+    {
+      "id": "F20",
+      "name": "Stale-chunk black screen fix",
+      "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy."
     }
   ]
 }
