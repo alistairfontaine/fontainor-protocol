@@ -24,23 +24,50 @@ export function PlayerBar() {
   const [open, setOpen] = useState(false) // desktop queue popover
   const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
 
-  // swipe-up on the mobile mini player opens the fullscreen view
-  const touchStartY = useRef<number | null>(null)
-  const swiped = useRef(false)
+  // Swipe-up on the mobile mini player opens the fullscreen view.
+  //
+  // Decided at touchEND, not mid-move: opening mid-gesture made any fast
+  // upward finger movement over the card (i.e. a fast downward page-scroll
+  // flick) misfire. The card is `touch-none`, so gestures starting on it
+  // never scroll the page — an upward swipe here can only mean "open".
+  // Requirements: dominant vertical direction + (distance OR fling velocity).
+  const miniRef = useRef<HTMLDivElement>(null)
+  const gesture = useRef<{ x: number; y: number; t: number; lastY: number; lastT: number } | null>(null)
+  const miniRaf = useRef(0)
+  const setMiniLift = (dy: number) => {
+    cancelAnimationFrame(miniRaf.current)
+    miniRaf.current = requestAnimationFrame(() => {
+      const el = miniRef.current
+      if (!el) return
+      // subtle GPU-composited lift while dragging up (no React re-render)
+      el.style.transform = dy < 0 ? `translate3d(0, ${Math.max(dy / 3, -14)}px, 0)` : ''
+    })
+  }
   const onMiniTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
-    swiped.current = false
+    const t = e.touches[0]
+    gesture.current = { x: t.clientX, y: t.clientY, t: performance.now(), lastY: t.clientY, lastT: performance.now() }
   }
   const onMiniTouchMove = (e: React.TouchEvent) => {
-    if (touchStartY.current == null || swiped.current) return
-    const dy = e.touches[0].clientY - touchStartY.current
-    if (dy < -28) {
-      swiped.current = true
-      setExpanded(true)
-    }
+    const g = gesture.current
+    if (!g) return
+    const t = e.touches[0]
+    g.lastY = t.clientY
+    g.lastT = performance.now()
+    setMiniLift(t.clientY - g.y)
   }
-  const onMiniTouchEnd = () => {
-    touchStartY.current = null
+  const onMiniTouchEnd = (e: React.TouchEvent) => {
+    const g = gesture.current
+    gesture.current = null
+    setMiniLift(0)
+    if (!g) return
+    const t = e.changedTouches[0]
+    if (!t) return
+    const dy = t.clientY - g.y
+    const dx = t.clientX - g.x
+    const dt = Math.max(performance.now() - g.t, 1)
+    const vy = dy / dt // px/ms, negative = up
+    const vertical = Math.abs(dy) > Math.abs(dx) * 1.2
+    if (vertical && (dy <= -48 || (dy <= -20 && vy <= -0.45))) setExpanded(true)
   }
 
   const onSeek = useCallback(
@@ -132,7 +159,8 @@ export function PlayerBar() {
       {/* ============ MOBILE mini player (Spotify floating card) ============ */}
       <div className="px-2 pb-1.5 sm:hidden">
         <div
-          className="relative overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur"
+          ref={miniRef}
+          className="relative touch-none overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur will-change-transform"
           onClick={() => setExpanded(true)}
           onTouchStart={onMiniTouchStart}
           onTouchMove={onMiniTouchMove}

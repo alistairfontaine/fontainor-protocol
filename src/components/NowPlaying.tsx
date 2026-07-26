@@ -28,8 +28,9 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [queueOpen, setQueueOpen] = useState(false)
   const seekRef = useRef<HTMLDivElement>(null)
-  const touchStartY = useRef<number | null>(null)
-  const [dragY, setDragY] = useState(0)
+  const rootRef = useRef<HTMLDivElement>(null)
+  const drag = useRef<{ y: number; t: number; lastDy: number } | null>(null)
+  const dragRaf = useRef(0)
 
   // Escape closes (queue panel first, then the overlay)
   const queueOpenRef = useRef(queueOpen)
@@ -63,7 +64,12 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) {
       setQueueOpen(false)
-      setDragY(0)
+      drag.current = null
+      const el = rootRef.current
+      if (el) {
+        el.style.transition = ''
+        el.style.transform = ''
+      }
     }
   }, [open])
 
@@ -82,21 +88,47 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
     [seek],
   )
 
-  // swipe-down to close (drag follows the finger for a native feel)
+  // Swipe-down to close — attached to the whole sheet, Spotify-style.
+  // The drag writes transform directly to the DOM inside rAF (GPU-composited,
+  // zero React re-renders — the old setState-per-touchmove approach re-rendered
+  // the entire tree every frame and was visibly janky on Android).
+  // Touches that start on the scrollable queue list or the seek slider are
+  // ignored so scrolling/seeking still work.
+  const applyDrag = (dy: number) => {
+    cancelAnimationFrame(dragRaf.current)
+    dragRaf.current = requestAnimationFrame(() => {
+      const el = rootRef.current
+      if (!el) return
+      el.style.transition = 'none'
+      el.style.transform = `translate3d(0, ${Math.max(dy, 0)}px, 0)`
+    })
+  }
+  const settleBack = () => {
+    cancelAnimationFrame(dragRaf.current)
+    const el = rootRef.current
+    if (!el) return
+    el.style.transition = 'transform 200ms cubic-bezier(0.2, 0, 0, 1)'
+    el.style.transform = 'translate3d(0, 0, 0)'
+  }
   const onTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY
+    const target = e.target as HTMLElement
+    if (target.closest('[data-nodrag]')) return
+    drag.current = { y: e.touches[0].clientY, t: performance.now(), lastDy: 0 }
   }
   const onTouchMove = (e: React.TouchEvent) => {
-    if (touchStartY.current == null) return
-    const dy = e.touches[0].clientY - touchStartY.current
-    if (dy > 0) setDragY(dy)
+    const g = drag.current
+    if (!g) return
+    g.lastDy = e.touches[0].clientY - g.y
+    applyDrag(g.lastDy)
   }
   const onTouchEnd = () => {
-    if (dragY > 90) {
-      onClose()
-    }
-    setDragY(0)
-    touchStartY.current = null
+    const g = drag.current
+    drag.current = null
+    if (!g) return
+    const dt = Math.max(performance.now() - g.t, 1)
+    const vy = g.lastDy / dt // px/ms, positive = down
+    if (g.lastDy > 110 || (g.lastDy > 40 && vy > 0.5)) onClose()
+    else settleBack()
   }
 
   if (!open || !current) return null
@@ -105,16 +137,18 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
   return (
     <div
-      className={`fixed inset-0 z-50 flex flex-col bg-bg ${dragY ? '' : 'rise-in'}`}
+      ref={rootRef}
+      className="rise-in fixed inset-0 z-50 flex flex-col bg-bg will-change-transform"
       style={{
-        transform: dragY ? `translateY(${dragY}px)` : undefined,
-        transition: dragY ? 'none' : 'transform 180ms ease-out',
         paddingTop: 'env(safe-area-inset-top, 0px)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
       role="dialog"
       aria-modal="true"
       aria-label="Now playing"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
     >
       {/* Spotify-style color wash: strong at the top, fading into the page bg */}
       <div
@@ -123,13 +157,8 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
         style={{ background: 'linear-gradient(to bottom, rgba(247,183,51,0.16), rgba(247,183,51,0.05) 38%, transparent 72%)' }}
       />
 
-      {/* header — also a swipe-down handle on touch */}
-      <div
-        className="relative flex shrink-0 items-center justify-between px-3 py-3 sm:px-6"
-        onTouchStart={onTouchStart}
-        onTouchMove={onTouchMove}
-        onTouchEnd={onTouchEnd}
-      >
+      {/* header */}
+      <div className="relative flex shrink-0 items-center justify-between px-3 py-3 sm:px-6">
         <button
           onClick={() => {
             if (queueOpen) setQueueOpen(false)
@@ -201,6 +230,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               ref={seekRef}
               onClick={(e) => onSeekAt(e.clientX)}
               className="group relative h-1.5 w-full cursor-pointer rounded-full bg-raised"
+              data-nodrag
               role="slider"
               aria-valuemin={0}
               aria-valuemax={100}
@@ -277,7 +307,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
         {/* desktop queue side panel — sits BESIDE the player, covers nothing */}
         {queueOpen && (
-          <aside className="hidden min-h-0 w-[360px] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface/80 lg:flex">
+          <aside data-nodrag className="hidden min-h-0 w-[360px] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface/80 lg:flex">
             <div className="flex items-center justify-between border-b border-line px-4 py-3">
               <span className="font-display text-[15px] font-semibold text-ink">Queue</span>
               <span className={`text-[12px] font-medium ${shuffle ? 'text-accent' : 'text-faint'}`}>
@@ -332,7 +362,7 @@ function QueueList({
           {shuffle ? 'Shuffle on' : 'In order'}
         </span>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto">
+      <ul data-nodrag className="min-h-0 flex-1 overflow-y-auto">
         {upNext.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Nothing queued.</li>}
         {upNext.map((rel, i) => (
           <li key={rel.id}>

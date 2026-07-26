@@ -128,3 +128,13 @@ Built:
 - Footer dead space: AppShell <main> had unconditional pb-40 lg:pb-32 reserving player-bar clearance even with no player. Now reads usePlayer(): pb-40 lg:pb-28 while playing, pb-24 lg:pb-8 otherwise.
 VERIFIED: npm run ci green; 12/12 headless checks vs dist incl. real synthetic-TouchEvent swipe-up/swipe-down (script: /work/temp/fontainor-debug/spotify-player-test.mjs) + visual screenshot review desktop/mobile. F22 added passing.
 Test-harness gotcha: dispatching touchstart/move/end in ONE page.evaluate never lets React re-render between events -> drag state stays 0; dispatch each phase in separate evaluate calls with waits.
+
+## 2026-07-26 — Iteration: Android gesture fixes + swipe-down-anywhere + compact footer (user feedback 22:28 + 22:29)
+User: swipe "very buggy and not smooth"; "activates even if I just swipe down fast even when not on the area its supposed to trigger"; wants swipe-down to close the open main player; mobile footer "too long".
+Root causes found:
+1. JANK: fullscreen drag used setDragY state -> full React re-render of the whole NowPlaying tree on EVERY touchmove frame. Fix: rootRef + rAF-batched direct style.transform (translate3d, GPU-composited), zero re-renders; settle-back uses a one-shot CSS transition set inline.
+2. MISFIRE: mini player opened mid-touchmove at only -28px, so a fast downward page-scroll flick (finger moves UP) over the bottom strip opened the player. Fix: decision moved to touchEND with dominant-vertical check (|dy| > 1.2|dx|) + threshold (dy<=-48) or fling (dy<=-20 && vy<=-0.45 px/ms); card is touch-none so gestures starting on it never scroll the page; subtle capped lift (dy/3, max 14px) as feedback via direct DOM write.
+3. Swipe-down-to-close now attached to the WHOLE fullscreen sheet (was header-only); scrollable queue list, desktop aside, and seek slider opt out via data-nodrag + target.closest check. Close on dy>110 or fling (dy>40 && vy>0.5).
+4. Footer: compact phone layout — 3 link columns in ONE row (grid-cols-3), brand spans full width, tighter padding/text; desktop unchanged. 314px tall on Pixel 7 (was ~630).
+Defensive: guard e.changedTouches[0] (synthetic events may omit it).
+VERIFIED: npm run ci green; gesture-fix-test.mjs 12/12 + spotify-player-test.mjs 12/12 regression (test helpers updated: synthetic touchend must include changedTouches like real browsers do). F23 added passing.
