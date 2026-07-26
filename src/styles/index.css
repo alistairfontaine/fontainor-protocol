@@ -96,12 +96,18 @@ h1, h2, h3, h4 {
   animation: shimmer 1.4s ease infinite;
 }
 
+/* Entrance motion intentionally does NOT touch opacity: an animation that
+   stalls at its first frame (frozen/broken GPU compositor, Chrome
+   energy-saver throttling, some remote desktops) would leave content
+   permanently invisible at opacity:0 over the page background — a "black
+   screen". Animating transform only means the worst case is a 6px offset,
+   never invisible content. Do not add opacity back into this keyframe. */
 @keyframes fade-up {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(6px); }
+  to { transform: translateY(0); }
 }
 
-.fade-up { animation: fade-up 0.25s ease both; }
+.fade-up { animation: fade-up 0.25s ease; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
