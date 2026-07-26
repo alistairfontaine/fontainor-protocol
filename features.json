@@ -161,6 +161,13 @@
       "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
       "passes": true,
       "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
+    },
+    {
+      "id": "F22",
+      "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
+      "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
+      "passes": true,
+      "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
     }
   ]
 }

@@ -1,21 +1,51 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtTime } from '../lib/registry'
+import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { NowPlaying } from './NowPlaying'
-import { IconChevronUp, IconClose, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
 
+/**
+ * Player bar — Spotify-style on both breakpoints.
+ *
+ * Phones (< sm): floating mini-player card above the bottom nav — cover,
+ *   title/artist, play/pause, hairline progress. TAP anywhere or SWIPE UP
+ *   opens the fullscreen Now Playing view (like Spotify's mini player).
+ * Desktop (>= sm): 3-zone bar — [track info + heart] [transport + seek
+ *   between timestamps] [queue · close]. Cover click opens fullscreen.
+ */
 export function PlayerBar() {
   const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close } =
     usePlayer()
-  const barRef = useRef<HTMLDivElement>(null)
-  const [open, setOpen] = useState(false)
-  const [expanded, setExpanded] = useState(false)
+  const { ids: favIds, toggle: toggleFav } = useFavorites()
+  const seekRef = useRef<HTMLDivElement>(null)
+  const [open, setOpen] = useState(false) // desktop queue popover
+  const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
+
+  // swipe-up on the mobile mini player opens the fullscreen view
+  const touchStartY = useRef<number | null>(null)
+  const swiped = useRef(false)
+  const onMiniTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY
+    swiped.current = false
+  }
+  const onMiniTouchMove = (e: React.TouchEvent) => {
+    if (touchStartY.current == null || swiped.current) return
+    const dy = e.touches[0].clientY - touchStartY.current
+    if (dy < -28) {
+      swiped.current = true
+      setExpanded(true)
+    }
+  }
+  const onMiniTouchEnd = () => {
+    touchStartY.current = null
+  }
 
   const onSeek = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
-      const el = barRef.current
+      const el = seekRef.current
       if (!el) return
       const rect = el.getBoundingClientRect()
       seek((e.clientX - rect.left) / rect.width)
@@ -23,7 +53,7 @@ export function PlayerBar() {
     [seek],
   )
 
-  // close the queue panel + fullscreen view when playback is closed
+  // close the queue popover + fullscreen view when playback is closed
   useEffect(() => {
     if (!current) {
       setOpen(false)
@@ -33,6 +63,8 @@ export function PlayerBar() {
 
   if (!current) return null
 
+  const isFav = favIds.includes(current.id)
+
   return (
     <>
     <div
@@ -41,9 +73,9 @@ export function PlayerBar() {
       role="region"
       aria-label="Audio player"
     >
-      {/* Up-next panel */}
+      {/* Desktop queue popover (Spotify-style: Now playing on top, then Next up) */}
       {open && (
-        <div className="pointer-events-none absolute bottom-full inset-x-0 flex justify-center px-3 pb-2 sm:justify-end sm:px-6">
+        <div className="pointer-events-none absolute bottom-full inset-x-0 hidden justify-end px-6 pb-2 sm:flex">
           <div
             className="pointer-events-auto w-full max-w-md overflow-hidden rounded-card border border-line bg-surface/97 shadow-card backdrop-blur"
             aria-label="Play queue"
@@ -97,129 +129,194 @@ export function PlayerBar() {
         </div>
       )}
 
-      <div className="border-t border-line bg-surface/95 backdrop-blur">
-        {/* seek bar */}
+      {/* ============ MOBILE mini player (Spotify floating card) ============ */}
+      <div className="px-2 pb-1.5 sm:hidden">
         <div
-          ref={barRef}
-          onClick={onSeek}
-          className="group relative h-1.5 w-full cursor-pointer bg-raised"
-          role="slider"
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-valuenow={Math.round(pos * 100)}
-          aria-label="Seek"
+          className="relative overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur"
+          onClick={() => setExpanded(true)}
+          onTouchStart={onMiniTouchStart}
+          onTouchMove={onMiniTouchMove}
+          onTouchEnd={onMiniTouchEnd}
+          role="button"
           tabIndex={0}
+          aria-label="Open fullscreen player (tap or swipe up)"
           onKeyDown={(e) => {
-            if (e.key === 'ArrowRight') seek(pos + 0.05)
-            if (e.key === 'ArrowLeft') seek(pos - 0.05)
+            if (e.key === 'Enter' || e.key === ' ') setExpanded(true)
           }}
         >
-          <div className="h-full bg-accent transition-[width] duration-150" style={{ width: `${pos * 100}%` }} />
-        </div>
-
-        <div className="mx-auto flex h-[66px] max-w-[1360px] items-center gap-2 px-3 sm:gap-3.5 sm:px-6">
-          <button
-            onClick={toggleShuffle}
-            disabled={!hasQueue}
-            className={`hidden h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised sm:grid ${
-              shuffle ? 'text-accent' : 'text-faint hover:text-body'
-            } disabled:cursor-default disabled:opacity-40`}
-            aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
-            aria-pressed={shuffle}
-            title={shuffle ? 'Shuffle on' : 'Shuffle off'}
-          >
-            <IconShuffle size={18} />
-          </button>
-
-          <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
+          <div className="flex items-center gap-3 py-2 pl-2 pr-1">
+            <div className="h-10 w-10 shrink-0 overflow-hidden rounded-chip">
+              <Cover rel={current} />
+            </div>
+            <div className="min-w-0 flex-1">
+              <span className="block truncate text-[13.5px] font-semibold text-ink">{current.title}</span>
+              <span className="block truncate text-[12px] text-muted">{current.artist}</span>
+            </div>
             <button
-              onClick={prev}
-              disabled={!hasQueue}
-              className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
-              aria-label="Previous track"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggleFav(current.id)
+              }}
+              className={`grid h-11 w-10 shrink-0 cursor-pointer place-items-center ${isFav ? 'text-accent' : 'text-faint'}`}
+              aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
+              aria-pressed={isFav}
             >
-              <IconPrev size={19} />
+              <IconHeart size={20} filled={isFav} />
             </button>
             <button
-              onClick={toggle}
-              className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-full bg-accent text-accent-ink transition-colors hover:bg-accent-hi"
+              onClick={(e) => {
+                e.stopPropagation()
+                toggle()
+              }}
+              className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center text-ink"
               aria-label={playing ? 'Pause' : 'Play'}
             >
-              {playing ? <IconPause size={20} /> : <IconPlay size={20} />}
+              {playing ? <IconPause size={24} /> : <IconPlay size={24} />}
             </button>
             <button
-              onClick={next}
-              disabled={!hasQueue}
-              className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
-              aria-label="Next track"
+              onClick={(e) => {
+                e.stopPropagation()
+                close()
+              }}
+              className="grid h-11 w-9 shrink-0 cursor-pointer place-items-center text-faint"
+              aria-label="Close player"
             >
-              <IconNext size={19} />
+              <IconClose size={17} />
+            </button>
+          </div>
+          {/* hairline progress, Spotify-style */}
+          <div className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-line" aria-hidden="true">
+            <div className="h-full rounded-full bg-ink" style={{ width: `${pos * 100}%` }} />
+          </div>
+        </div>
+      </div>
+
+      {/* ============ DESKTOP bar (Spotify 3-zone layout) ============ */}
+      <div className="hidden border-t border-line bg-surface/95 backdrop-blur sm:block">
+        <div className="mx-auto grid h-[84px] max-w-[1360px] grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 lg:px-6">
+          {/* left: track info */}
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              onClick={() => setExpanded(true)}
+              className="h-14 w-14 shrink-0 cursor-pointer overflow-hidden rounded-chip transition-transform hover:scale-105"
+              aria-label="Open fullscreen player"
+              title="Now playing"
+            >
+              <Cover rel={current} />
+            </button>
+            <div className="min-w-0">
+              <Link
+                to={`/release/${encodeURIComponent(current.id)}`}
+                className="block truncate text-sm font-medium text-ink hover:text-accent"
+              >
+                {current.title}
+              </Link>
+              <span className="block truncate text-[13px] text-muted">{current.artist}</span>
+            </div>
+            <button
+              onClick={() => toggleFav(current.id)}
+              className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                isFav ? 'text-accent' : 'text-faint hover:text-body'
+              }`}
+              aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
+              aria-pressed={isFav}
+            >
+              <IconHeart size={18} filled={isFav} />
             </button>
           </div>
 
-          <button
-            onClick={() => setExpanded(true)}
-            className="group relative h-11 w-11 shrink-0 cursor-pointer overflow-hidden rounded-chip"
-            aria-label="Open fullscreen player"
-            title="Now playing"
-          >
-            <Cover rel={current} />
-            <span className="absolute inset-0 grid place-items-center bg-bg/60 opacity-0 transition-opacity group-hover:opacity-100">
-              <IconChevronUp size={20} className="text-ink" />
-            </span>
-          </button>
-
-          <div className="min-w-0 flex-1">
-            <Link to={`/release/${encodeURIComponent(current.id)}`} className="block truncate text-sm font-medium text-ink hover:text-accent">
-              {current.title}
-            </Link>
-            <span className="block truncate text-[13px] text-muted">{current.artist}</span>
+          {/* center: transport stacked over seek (Spotify) */}
+          <div className="flex w-[420px] max-w-[44vw] flex-col items-center gap-1 lg:w-[560px]">
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleShuffle}
+                disabled={!hasQueue}
+                className={`grid h-9 w-9 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                  shuffle ? 'text-accent' : 'text-faint hover:text-body'
+                } disabled:cursor-default disabled:opacity-40`}
+                aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
+                aria-pressed={shuffle}
+                title={shuffle ? 'Shuffle on' : 'Shuffle off'}
+              >
+                <IconShuffle size={17} />
+              </button>
+              <button
+                onClick={prev}
+                disabled={!hasQueue}
+                className="grid h-9 w-9 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
+                aria-label="Previous track"
+              >
+                <IconPrev size={19} />
+              </button>
+              <button
+                onClick={toggle}
+                className="grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-ink text-bg transition-transform hover:scale-105 active:scale-95"
+                aria-label={playing ? 'Pause' : 'Play'}
+              >
+                {playing ? <IconPause size={19} /> : <IconPlay size={19} />}
+              </button>
+              <button
+                onClick={next}
+                disabled={!hasQueue}
+                className="grid h-9 w-9 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
+                aria-label="Next track"
+              >
+                <IconNext size={19} />
+              </button>
+              <span className="grid h-9 w-9" aria-hidden="true" />
+            </div>
+            <div className="flex w-full items-center gap-2">
+              <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint">{fmtTime(cur)}</span>
+              <div
+                ref={seekRef}
+                onClick={onSeek}
+                className="group relative h-1 flex-1 cursor-pointer rounded-full bg-raised"
+                role="slider"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={Math.round(pos * 100)}
+                aria-label="Seek"
+                tabIndex={0}
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowRight') seek(pos + 0.05)
+                  if (e.key === 'ArrowLeft') seek(pos - 0.05)
+                }}
+              >
+                <div
+                  className="h-full rounded-full bg-ink transition-[width] duration-150 group-hover:bg-accent"
+                  style={{ width: `${pos * 100}%` }}
+                />
+                <div
+                  className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
+                  style={{ left: `calc(${pos * 100}% - 6px)` }}
+                  aria-hidden="true"
+                />
+              </div>
+              <span className="w-10 shrink-0 text-[11px] tabular-nums text-faint">{fmtTime(dur)}</span>
+            </div>
           </div>
 
-          <button
-            onClick={() => setExpanded(true)}
-            className="hidden h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-faint transition-colors hover:bg-raised hover:text-body sm:grid"
-            aria-label="Open fullscreen player"
-            title="Fullscreen player"
-          >
-            <IconChevronUp size={19} />
-          </button>
-
-          <span className="hidden shrink-0 text-[12px] tabular-nums text-muted sm:block">
-            {fmtTime(cur)} / {fmtTime(dur)}
-          </span>
-
-          <button
-            onClick={toggleShuffle}
-            disabled={!hasQueue}
-            className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised sm:hidden ${
-              shuffle ? 'text-accent' : 'text-faint'
-            } disabled:cursor-default disabled:opacity-40`}
-            aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
-            aria-pressed={shuffle}
-          >
-            <IconShuffle size={18} />
-          </button>
-
-          <button
-            onClick={() => setOpen((o) => !o)}
-            className={`grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
-              open ? 'bg-raised text-accent' : 'text-faint hover:text-body'
-            }`}
-            aria-label={open ? 'Hide queue' : 'Show queue'}
-            aria-pressed={open}
-            title="Queue"
-          >
-            <IconQueue size={19} />
-          </button>
-
-          <button
-            onClick={close}
-            className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-faint transition-colors hover:bg-raised hover:text-body"
-            aria-label="Close player"
-          >
-            <IconClose size={18} />
-          </button>
+          {/* right: queue · close */}
+          <div className="flex items-center justify-end gap-1">
+            <button
+              onClick={() => setOpen((o) => !o)}
+              className={`grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                open ? 'bg-raised text-accent' : 'text-faint hover:text-body'
+              }`}
+              aria-label={open ? 'Hide queue' : 'Show queue'}
+              aria-pressed={open}
+              title="Queue"
+            >
+              <IconQueue size={18} />
+            </button>
+            <button
+              onClick={close}
+              className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-btn text-faint transition-colors hover:bg-raised hover:text-body"
+              aria-label="Close player"
+            >
+              <IconClose size={17} />
+            </button>
+          </div>
         </div>
       </div>
     </div>

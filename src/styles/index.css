@@ -109,6 +109,16 @@ h1, h2, h3, h4 {
 
 .fade-up { animation: fade-up 0.25s ease; }
 
+/* Fullscreen player entrance. Transform-only for the same compositor-freeze
+   reason as fade-up, and a SMALL offset on purpose: a stalled animation must
+   never leave the player parked offscreen. Do not raise the offset. */
+@keyframes rise-in {
+  from { transform: translateY(28px); }
+  to { transform: translateY(0); }
+}
+
+.rise-in { animation: rise-in 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;

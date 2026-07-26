@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { usePlayer } from '../state/PlayerContext'
 import { Footer } from './Footer'
 import { IconClose, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
 import { PlayerBar } from './PlayerBar'
@@ -225,6 +226,10 @@ function BottomNav() {
 // ── shell ───────────────────────────────────────────────────
 
 export function AppShell({ children, walletSlot }: { children: ReactNode; walletSlot?: ReactNode }) {
+  // Reserve bottom clearance only for chrome that is actually on screen:
+  // mobile always has the bottom nav; the player bar clearance is added only
+  // while something is playing (otherwise the page ended in a big dead area).
+  const { current } = usePlayer()
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
@@ -242,7 +247,7 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
 
       <div className="mx-auto flex max-w-[1360px] gap-6 px-4 sm:px-6">
         <Sidebar />
-        <main className="min-w-0 flex-1 py-7 pb-40 lg:pb-32">
+        <main className={`min-w-0 flex-1 py-7 ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}>
           {children}
           <Footer />
         </main>

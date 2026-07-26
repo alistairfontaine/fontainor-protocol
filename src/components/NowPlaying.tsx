@@ -1,18 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
+import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconChevronDown, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { IconChevronDown, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
 
 /**
- * Fullscreen "Now Playing" view (FSP-01..06).
- * Opens from the player bar; closes via chevron, Escape, or swipe-down.
- * All effects use block bodies — implicit-return effects are forbidden here
- * (see App.tsx ScrollToTop incident).
+ * Fullscreen "Now Playing" view — Spotify-style layout (FSP-01..06, FSP-07).
+ *
+ * Phones:  gradient header, big centered art, LEFT-aligned title/artist with a
+ *          heart, full-width seek, transport with a big light play button.
+ *          The queue button swaps the art area for a Spotify-style queue
+ *          screen that keeps a "Now playing" section pinned on top — the
+ *          queue never covers/hides what is currently playing.
+ * Desktop: same main column centered; the queue opens as a SIDE PANEL to the
+ *          right (like Spotify's queue), so artwork, controls and queue are
+ *          all visible at once.
+ *
+ * Opens from the player bar (tap or swipe-up); closes via chevron, Escape,
+ * or swipe-down. All effects use block bodies — implicit-return effects are
+ * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek } = usePlayer()
+  const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [queueOpen, setQueueOpen] = useState(false)
   const seekRef = useRef<HTMLDivElement>(null)
   const touchStartY = useRef<number | null>(null)
@@ -46,7 +59,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
     }
   }, [open])
 
-  // reset transient UI whenever we close or the track goes away
+  // reset transient UI whenever we close
   useEffect(() => {
     if (!open) {
       setQueueOpen(false)
@@ -88,9 +101,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
   if (!open || !current) return null
 
+  const isFav = favIds.includes(current.id)
+
   return (
     <div
-      className="fixed inset-0 z-50 flex flex-col bg-bg"
+      className={`fixed inset-0 z-50 flex flex-col bg-bg ${dragY ? '' : 'rise-in'}`}
       style={{
         transform: dragY ? `translateY(${dragY}px)` : undefined,
         transition: dragY ? 'none' : 'transform 180ms ease-out',
@@ -101,155 +116,242 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
       aria-modal="true"
       aria-label="Now playing"
     >
-      {/* soft backdrop glow derived from the artwork area */}
-      <div className="pointer-events-none absolute inset-0 overflow-hidden" aria-hidden="true">
-        <div className="absolute -top-1/4 left-1/2 h-[70vh] w-[70vh] -translate-x-1/2 rounded-full bg-accent/10 blur-[120px]" />
-      </div>
+      {/* Spotify-style color wash: strong at the top, fading into the page bg */}
+      <div
+        className="pointer-events-none absolute inset-0"
+        aria-hidden="true"
+        style={{ background: 'linear-gradient(to bottom, rgba(247,183,51,0.16), rgba(247,183,51,0.05) 38%, transparent 72%)' }}
+      />
 
       {/* header — also a swipe-down handle on touch */}
       <div
-        className="relative flex items-center justify-between px-4 py-3 sm:px-6"
+        className="relative flex shrink-0 items-center justify-between px-3 py-3 sm:px-6"
         onTouchStart={onTouchStart}
         onTouchMove={onTouchMove}
         onTouchEnd={onTouchEnd}
       >
         <button
-          onClick={onClose}
+          onClick={() => {
+            if (queueOpen) setQueueOpen(false)
+            else onClose()
+          }}
           className="grid h-11 w-11 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink"
-          aria-label="Close now playing"
+          aria-label={queueOpen ? 'Back to now playing' : 'Close now playing'}
         >
           <IconChevronDown size={24} />
         </button>
-        <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-faint">Now playing</span>
-        <button
-          onClick={() => setQueueOpen((q) => !q)}
-          disabled={!hasQueue}
-          className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
-            queueOpen ? 'bg-raised text-accent' : 'text-body hover:text-ink'
-          } disabled:cursor-default disabled:opacity-40`}
-          aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
-          aria-pressed={queueOpen}
-        >
-          <IconQueue size={21} />
-        </button>
+        <div className="min-w-0 px-2 text-center">
+          <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-faint">
+            {queueOpen ? 'Queue' : 'Playing from Fontainor'}
+          </div>
+          <div className="truncate text-[12px] font-semibold text-ink">{queueOpen ? 'Up next' : current.artist}</div>
+        </div>
+        <span className="grid h-11 w-11" aria-hidden="true" />
       </div>
 
-      {/* body */}
-      <div className="relative flex min-h-0 flex-1 flex-col items-center justify-center gap-6 px-6 pb-4 sm:gap-8">
-        {queueOpen ? (
-          <div className="flex min-h-0 w-full max-w-xl flex-1 flex-col py-2">
-            <div className="pb-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Up next</div>
-            <ul className="min-h-0 flex-1 overflow-y-auto rounded-card border border-line bg-surface/80">
-              {upNext.length === 0 && <li className="px-4 py-6 text-center text-sm text-muted">Nothing queued.</li>}
-              {upNext.map((rel, i) => (
-                <li key={rel.id}>
-                  <button
-                    onClick={() => play(rel)}
-                    className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left transition-colors hover:bg-raised"
-                  >
-                    <span className="w-4 shrink-0 text-[12px] tabular-nums text-faint">{i + 1}</span>
-                    <div className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
-                      <Cover rel={rel} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
-                      <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
-                    </div>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ) : (
-          <>
-            <div className="w-full max-w-[min(78vw,42vh)] shrink-0 overflow-hidden rounded-card border border-line shadow-card sm:max-w-[min(46vw,44vh)]">
+      {/* body: main column + (desktop) queue side panel */}
+      <div className="relative flex min-h-0 flex-1 items-stretch justify-center gap-6 px-4 pb-4 sm:px-8 sm:pb-6">
+        {/* main column */}
+        <div className="flex min-h-0 w-full max-w-xl flex-1 flex-col lg:max-w-2xl">
+          {/* artwork — hidden on phones while the queue screen is open */}
+          <div
+            className={`min-h-0 flex-1 flex-col items-center justify-center ${queueOpen ? 'hidden lg:flex' : 'flex'}`}
+          >
+            <div className="w-full max-w-[min(85vw,44vh)] overflow-hidden rounded-card border border-line shadow-card lg:max-w-[min(40vw,46vh)]">
               <div className="aspect-square">
                 <Cover rel={current} />
               </div>
             </div>
+          </div>
 
-            <div className="w-full max-w-xl text-center">
+          {/* phone queue screen — Spotify-style: Now playing pinned on top, then Up next */}
+          {queueOpen && (
+            <div className="flex min-h-0 flex-1 flex-col py-1 lg:hidden">
+              <QueueList current={current} upNext={upNext} shuffle={shuffle} play={play} cur={cur} dur={dur} />
+            </div>
+          )}
+
+          {/* track info — left-aligned like Spotify, heart on the right */}
+          <div className={`items-center gap-3 pt-4 ${queueOpen ? 'hidden lg:flex' : 'flex'}`}>
+            <div className="min-w-0 flex-1">
               <Link
                 to={`/release/${encodeURIComponent(current.id)}`}
                 onClick={onClose}
-                className="font-display block truncate text-2xl font-bold text-ink hover:text-accent sm:text-3xl"
+                className="font-display block truncate text-left text-[22px] font-bold leading-tight text-ink hover:text-accent sm:text-2xl"
               >
                 {current.title}
               </Link>
-              <p className="mt-1 truncate text-[15px] text-muted">{current.artist}</p>
+              <p className="truncate text-left text-[15px] text-muted">{current.artist}</p>
             </div>
-          </>
-        )}
+            <button
+              onClick={() => toggleFav(current.id)}
+              className={`grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                isFav ? 'text-accent' : 'text-faint hover:text-body'
+              }`}
+              aria-label={isFav ? 'Remove from favorites' : 'Add to favorites'}
+              aria-pressed={isFav}
+            >
+              <IconHeart size={22} filled={isFav} />
+            </button>
+          </div>
 
-        {/* seek */}
-        <div className="w-full max-w-xl shrink-0">
-          <div
-            ref={seekRef}
-            onClick={(e) => onSeekAt(e.clientX)}
-            className="group relative h-2 w-full cursor-pointer rounded-full bg-raised"
-            role="slider"
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-valuenow={Math.round(pos * 100)}
-            aria-label="Seek"
-            tabIndex={0}
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowRight') seek(pos + 0.05)
-              if (e.key === 'ArrowLeft') seek(pos - 0.05)
-            }}
-          >
-            <div className="h-full rounded-full bg-accent" style={{ width: `${pos * 100}%` }} />
+          {/* seek */}
+          <div className="w-full shrink-0 pt-3">
             <div
-              className="absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
-              style={{ left: `calc(${pos * 100}% - 7px)` }}
-              aria-hidden="true"
-            />
+              ref={seekRef}
+              onClick={(e) => onSeekAt(e.clientX)}
+              className="group relative h-1.5 w-full cursor-pointer rounded-full bg-raised"
+              role="slider"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(pos * 100)}
+              aria-label="Seek"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowRight') seek(pos + 0.05)
+                if (e.key === 'ArrowLeft') seek(pos - 0.05)
+              }}
+            >
+              <div className="h-full rounded-full bg-ink group-hover:bg-accent" style={{ width: `${pos * 100}%` }} />
+              <div
+                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
+                style={{ left: `calc(${pos * 100}% - 6px)` }}
+                aria-hidden="true"
+              />
+            </div>
+            <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
+              <span>{fmtTime(cur)}</span>
+              <span>{fmtTime(dur)}</span>
+            </div>
           </div>
-          <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
-            <span>{fmtTime(cur)}</span>
-            <span>{fmtTime(dur)}</span>
+
+          {/* transport — shuffle · prev · big light play · next · queue */}
+          <div className="flex shrink-0 items-center justify-between pb-2 pt-1 sm:justify-center sm:gap-6">
+            <button
+              onClick={toggleShuffle}
+              disabled={!hasQueue}
+              className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                shuffle ? 'text-accent' : 'text-faint hover:text-body'
+              } disabled:cursor-default disabled:opacity-40`}
+              aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
+              aria-pressed={shuffle}
+            >
+              <IconShuffle size={22} />
+            </button>
+            <button
+              onClick={prev}
+              disabled={!hasQueue}
+              className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
+              aria-label="Previous track"
+            >
+              <IconPrev size={30} />
+            </button>
+            <button
+              onClick={toggle}
+              className="grid h-16 w-16 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-card transition-transform hover:scale-105 active:scale-95"
+              aria-label={playing ? 'Pause' : 'Play'}
+            >
+              {playing ? <IconPause size={28} /> : <IconPlay size={28} />}
+            </button>
+            <button
+              onClick={next}
+              disabled={!hasQueue}
+              className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
+              aria-label="Next track"
+            >
+              <IconNext size={30} />
+            </button>
+            <button
+              onClick={() => setQueueOpen((q) => !q)}
+              disabled={!hasQueue}
+              className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                queueOpen ? 'text-accent' : 'text-faint hover:text-body'
+              } disabled:cursor-default disabled:opacity-40`}
+              aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
+              aria-pressed={queueOpen}
+            >
+              <IconQueue size={21} />
+            </button>
           </div>
         </div>
 
-        {/* transport */}
-        <div className="flex shrink-0 items-center justify-center gap-3 sm:gap-5">
-          <button
-            onClick={toggleShuffle}
-            disabled={!hasQueue}
-            className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
-              shuffle ? 'text-accent' : 'text-faint hover:text-body'
-            } disabled:cursor-default disabled:opacity-40`}
-            aria-label={shuffle ? 'Disable shuffle' : 'Enable shuffle'}
-            aria-pressed={shuffle}
-          >
-            <IconShuffle size={22} />
-          </button>
-          <button
-            onClick={prev}
-            disabled={!hasQueue}
-            className="grid h-14 w-14 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
-            aria-label="Previous track"
-          >
-            <IconPrev size={28} />
-          </button>
-          <button
-            onClick={toggle}
-            className="grid h-[72px] w-[72px] cursor-pointer place-items-center rounded-full bg-accent text-accent-ink shadow-glow transition-colors hover:bg-accent-hi"
-            aria-label={playing ? 'Pause' : 'Play'}
-          >
-            {playing ? <IconPause size={30} /> : <IconPlay size={30} />}
-          </button>
-          <button
-            onClick={next}
-            disabled={!hasQueue}
-            className="grid h-14 w-14 cursor-pointer place-items-center rounded-btn text-body transition-colors hover:bg-raised hover:text-ink disabled:cursor-default disabled:opacity-40"
-            aria-label="Next track"
-          >
-            <IconNext size={28} />
-          </button>
-          <span className="grid h-12 w-12" aria-hidden="true" />
-        </div>
+        {/* desktop queue side panel — sits BESIDE the player, covers nothing */}
+        {queueOpen && (
+          <aside className="hidden min-h-0 w-[360px] shrink-0 flex-col overflow-hidden rounded-card border border-line bg-surface/80 lg:flex">
+            <div className="flex items-center justify-between border-b border-line px-4 py-3">
+              <span className="font-display text-[15px] font-semibold text-ink">Queue</span>
+              <span className={`text-[12px] font-medium ${shuffle ? 'text-accent' : 'text-faint'}`}>
+                {shuffle ? 'Shuffle on' : 'In order'}
+              </span>
+            </div>
+            <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
+              <QueueList current={current} upNext={upNext} shuffle={shuffle} play={play} cur={cur} dur={dur} />
+            </div>
+          </aside>
+        )}
       </div>
+    </div>
+  )
+}
+
+/** Spotify-style queue: "Now playing" pinned on top, then "Next up". */
+function QueueList({
+  current,
+  upNext,
+  shuffle,
+  play,
+  cur,
+  dur,
+}: {
+  current: Release
+  upNext: Release[]
+  shuffle: boolean
+  play: (rel: Release) => void
+  cur: number
+  dur: number
+}) {
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="shrink-0 px-3 pb-1 pt-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Now playing</div>
+      <div className="flex shrink-0 items-center gap-3 px-3 py-2">
+        <div className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
+          <Cover rel={current} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-semibold text-accent">{current.title}</span>
+          <span className="block truncate text-[12px] text-muted">{current.artist}</span>
+        </div>
+        <span className="shrink-0 text-[11px] tabular-nums text-faint">
+          {fmtTime(cur)} / {fmtTime(dur)}
+        </span>
+      </div>
+
+      <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Next up</span>
+        <span className={`text-[11px] font-medium lg:hidden ${shuffle ? 'text-accent' : 'text-faint'}`}>
+          {shuffle ? 'Shuffle on' : 'In order'}
+        </span>
+      </div>
+      <ul className="min-h-0 flex-1 overflow-y-auto">
+        {upNext.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Nothing queued.</li>}
+        {upNext.map((rel, i) => (
+          <li key={rel.id}>
+            <button
+              onClick={() => play(rel)}
+              className="flex w-full cursor-pointer items-center gap-3 rounded-chip px-3 py-2 text-left transition-colors hover:bg-raised"
+            >
+              <span className="w-4 shrink-0 text-[12px] tabular-nums text-faint">{i + 1}</span>
+              <div className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
+                <Cover rel={rel} />
+              </div>
+              <div className="min-w-0 flex-1">
+                <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
+                <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
+              </div>
+            </button>
+          </li>
+        ))}
+      </ul>
     </div>
   )
 }
