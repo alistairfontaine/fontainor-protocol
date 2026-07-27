@@ -9,6 +9,25 @@ export interface PhantomLike {
   signMessage?(msg: Uint8Array, encoding: string): Promise<{ signature: Uint8Array }>
 }
 
+/** True on phones/tablets, where extension wallets cannot be installed. */
+export function isMobileDevice(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true
+  // iPadOS 13+ masquerades as desktop Safari but reports multi-touch.
+  return /Macintosh/.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1
+}
+
+/**
+ * Deep link that opens `target` (default: the current page) inside Phantom's
+ * in-app browser, where `window.solana` is injected and the wallet works.
+ * https://phantom.app/ul/browse/<url>?ref=<ref>
+ */
+export function phantomBrowseUrl(target?: string): string {
+  const url = target ?? window.location.href
+  return `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(window.location.origin)}`
+}
+
 export function getPhantom(): PhantomLike | null {
   const w = window as unknown as { solana?: PhantomLike; phantom?: { solana?: PhantomLike } }
   const p = w.solana ?? w.phantom?.solana ?? null
@@ -18,7 +37,13 @@ export function getPhantom(): PhantomLike | null {
 /** Get a connected Phantom provider, prompting the connect popup if needed. */
 export async function getConnectedPhantom(): Promise<PhantomLike> {
   const provider = getPhantom()
-  if (!provider) throw new PhantomError('no-wallet', 'Phantom wallet not detected. Install it from phantom.com and refresh.')
+  if (!provider)
+    throw new PhantomError(
+      'no-wallet',
+      isMobileDevice()
+        ? 'No wallet in this mobile browser — tap "Open in Phantom" in the header to load Fontainor inside the Phantom app, where your wallet works.'
+        : 'Phantom wallet not detected. Install it from phantom.com and refresh.',
+    )
   if (!provider.publicKey) {
     try {
       await provider.connect()
