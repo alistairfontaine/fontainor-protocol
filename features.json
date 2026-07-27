@@ -260,6 +260,22 @@
       "verify": "node tools/share-test.mjs && npm run ci",
       "passes": true,
       "evidence": "2026-07-27: tools/share-test.mjs 10/10 (incl. injection-escape and redirect checks); npm run ci green. Prod VERIFIED: /share/FONT-4WHPZ2Q17 -> 200 with correct og:title/description/absolute cover + SPA redirect."
+    },
+    {
+      "id": "F35",
+      "title": "Collection is a first-class destination (nav + empty states)",
+      "acceptance": "/collection route renders the collected grid + on-chain receipt rows; empty state (with library CTA) when there are no purchases, connect-aware copy when no wallet. Desktop sidebar link + Profile mobile quick-link; Profile 'Your collection' section always visible with empty state.",
+      "verify": "npx tsc --noEmit && npm run ci",
+      "passes": true,
+      "evidence": "PR #27 merged; tsc clean; CI green; prod bundle contains /collection route (verified 2026-07-27)."
+    },
+    {
+      "id": "F36",
+      "title": "Usage visibility: Vercel Web Analytics hook + GET /api/v1/stats",
+      "acceptance": "main.tsx injects @vercel/analytics (inert until enabled in the Vercel dashboard). GET /api/v1/stats returns totalPlays, tracksPlayed, totalBuys, uniqueBuyers, totalLamports/totalSol aggregated from the plays zset + durable purchase receipts; degrades honestly without redis.",
+      "verify": "node tools/stats-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "PR #28 merged; stats-test 9/9; CI green; prod /api/v1/stats live (totalPlays 24, tracksPlayed 9 on 2026-07-27)."
     }
   ]
 }
