@@ -1,15 +1,24 @@
+import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { edLabel, isSold, priceLabel, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconHeart, IconPlay } from './icons'
+import { IconCheck, IconHeart, IconPlay, IconQueue } from './icons'
 
 export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
-  const { play } = usePlayer()
+  const { play, addToQueue } = usePlayer()
   const { ids, toggle } = useFavorites()
   const navigate = useNavigate()
   const fav = ids.includes(rel.id)
+  // brief ✓ feedback after "Add to queue"
+  const [justQueued, setJustQueued] = useState(false)
+  const queuedTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => {
+    return () => {
+      if (queuedTimer.current) clearTimeout(queuedTimer.current)
+    }
+  }, [])
   const href = rel.type === 'editorial' ? `/editorial/${encodeURIComponent(rel.id)}` : `/release/${encodeURIComponent(rel.id)}`
 
   return (
@@ -45,6 +54,27 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
         >
           <IconHeart size={18} filled={fav} />
         </button>
+
+        {rel.type === 'release' && (
+          <button
+            onClick={(e) => {
+              e.preventDefault()
+              addToQueue(rel)
+              setJustQueued(true)
+              if (queuedTimer.current) clearTimeout(queuedTimer.current)
+              queuedTimer.current = setTimeout(() => {
+                setJustQueued(false)
+              }, 1400)
+            }}
+            className={`absolute right-3 top-14 grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-bg/70 backdrop-blur transition-all duration-200 ${
+              justQueued ? 'text-accent opacity-100' : 'text-body opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 max-lg:opacity-100'
+            }`}
+            aria-label={`Add ${rel.title} to queue`}
+            title="Add to queue"
+          >
+            {justQueued ? <IconCheck size={18} /> : <IconQueue size={18} />}
+          </button>
+        )}
 
         {isSold(rel.editions) && (
           <span className="absolute left-3 top-3 rounded-chip bg-bg/80 px-2 py-0.5 text-[11px] font-medium tracking-wide text-warn backdrop-blur">

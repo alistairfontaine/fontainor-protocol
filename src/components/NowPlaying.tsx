@@ -5,7 +5,7 @@ import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconChevronDown, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
 
 /**
  * Fullscreen "Now Playing" view — Spotify-style layout (FSP-01..06, FSP-07).
@@ -24,7 +24,8 @@ import { IconChevronDown, IconHeart, IconNext, IconPause, IconPlay, IconPrev, Ic
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek } = usePlayer()
+  const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } =
+    usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [queueOpen, setQueueOpen] = useState(false)
   const seekRef = useRef<HTMLDivElement>(null)
@@ -196,7 +197,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           {/* phone queue screen — Spotify-style: Now playing pinned on top, then Up next */}
           {queueOpen && (
             <div className="flex min-h-0 flex-1 flex-col py-1 lg:hidden">
-              <QueueList current={current} upNext={upNext} shuffle={shuffle} play={play} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
             </div>
           )}
 
@@ -315,7 +316,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               </span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
-              <QueueList current={current} upNext={upNext} shuffle={shuffle} play={play} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
             </div>
           </aside>
         )}
@@ -328,15 +329,21 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 function QueueList({
   current,
   upNext,
+  queuedCount,
   shuffle,
   play,
+  playQueued,
+  removeQueued,
   cur,
   dur,
 }: {
   current: Release
   upNext: Release[]
+  queuedCount: number
   shuffle: boolean
   play: (rel: Release) => void
+  playQueued: (index: number) => void
+  removeQueued: (index: number) => void
   cur: number
   dur: number
 }) {
@@ -365,10 +372,10 @@ function QueueList({
       <ul data-nodrag className="min-h-0 flex-1 overflow-y-auto">
         {upNext.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">Nothing queued.</li>}
         {upNext.map((rel, i) => (
-          <li key={rel.id}>
+          <li key={`${rel.id}:${i}`} className="flex items-center rounded-chip transition-colors hover:bg-raised">
             <button
-              onClick={() => play(rel)}
-              className="flex w-full cursor-pointer items-center gap-3 rounded-chip px-3 py-2 text-left transition-colors hover:bg-raised"
+              onClick={() => (i < queuedCount ? playQueued(i) : play(rel))}
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2 text-left"
             >
               <span className="w-4 shrink-0 text-[12px] tabular-nums text-faint">{i + 1}</span>
               <div className="h-11 w-11 shrink-0 overflow-hidden rounded-chip">
@@ -378,7 +385,22 @@ function QueueList({
                 <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
                 <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
               </div>
+              {i < queuedCount && (
+                <span className="shrink-0 rounded-chip bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                  Queued
+                </span>
+              )}
             </button>
+            {i < queuedCount && (
+              <button
+                onClick={() => removeQueued(i)}
+                className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center text-faint hover:text-accent"
+                aria-label={`Remove ${rel.title} from queue`}
+                title="Remove from queue"
+              >
+                <IconClose size={15} />
+              </button>
+            )}
           </li>
         ))}
       </ul>

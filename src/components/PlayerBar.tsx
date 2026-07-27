@@ -17,8 +17,27 @@ import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueu
  *   between timestamps] [queue · close]. Cover click opens fullscreen.
  */
 export function PlayerBar() {
-  const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close } =
-    usePlayer()
+  const {
+    current,
+    playing,
+    pos,
+    cur,
+    dur,
+    hasQueue,
+    shuffle,
+    upNext,
+    queuedCount,
+    toggleShuffle,
+    play,
+    playQueued,
+    removeQueued,
+    clearQueue,
+    toggle,
+    next,
+    prev,
+    seek,
+    close,
+  } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const seekRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false) // desktop queue popover
@@ -130,13 +149,20 @@ export function PlayerBar() {
 
             {upNext.length > 0 && (
               <>
-                <div className="px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Up next</div>
+                <div className="flex items-baseline justify-between px-4 pb-1 pt-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Up next</span>
+                  {queuedCount > 0 && (
+                    <button onClick={clearQueue} className="cursor-pointer text-[11px] font-medium text-muted hover:text-accent">
+                      Clear queue
+                    </button>
+                  )}
+                </div>
                 <ul className="max-h-[42vh] overflow-y-auto pb-2">
                   {upNext.map((rel, i) => (
-                    <li key={rel.id}>
+                    <li key={`${rel.id}:${i}`} className="group/qrow flex items-center transition-colors hover:bg-raised">
                       <button
-                        onClick={() => play(rel)}
-                        className="flex w-full cursor-pointer items-center gap-3 px-4 py-2 text-left transition-colors hover:bg-raised"
+                        onClick={() => (i < queuedCount ? playQueued(i) : play(rel))}
+                        className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-4 py-2 text-left"
                       >
                         <span className="w-4 shrink-0 text-[12px] tabular-nums text-faint">{i + 1}</span>
                         <div className="h-10 w-10 shrink-0 overflow-hidden rounded-chip">
@@ -146,7 +172,22 @@ export function PlayerBar() {
                           <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
                           <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
                         </div>
+                        {i < queuedCount && (
+                          <span className="shrink-0 rounded-chip bg-accent/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                            Queued
+                          </span>
+                        )}
                       </button>
+                      {i < queuedCount && (
+                        <button
+                          onClick={() => removeQueued(i)}
+                          className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center text-faint hover:text-accent"
+                          aria-label={`Remove ${rel.title} from queue`}
+                          title="Remove from queue"
+                        >
+                          <IconClose size={14} />
+                        </button>
+                      )}
                     </li>
                   ))}
                 </ul>
