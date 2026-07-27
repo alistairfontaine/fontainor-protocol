@@ -201,7 +201,7 @@
    "id": "F27",
    "title": "Musician-pays permanent storage (Irys pay-with-SOL)",
    "acceptance": "Publishing a release with files shows the exact one-time storage cost (SOL + USD) BEFORE any charge; on confirm the artist's Phantom wallet funds Irys for the shortfall only; audio/cover/manifest land on the permanent record with App-Name/Type tags; live registry is repointed (validated server-side) with durable-store fallback; friendly errors for rejection/insufficient SOL; Irys SDK loads lazily (main bundle unaffected).",
-   "verify": "node .tmp-real-flows-test.mjs (publish section) against vite preview",
+   "verify": "node tools/real-flows-test.mjs (publish section) against vite preview",
    "passes": true,
    "evidence": "2026-07-27: VERIFIED — ci green; headless: real mainnet Irys quote (◎<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
   },
@@ -209,7 +209,7 @@
    "id": "F28",
    "title": "Real edition purchases (98/2 SOL split via Phantom)",
    "acceptance": "Releases with price>0 AND artistWallet show a Collect CTA with the listed price; click -> live quote (USD-pegged listings convert at live SOL rate) -> one Phantom transaction with two SystemProgram transfers (98% artist, 2% treasury) -> confirmation polling -> on-chain Solscan receipt; receipt stored locally and re-verified server-side (durable when Upstash configured); Profile shows 'Your collection'; releases without a payout wallet are honestly unavailable; unconfirmed txs never claim success.",
-   "verify": "node .tmp-real-flows-test.mjs (purchase section) against vite preview",
+   "verify": "node tools/real-flows-test.mjs (purchase section) against vite preview",
    "passes": true,
    "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, ◎0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
   }

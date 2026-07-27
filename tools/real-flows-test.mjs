@@ -1,3 +1,5 @@
+// Headless verification for F27 (musician-pays publish) + F28 (real purchases).
+// Run: npm run build && npx vite preview --port 4173 & node tools/real-flows-test.mjs
 // Headless verification: musician-pays publish quote + real purchase flow (simulated chain)
 import { chromium } from 'playwright'
 
