@@ -3,6 +3,7 @@
 // treasury (same split the registry has always promised). The signature is
 // the on-chain receipt; the server re-verifies it and stores a durable
 // purchase record when the durable store is configured.
+import { useSyncExternalStore } from 'react'
 import { API_BASE } from './api'
 import { getConnectedPhantom, PhantomError, SOLANA_RPC } from './phantom'
 import { TIP_WALLET } from '../config/support'
@@ -34,7 +35,12 @@ export interface PurchaseReceipt {
 
 const KEY = 'fontainor_purchases_v1'
 
-export function loadPurchases(): PurchaseReceipt[] {
+// Reactive store so the Profile updates live when receipts arrive from the
+// durable server record (wallet-portable collection) or a fresh purchase.
+type Listener = () => void
+const listeners = new Set<Listener>()
+
+function readStored(): PurchaseReceipt[] {
   try {
     const parsed: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]')
     return Array.isArray(parsed) ? (parsed as PurchaseReceipt[]) : []
@@ -43,16 +49,47 @@ export function loadPurchases(): PurchaseReceipt[] {
   }
 }
 
+let cache: PurchaseReceipt[] = readStored()
+
+function persist(next: PurchaseReceipt[]): void {
+  cache = next
+  try {
+    localStorage.setItem(KEY, JSON.stringify(next))
+  } catch {
+    /* private mode — the on-chain receipt still exists */
+  }
+  listeners.forEach((l) => l())
+}
+
+export function loadPurchases(): PurchaseReceipt[] {
+  return cache
+}
+
+export function subscribePurchases(l: Listener): () => void {
+  listeners.add(l)
+  return () => listeners.delete(l)
+}
+
+/** React hook: live view of the local receipt list. */
+export function usePurchases(): PurchaseReceipt[] {
+  return useSyncExternalStore(subscribePurchases, loadPurchases)
+}
+
 export function hasPurchased(trackId: string): PurchaseReceipt | undefined {
   return loadPurchases().find((p) => p.trackId === trackId)
 }
 
 function savePurchase(r: PurchaseReceipt): void {
-  try {
-    localStorage.setItem(KEY, JSON.stringify([r, ...loadPurchases()].slice(0, 200)))
-  } catch {
-    /* private mode — the on-chain receipt still exists */
-  }
+  persist([r, ...cache].slice(0, 500))
+}
+
+/** Merge receipts recovered from the durable server record (dedup by signature). */
+export function mergePurchases(incoming: PurchaseReceipt[]): void {
+  const known = new Set(cache.map((p) => p.signature))
+  const fresh = incoming.filter((p) => p.signature && !known.has(p.signature))
+  if (fresh.length === 0) return
+  const merged = [...cache, ...fresh].sort((a, b) => (b.at || '').localeCompare(a.at || ''))
+  persist(merged.slice(0, 500))
 }
 
 /** A release is purchasable when it has a price and a payout wallet on record. */
