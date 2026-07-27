@@ -290,16 +290,16 @@
    "title": "User play queue: Add to queue, consume-first ordering, queue management",
    "acceptance": "Cards and the release page expose an Add-to-queue action. User-queued tracks play before catalog order and are consumed as they start (Next and track-end both honor this). Queue popover + fullscreen queue mark user-queued rows, support per-row remove and Clear queue. Adding with nothing playing starts playback. Closing the player discards the user queue.",
    "verify": "npm run build && node tools/queue-test.mjs && npm run ci",
-   "passes": false,
-   "evidence": ""
+   "passes": true,
+   "evidence": "PR #30 merged; queue-test 13/13; CI green; prod bundle index-M-xlELDf.js contains 'Add to queue'/'Clear queue' (verified 2026-07-27)."
   },
   {
    "id": "F39",
    "title": "User playlists: create, curate, reorder, play in order",
    "acceptance": "/playlists index with create form + counts; /playlists/:id detail with Play all, per-row play, move up/down, remove, inline rename, two-step delete. Release page 'Playlist' dropdown toggles membership and can create-and-add. Play all sets a playlist context: Next/track-end follow playlist order (looping) until a direct pick elsewhere resets to catalog. localStorage-persisted, zero backend.",
    "verify": "npm run build && node tools/playlists-test.mjs && npm run ci",
-   "passes": false,
-   "evidence": ""
+   "passes": true,
+   "evidence": "PR #31 merged; playlists-test 18/18; queue-test 13/13 regression; CI green; prod bundle contains playlists routes/store strings (verified 2026-07-27)."
   }
  ]
 }
