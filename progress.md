@@ -236,3 +236,7 @@ VERIFIED: tools/share-test.mjs 10/10; npm run ci green. ASSUMED: prod until post
 
 ## 2026-07-27 — Post-deploy verification F33/F34
 VERIFIED on prod: /share/FONT-4WHPZ2Q17 returns 200 with og:title "Fontainor Genesis — Alistair Fontaine", price/edition description, absolute cover URL, redirect to /#/release/. Served JS bundle contains the F33 rail + Follow UI and F34 Share button strings. Retention queue from the 2026-07-27 Nina-gap list is complete: F32 trending, autoplay (pre-existing), F33 follows, F34 share cards.
+
+## 2026-07-27 — Iteration: contact email + socials (user directive)
+User (DM 13:08): all contact points -> silentics.org@gmail.com only for now; Instagram + X handles are @fontainor. Changes: Contact page consolidated 3 fictional fontainor.xyz addresses into one real mailto card + Instagram/X cards; footer community row gained Instagram + X; twitter:site @fontainor added to index.html and the /share/:id OG template.
+VERIFIED: share-test 10/10, npm run ci green. ASSUMED: prod until deploy check.

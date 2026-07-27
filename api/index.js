@@ -852,6 +852,7 @@ app.get('/share/:id', async (req, res) => {
 <meta property="og:image" content="${escHtml(image)}">
 <meta property="og:url" content="${escHtml(appUrl)}">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@fontainor">
 <meta name="twitter:title" content="${escHtml(title)}">
 <meta name="twitter:description" content="${escHtml(desc)}">
 <meta name="twitter:image" content="${escHtml(image)}">
