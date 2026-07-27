@@ -29,7 +29,7 @@ const COLS: Array<{ head: string; links: Array<{ to: string; label: string }> }>
 
 const COMMUNITY: Array<{ href: string; label: string }> = [
   { href: 'https://discord.gg/uc4SJbRBH', label: 'Discord' },
-  { href: 'https://www.reddit.com/r/fontainor/', label: 'Reddit' },
+  { href: 'https://www.reddit.com/r/fontainorprotocol/', label: 'Reddit' },
   { href: 'https://github.com/alistairfontaine/fontainor-protocol', label: 'GitHub' },
   { href: 'https://instagram.com/fontainor', label: 'Instagram' },
   { href: 'https://x.com/fontainor', label: 'X' },
