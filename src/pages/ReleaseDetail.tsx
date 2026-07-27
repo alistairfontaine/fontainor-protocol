@@ -126,6 +126,7 @@ export default function ReleaseDetail() {
               <IconHeart size={18} filled={fav} className={fav ? 'text-accent' : undefined} />
               {fav ? 'Saved' : 'Save'}
             </Button>
+            <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
           </div>
 
@@ -268,6 +269,33 @@ function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
         </a>
       )}
     </div>
+  )
+}
+
+/** F34: copy a crawler-friendly share link (/share/:id serves real OG meta). */
+function ShareButton({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false)
+  const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
+  return (
+    <Button
+      size="lg"
+      aria-label="Copy share link"
+      onClick={() => {
+        void navigator.clipboard
+          .writeText(url)
+          .catch(() => {
+            /* clipboard blocked — fall through to prompt */
+            window.prompt('Copy this link:', url)
+          })
+          .finally(() => {
+            setCopied(true)
+            window.setTimeout(() => setCopied(false), 2000)
+          })
+      }}
+    >
+      {copied ? <IconCheck size={18} className="text-accent" /> : <IconExternal size={18} />}
+      {copied ? 'Link copied' : 'Share'}
+    </Button>
   )
 }
 
