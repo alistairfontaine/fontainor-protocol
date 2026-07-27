@@ -158,3 +158,7 @@ VERIFIED: ci green x4; tip wallet base58 = 32 bytes; dist contains page copy + s
 ASSUMED (flagged in features.json): actual on-chain tip transfer and nudge runtime behavior — not exercised against a live wallet/browser yet.
 NOT done deliberately: merging fork PR #1 (Upstash — needs Vercel env vars + user call), funding Arweave wallet (spends money), creating Sponsors/Ko-fi/Liberapay accounts, any Reddit/HN posting.
 Hygiene: AGENTS.md secrets pointer made generic (was an internal sandbox path in a public repo).
+
+## 2026-07-27 (canonical link)
+- Owner confirmed via Tapiwa: official production URL is https://fontainor-protocol.vercel.app (no `-two`). VERIFIED both domains now serve the new SPA build (curl: identical dark-theme index).
+- NOTICE, README /support link, and FUNDING.yml custom link repointed from `-two` to the canonical domain. Historical `-two` references in progress.md/features.json evidence left as-is (append-only record).
