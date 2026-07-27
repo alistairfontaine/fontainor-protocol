@@ -756,6 +756,50 @@ app.get('/api/v1/plays/top', async (req, res) => {
     }
 });
 
+// 6d. Aggregate stats — one call answers "is anyone using this?".
+// Reads only what already exists: the all-time plays zset and the durable
+// purchase receipts. No auth: nothing here is private (wallets are public
+// keys, counts are social proof).
+app.get('/api/v1/stats', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        if (!redis) return res.json({ success: true, durable: false, stats: null });
+        const [flat, rawPurchases] = await Promise.all([
+            redis.zrange(PLAYS_ALL_KEY, 0, -1, { withScores: true }),
+            redis.lrange(PURCHASES_KEY, 0, 999),
+        ]);
+        let totalPlays = 0;
+        let tracksPlayed = 0;
+        for (let i = 0; i + 1 < (flat || []).length; i += 2) {
+            tracksPlayed += 1;
+            totalPlays += Number(flat[i + 1]) || 0;
+        }
+        const purchases = (Array.isArray(rawPurchases) ? rawPurchases : [])
+            .map((item) => {
+                try { return typeof item === 'string' ? JSON.parse(item) : item; }
+                catch { return null; }
+            })
+            .filter(Boolean);
+        const buyers = new Set(purchases.map((p) => p.buyerWallet).filter(Boolean));
+        const totalLamports = purchases.reduce((sum, p) => sum + (Number(p.amountLamports) || 0), 0);
+        return res.json({
+            success: true,
+            durable: true,
+            stats: {
+                totalPlays,
+                tracksPlayed,
+                totalBuys: purchases.length,
+                uniqueBuyers: buyers.size,
+                totalLamports,
+                totalSol: totalLamports / 1e9,
+            },
+        });
+    } catch (err) {
+        console.error('Stats read failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // 7. Publish Manifest Pointer Update
 app.post('/api/v1/publish', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
