@@ -283,7 +283,7 @@
       "acceptance": "On mobile browsers without an injected wallet, the header replaces the dead-end Connect button with an 'Open in Phantom' link (phantom.app/ul/browse/<current-url>?ref=<origin>) that loads the site inside Phantom's in-app browser. Inside Phantom (provider injected) and on desktop, the normal Connect button is unchanged. getConnectedPhantom/AuthContext no-wallet errors are mobile-aware.",
       "verify": "npm run build && node tools/mobile-wallet-test.mjs && npm run ci",
       "passes": true,
-      "evidence": "mobile-wallet-test 9/9 (mobile UA, injected-provider, desktop contexts); CI green (2026-07-27)."
+      "evidence": "PR #29 merged; mobile-wallet-test 9/9; CI green; prod bundle contains deep link + 'Open in Phantom' (verified 2026-07-27)."
     }
   ]
 }
