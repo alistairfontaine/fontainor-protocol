@@ -2,6 +2,7 @@
   "name": "fontainor-web",
   "private": true,
   "version": "2.0.0",
+  "license": "AGPL-3.0-only",
   "type": "module",
   "description": "Fontainor Protocol \u2014 sovereign music registry frontend",
   "scripts": {

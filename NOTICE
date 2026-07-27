@@ -1,0 +1,18 @@
+Fontainor™ Protocol
+Copyright (c) 2026 Alistair Fontaine and tapiwamakandigona
+
+This product includes software developed for the Fontainor Protocol,
+a permanent, artist-owned music registry (Arweave storage, Solana
+settlement).
+
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0-only).
+See the LICENSE file for the full text. If you run a modified version of
+this software as a network service, the AGPL requires you to offer the
+complete corresponding source of your modified version to its users.
+
+"Fontainor" and the Fontainor logo are used as trade names / common-law
+trademarks of the Fontainor project. The AGPL license covers the code —
+it does NOT grant any right to use the Fontainor name or logo to brand a
+fork, clone, or competing service. Forks must use a different name and
+must not present themselves as the official Fontainor deployment
+(https://fontainor-protocol-two.vercel.app).
