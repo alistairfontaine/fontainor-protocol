@@ -19,10 +19,11 @@
       "drone",
       "genesis"
     ],
-    "desc": "The first record etched into the registry. Twelve movements recorded in a decommissioned water tower, mixed to tape, committed to Arweave in a single write.",
+    "desc": "The first record etched into the registry. Twelve movements recorded in a decommissioned water tower, mixed to tape, committed to Arweave in a single write. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/genesis.mp3",
     "coverUri": "/covers/genesis.jpg",
-    "label": "Fontainor"
+    "label": "Fontainor",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -44,9 +45,10 @@
       "electronic",
       "afrobeat"
     ],
-    "desc": "Highlife guitar loops over broken-beat drums. Recorded between Accra and Kumasi on an eight-hour ride.",
+    "desc": "Highlife guitar loops over broken-beat drums. Recorded between Accra and Kumasi on an eight-hour ride. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/kumasi.mp3",
-    "coverUri": "/covers/kumasi.jpg"
+    "coverUri": "/covers/kumasi.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -68,10 +70,11 @@
       "industrial",
       "electronic"
     ],
-    "desc": "Machine music for patient people. All synthesis from one rebuilt SH-101.",
+    "desc": "Machine music for patient people. All synthesis from one rebuilt SH-101. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/solder.mp3",
     "coverUri": "/covers/solder.jpg",
-    "label": "Rautatehdas"
+    "label": "Rautatehdas",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -92,9 +95,10 @@
       "drone",
       "ambient"
     ],
-    "desc": "Free archive of location recordings: glaciers calving, substation hum, a market at dawn in Oaxaca.",
+    "desc": "Free archive of location recordings: glaciers calving, substation hum, a market at dawn in Oaxaca. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/fieldnotes.mp3",
-    "coverUri": "/covers/fieldnotes.jpg"
+    "coverUri": "/covers/fieldnotes.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -115,9 +119,10 @@
       "hip-hop",
       "soul"
     ],
-    "desc": "Summer singles chopped from thrift-store 45s. Loose, warm, unquantized.",
+    "desc": "Summer singles chopped from thrift-store 45s. Loose, warm, unquantized. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/grapesoda.mp3",
-    "coverUri": "/covers/grapesoda.jpg"
+    "coverUri": "/covers/grapesoda.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -139,10 +144,11 @@
       "modal",
       "ambient"
     ],
-    "desc": "Quartet session cut live to two-track. No overdubs, one take per side.",
+    "desc": "Quartet session cut live to two-track. No overdubs, one take per side. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/aerials.mp3",
     "coverUri": "/covers/aerials.jpg",
-    "label": "Blue Sable"
+    "label": "Blue Sable",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -164,9 +170,10 @@
       "uk-garage",
       "electronic"
     ],
-    "desc": "Four cuts of sub-heavy garage from the collective's first on-chain session.",
+    "desc": "Four cuts of sub-heavy garage from the collective's first on-chain session. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/terraform.mp3",
-    "coverUri": "/covers/terraform.jpg"
+    "coverUri": "/covers/terraform.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -187,9 +194,10 @@
       "ambient",
       "generative"
     ],
-    "desc": "Generative choir pieces trained on cooling-fan harmonics. Best played quietly, forever.",
+    "desc": "Generative choir pieces trained on cooling-fan harmonics. Best played quietly, forever. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/lullabies.mp3",
-    "coverUri": "/covers/lullabies.jpg"
+    "coverUri": "/covers/lullabies.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -210,9 +218,10 @@
       "afrobeat",
       "jazz"
     ],
-    "desc": "Big-band afrobeat suite in three parts, recorded in Lagos with a nine-piece horn section.",
+    "desc": "Big-band afrobeat suite in three parts, recorded in Lagos with a nine-piece horn section. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/meridian.mp3",
-    "coverUri": "/covers/meridian.jpg"
+    "coverUri": "/covers/meridian.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "release",
@@ -234,9 +243,10 @@
       "noise-pop",
       "electronic"
     ],
-    "desc": "Debut on the registry: six songs of tape-saturated noise-pop, mastered loud on purpose.",
+    "desc": "Debut on the registry: six songs of tape-saturated noise-pop, mastered loud on purpose. Demo release (CC0 audio, fictional artist) — collecting an edition is a real on-chain purchase that supports the protocol treasury (a supporter edition), not a payment to a real artist.",
     "audioUri": "/audio/staticbloom.mp3",
-    "coverUri": "/covers/staticbloom.jpg"
+    "coverUri": "/covers/staticbloom.jpg",
+    "artistWallet": "6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo"
   },
   {
     "type": "editorial",
@@ -256,10 +266,10 @@
       "protocol",
       "essays"
     ],
-    "desc": "When a streaming platform folds, its catalog goes with it. We have watched it happen four times in ten years.\n\nArweave changes the deal: you pay once, and the file outlives the company, the label, and probably you. That permanence changes how you think about a discography \u2014 it stops being inventory and becomes a record, in the oldest sense of the word.\n\nThis piece walks through what actually happens when you publish on Fontainor: the manifest, the transaction, the gateway, and why a 98/2 split is not a promotional stunt but a consequence of removing the middle.",
+    "desc": "When a streaming platform folds, its catalog goes with it. We have watched it happen four times in ten years.\n\nArweave changes the deal: you pay once, and the file outlives the company, the label, and probably you. That permanence changes how you think about a discography — it stops being inventory and becomes a record, in the oldest sense of the word.\n\nThis piece walks through what actually happens when you publish on Fontainor: the manifest, the transaction, the gateway, and why a 98/2 split is not a promotional stunt but a consequence of removing the middle.",
     "audioUri": null,
     "coverUri": "/covers/ed-arweave.jpg",
-    "description": "When we started Fontainor, the question we heard most was: why Arweave? The short answer is that every other option we tested treats music as a lease.\n\nCloud buckets disappear when invoices lapse. IPFS pins vanish when the pinning service pivots. Even the big streaming platforms \u2014 the ones that feel eternal \u2014 quietly delist thousands of tracks a year. Permanence, it turns out, is not a default anywhere on the internet. It has to be engineered.\n\nArweave's endowment model is the only mechanism we found that pays for storage the way the music deserves: once, forever. You pay when you publish, the network holds the principal, and the interest keeps your masters readable long after all of us are gone.\n\nThat changes the psychology of publishing. A release stops being content and becomes a record \u2014 in both senses. You think harder about the mix, the artwork, the liner notes, because you know it will outlive the hype cycle. We think that pressure makes better music."
+    "description": "When we started Fontainor, the question we heard most was: why Arweave? The short answer is that every other option we tested treats music as a lease.\n\nCloud buckets disappear when invoices lapse. IPFS pins vanish when the pinning service pivots. Even the big streaming platforms — the ones that feel eternal — quietly delist thousands of tracks a year. Permanence, it turns out, is not a default anywhere on the internet. It has to be engineered.\n\nArweave's endowment model is the only mechanism we found that pays for storage the way the music deserves: once, forever. You pay when you publish, the network holds the principal, and the interest keeps your masters readable long after all of us are gone.\n\nThat changes the psychology of publishing. A release stops being content and becomes a record — in both senses. You think harder about the mix, the artwork, the liner notes, because you know it will outlive the hype cycle. We think that pressure makes better music."
   },
   {
     "type": "editorial",
@@ -279,10 +289,10 @@
       "culture",
       "writing"
     ],
-    "desc": "Streaming killed the liner note. There was nowhere to put it \u2014 no gatefold, no insert, just a thumbnail and a play button.\n\nA registry that stores text as readily as audio brings the form back. An editorial entry sits next to the release, permanently, written by the person who made the record. That proximity matters.\n\nHere is what I put in mine: who played what, where we slept, what the bus driver said at 3am outside Nkawkaw, and why track four is in 7/8.",
+    "desc": "Streaming killed the liner note. There was nowhere to put it — no gatefold, no insert, just a thumbnail and a play button.\n\nA registry that stores text as readily as audio brings the form back. An editorial entry sits next to the release, permanently, written by the person who made the record. That proximity matters.\n\nHere is what I put in mine: who played what, where we slept, what the bus driver said at 3am outside Nkawkaw, and why track four is in 7/8.",
     "audioUri": null,
     "coverUri": "/covers/ed-liner.jpg",
-    "description": "My first record came with a booklet. Lyrics, thank-yous, a blurry photo of the studio, the name of the engineer who stayed until 4am. Streaming killed that booklet, and with it a whole layer of the music.\n\nOn Fontainor, every release carries its metadata forever \u2014 and there is room for more than an ISRC code. We are seeing artists attach essays, scans of handwritten lyrics, gear lists, even the temperature of the room on the day of recording.\n\nWhy does this matter? Because context is what turns a listener into a fan. Nobody ever tattooed a lyric they found in an algorithmic playlist. They fell in love with a world, and liner notes are the door into that world.\n\nSo here is my ask: next time you publish, write the notes. Name the bassist. Thank the venue. Etch the story next to the sound. Permanence is wasted on files alone."
+    "description": "My first record came with a booklet. Lyrics, thank-yous, a blurry photo of the studio, the name of the engineer who stayed until 4am. Streaming killed that booklet, and with it a whole layer of the music.\n\nOn Fontainor, every release carries its metadata forever — and there is room for more than an ISRC code. We are seeing artists attach essays, scans of handwritten lyrics, gear lists, even the temperature of the room on the day of recording.\n\nWhy does this matter? Because context is what turns a listener into a fan. Nobody ever tattooed a lyric they found in an algorithmic playlist. They fell in love with a world, and liner notes are the door into that world.\n\nSo here is my ask: next time you publish, write the notes. Name the bassist. Thank the venue. Etch the story next to the sound. Permanence is wasted on files alone."
   },
   {
     "type": "editorial",
@@ -305,6 +315,6 @@
     "desc": "Editions are the most misunderstood lever on the platform. Price low with a big edition and you optimize for reach; price high with a small one and you optimize for patronage.\n\nSolder sold out at 150 copies because the people who wanted it were the same people who would have bought the record twice on vinyl. Know which curve you are on.\n\nSome practical numbers from three releases, including the one that did not work.",
     "audioUri": null,
     "coverUri": "/covers/ed-pricing.jpg",
-    "description": "Edition pricing is the most common question artists ask when they move to Fontainor, so here is the honest field guide.\n\nFirst: scarcity only means something if you enforce it, and here it is enforced by the protocol, not by a promise. When your 150 copies are gone, they are gone. That makes your first pricing decision a real one.\n\nA rule of thumb from the first wave of registry artists: price the first release like a handshake, not a payday. Small editions (100\u2013300) at coffee money find their collectors fast, and a sold-out badge does more for your next release than a higher margin ever will.\n\nSecond: resist the urge to go unlimited. Unlimited editions read as background music. The registry's economics reward conviction \u2014 98% of every sale is yours, so a 200-copy edition at $8 pays like a 2,000-stream day, except it happens once and belongs to you forever.\n\nFinally, remember that the price is metadata too. It tells the listener what you think the work is worth. Tell them the truth."
+    "description": "Edition pricing is the most common question artists ask when they move to Fontainor, so here is the honest field guide.\n\nFirst: scarcity only means something if you enforce it, and here it is enforced by the protocol, not by a promise. When your 150 copies are gone, they are gone. That makes your first pricing decision a real one.\n\nA rule of thumb from the first wave of registry artists: price the first release like a handshake, not a payday. Small editions (100–300) at coffee money find their collectors fast, and a sold-out badge does more for your next release than a higher margin ever will.\n\nSecond: resist the urge to go unlimited. Unlimited editions read as background music. The registry's economics reward conviction — 98% of every sale is yours, so a 200-copy edition at $8 pays like a 2,000-stream day, except it happens once and belongs to you forever.\n\nFinally, remember that the price is metadata too. It tells the listener what you think the work is worth. Tell them the truth."
   }
 ]
