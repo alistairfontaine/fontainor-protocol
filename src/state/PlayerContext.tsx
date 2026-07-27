@@ -15,10 +15,18 @@ interface PlayerState {
   /** whether prev/next have somewhere to go */
   hasQueue: boolean
   shuffle: boolean
-  /** next tracks in play order (max 8) */
+  /** next tracks in play order: user-queued first, then catalog order */
   upNext: Release[]
+  /** how many entries at the head of upNext were queued by the user */
+  queuedCount: number
   toggleShuffle: () => void
   play: (rel: Release) => void
+  /** append to the user queue (plays immediately when nothing is playing) */
+  addToQueue: (rel: Release) => void
+  /** play the i-th user-queued entry now, consuming it from the queue */
+  playQueued: (index: number) => void
+  removeQueued: (index: number) => void
+  clearQueue: () => void
   toggle: () => void
   next: () => void
   prev: () => void
@@ -109,6 +117,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [current])
   const playRef = useRef<(rel: Release) => void>(() => {})
 
+  // User "Add to queue" list (F38). Plays before the catalog order and is
+  // consumed as tracks start. Ref mirrors state so audio 'ended' handlers
+  // (bound once per track) always see the fresh queue.
+  const [manual, setManual] = useState<Release[]>([])
+  const manualRef = useRef<Release[]>([])
+  const setManualSynced = (next: Release[]) => {
+    manualRef.current = next
+    setManual(next)
+  }
+
   const stopSim = () => {
     if (simRef.current) {
       clearInterval(simRef.current)
@@ -130,6 +148,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return q[(i + offset + q.length) % q.length]
   }
 
+  /** Forward step: consume the user queue first, then follow catalog order. */
+  const advance = (): boolean => {
+    const m = manualRef.current
+    if (m.length > 0) {
+      const [head, ...rest] = m
+      manualRef.current = rest
+      setManual(rest)
+      playRef.current(head)
+      return true
+    }
+    const n = stepFrom(1)
+    if (n) {
+      playRef.current(n)
+      return true
+    }
+    return false
+  }
+
   const startSim = useCallback((from: number) => {
     stopSim()
     let t = from
@@ -139,9 +175,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         stopSim()
         t = DEMO_DURATION
         // auto-advance, same as real audio 'ended'
-        const n = stepFrom(1)
-        if (n) playRef.current(n)
-        else setPlaying(false)
+        if (!advance()) setPlaying(false)
         return
       }
       setCur(t)
@@ -177,9 +211,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setMediaPosition(a.duration || 0, a.currentTime)
         })
         a.addEventListener('ended', () => {
-          const n = stepFrom(1)
-          if (n) playRef.current(n)
-          else setPlaying(false)
+          if (!advance()) setPlaying(false)
         })
         a.addEventListener('error', () => {
           // fall back to simulated playback so the UI stays honest but usable
@@ -216,10 +248,41 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setPlaying((p) => !p)
   }, [current, playing, cur, startSim])
 
+  // advance() only touches refs + stable setters, so the first instance is safe to capture
   const next = useCallback(() => {
-    const n = stepFrom(1)
-    if (n) play(n)
-  }, [play])
+    advance()
+  }, [])
+
+  const addToQueue = useCallback(
+    (rel: Release) => {
+      // Nothing playing → there is no queue UI to see; just start it.
+      if (!currentRef.current) {
+        play(rel)
+        return
+      }
+      setManualSynced([...manualRef.current, rel])
+    },
+    [play],
+  )
+
+  const playQueued = useCallback(
+    (index: number) => {
+      const m = manualRef.current
+      const rel = m[index]
+      if (!rel) return
+      setManualSynced(m.filter((_, i) => i !== index))
+      play(rel)
+    },
+    [play],
+  )
+
+  const removeQueued = useCallback((index: number) => {
+    setManualSynced(manualRef.current.filter((_, i) => i !== index))
+  }, [])
+
+  const clearQueue = useCallback(() => {
+    setManualSynced([])
+  }, [])
 
   const prev = useCallback(() => {
     // Spotify behavior: past a few seconds in, "previous" restarts the track
@@ -265,6 +328,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setCurrent(null)
     currentRef.current = null
+    setManualSynced([]) // closing the player discards the user queue
     setPlaying(false)
     setPos(0)
     setCur(0)
@@ -354,19 +418,42 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  // User-queued tracks first (all of them), then up to 8 from catalog order.
   const upNext = useMemo(() => {
-    if (!queue.length) return []
-    const i = current ? queue.findIndex((r) => r.id === current.id) : -1
-    const out: Release[] = []
-    for (let k = 1; k <= Math.min(8, queue.length - 1); k++) {
-      out.push(queue[(i + k + queue.length) % queue.length])
+    const out: Release[] = [...manual]
+    if (queue.length) {
+      const i = current ? queue.findIndex((r) => r.id === current.id) : -1
+      for (let k = 1; k <= Math.min(8, queue.length - 1); k++) {
+        out.push(queue[(i + k + queue.length) % queue.length])
+      }
     }
     return out
-  }, [queue, current])
+  }, [queue, current, manual])
 
   const value = useMemo<PlayerState>(
-    () => ({ current, playing, pos, cur, dur, hasQueue: queue.length > 1, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close }),
-    [current, playing, pos, cur, dur, queue.length, shuffle, upNext, toggleShuffle, play, toggle, next, prev, seek, close],
+    () => ({
+      current,
+      playing,
+      pos,
+      cur,
+      dur,
+      hasQueue: queue.length > 1 || manual.length > 0,
+      shuffle,
+      upNext,
+      queuedCount: manual.length,
+      toggleShuffle,
+      play,
+      addToQueue,
+      playQueued,
+      removeQueued,
+      clearQueue,
+      toggle,
+      next,
+      prev,
+      seek,
+      close,
+    }),
+    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, upNext, toggleShuffle, play, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconSpinner, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconQueue, IconSpinner, IconTag } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
@@ -126,6 +126,7 @@ export default function ReleaseDetail() {
               <IconHeart size={18} filled={fav} className={fav ? 'text-accent' : undefined} />
               {fav ? 'Saved' : 'Save'}
             </Button>
+            <QueueButton rel={rel} />
             <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
           </div>
@@ -273,6 +274,26 @@ function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
 }
 
 /** F34: copy a crawler-friendly share link (/share/:id serves real OG meta). */
+/** F38: append this release to the user play queue, with brief ✓ feedback. */
+function QueueButton({ rel }: { rel: Release }) {
+  const { addToQueue } = usePlayer()
+  const [added, setAdded] = useState(false)
+  return (
+    <Button
+      size="lg"
+      aria-label={`Add ${rel.title} to queue`}
+      onClick={() => {
+        addToQueue(rel)
+        setAdded(true)
+        window.setTimeout(() => setAdded(false), 2000)
+      }}
+    >
+      {added ? <IconCheck size={18} className="text-accent" /> : <IconQueue size={18} />}
+      {added ? 'Queued' : 'Queue'}
+    </Button>
+  )
+}
+
 function ShareButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false)
   const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
