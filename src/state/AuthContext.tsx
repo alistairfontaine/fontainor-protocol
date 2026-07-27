@@ -3,6 +3,7 @@
 // incl. the Firefox service-worker workarounds.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_BASE } from '../lib/api'
+import { isMobileDevice } from '../lib/phantom'
 import { clearSessionProof, saveSessionProof, startFavoritesAutoPush, syncProfile } from '../lib/profileSync'
 
 export interface User {
@@ -74,7 +75,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!provider) {
         return {
           success: false,
-          error: 'Phantom wallet not detected. Install the Phantom extension (phantom.com), unlock it, and refresh.',
+          error: isMobileDevice()
+            ? 'No wallet in this mobile browser — tap "Open in Phantom" in the header to load Fontainor inside the Phantom app.'
+            : 'Phantom wallet not detected. Install the Phantom extension (phantom.com), unlock it, and refresh.',
         }
       }
 

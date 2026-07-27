@@ -1,12 +1,33 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { isMobileDevice, phantomBrowseUrl } from '../lib/phantom'
 import { shortAddress, useAuth } from '../state/AuthContext'
 import { IconSpinner, IconWallet } from './icons'
 
 export function WalletButton() {
-  const { user, connect, connecting } = useAuth()
+  const { user, connect, connecting, hasWallet } = useAuth()
   const navigate = useNavigate()
   const [err, setErr] = useState<string | null>(null)
+
+  // Mobile browsers can't run the Phantom extension, so "Connect wallet"
+  // would be a dead end. Deep-link the current page into Phantom's in-app
+  // browser instead (where window.solana is injected and connect works).
+  if (!user && !hasWallet && isMobileDevice()) {
+    return (
+      <a
+        href={phantomBrowseUrl()}
+        onClick={(e) => {
+          e.preventDefault()
+          window.location.href = phantomBrowseUrl()
+        }}
+        className="flex h-10 cursor-pointer items-center gap-2 rounded-btn bg-accent px-4 text-[13px] font-semibold text-accent-ink transition-colors hover:bg-accent-hi"
+      >
+        <IconWallet size={16} />
+        <span className="hidden sm:inline">Open in Phantom</span>
+        <span className="sm:hidden">Open in Phantom</span>
+      </a>
+    )
+  }
 
   if (user) {
     return (

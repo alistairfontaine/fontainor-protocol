@@ -1,5 +1,5 @@
 {
-  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria — that's a spec change, report it.",
+  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
   "features": [
     {
       "id": "F1",
@@ -39,7 +39,7 @@
       "acceptance": "Release page with cover/metadata/tags; global player bar persists across routes, play/pause/seek works with audioUri, keyboard accessible.",
       "verify": "npm run ci",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (headless test): card play → persistent player bar appears, time advances (0:01→0:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
+      "evidence": "VERIFIED 2026-07-26 (headless test): card play \u2192 persistent player bar appears, time advances (0:01\u21920:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
     },
     {
       "id": "F6",
@@ -47,7 +47,7 @@
       "acceptance": "Virtualized grid (react-window) handles 500+ items; text search, sort (date/title/artist/price) and type filter actually filter results; global top-bar search wired to it.",
       "verify": "npm run ci",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' → /library?q=techno → 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
+      "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' \u2192 /library?q=techno \u2192 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
     },
     {
       "id": "F7",
@@ -63,7 +63,7 @@
       "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
       "verify": "npm run ci",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26: (1) live endpoint test — real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
+      "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
     },
     {
       "id": "F9",
@@ -71,7 +71,7 @@
       "acceptance": "REAL publish: musician-pays storage via Irys pay-with-SOL from Phantom (quote -> fund -> upload audio/cover -> tagged manifest -> repoint registry). No demo mode, no platform wallet.",
       "verify": "npm run ci",
       "passes": true,
-      "evidence": "2026-07-27: DEMO_PUBLISH removed. VERIFIED: npm run ci green; 13/13 headless checks incl. REAL Irys mainnet storage quote reaching the cost-confirm screen through the lazy chunk (Phantom mocked). ASSUMED: an actual funded mainnet upload (spends real SOL) — flow code mirrors the verified quote path."
+      "evidence": "2026-07-27: DEMO_PUBLISH removed. VERIFIED: npm run ci green; 13/13 headless checks incl. REAL Irys mainnet storage quote reaching the cost-confirm screen through the lazy chunk (Phantom mocked). ASSUMED: an actual funded mainnet upload (spends real SOL) \u2014 flow code mirrors the verified quote path."
     },
     {
       "id": "F10",
@@ -110,7 +110,7 @@
       "name": "Demo catalog: real audio + artwork",
       "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed — covers and article art render."
+      "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
     },
     {
       "id": "F15",
@@ -160,14 +160,14 @@
       "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
       "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy — MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
+      "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
     },
     {
       "id": "F22",
       "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
-      "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' — current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
+      "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
       "passes": true,
-      "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks — swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
+      "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
     },
     {
       "id": "F23",
@@ -203,7 +203,7 @@
       "acceptance": "Publishing a release with files shows the exact one-time storage cost (SOL + USD) BEFORE any charge; on confirm the artist's Phantom wallet funds Irys for the shortfall only; audio/cover/manifest land on the permanent record with App-Name/Type tags; live registry is repointed (validated server-side) with durable-store fallback; friendly errors for rejection/insufficient SOL; Irys SDK loads lazily (main bundle unaffected).",
       "verify": "node tools/real-flows-test.mjs (publish section) against vite preview",
       "passes": true,
-      "evidence": "2026-07-27: VERIFIED — ci green; headless: real mainnet Irys quote (◎<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
+      "evidence": "2026-07-27: VERIFIED \u2014 ci green; headless: real mainnet Irys quote (\u25ce<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
     },
     {
       "id": "F28",
@@ -211,7 +211,7 @@
       "acceptance": "Releases with price>0 AND artistWallet show a Collect CTA with the listed price; click -> live quote (USD-pegged listings convert at live SOL rate) -> one Phantom transaction with two SystemProgram transfers (98% artist, 2% treasury) -> confirmation polling -> on-chain Solscan receipt; receipt stored locally and re-verified server-side (durable when Upstash configured); Profile shows 'Your collection'; releases without a payout wallet are honestly unavailable; unconfirmed txs never claim success.",
       "verify": "node tools/real-flows-test.mjs (purchase section) against vite preview",
       "passes": true,
-      "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, ◎0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
+      "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, \u25ce0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
     },
     {
       "id": "F29",
@@ -219,7 +219,7 @@
       "acceptance": "Connecting Phantom on any machine rebuilds the purchase collection from the durable server record (GET /api/v1/purchases?wallet= filters the fontainor:purchases:v1 list by buyerWallet) and restores likes (GET /api/v1/favorites?wallet=). Favorites writes require the sovereign-login TweetNaCl signature (POST /api/v1/favorites), stored client-side for the session so likes never trigger extra Phantom popups; local and server likes are unioned and pushed back debounced. Server-recovered receipts resolve title/artist from the registry; tampered signatures are rejected and never overwrite stored likes. Without Upstash everything degrades to local-only.",
       "verify": "npm run build && npx vite preview --port 4174 & node tools/portable-profile-test.mjs",
       "passes": true,
-      "evidence": "2026-07-27: VERIFIED 11/11 headless: backend part ran the real api/index.js against an Upstash REST stub with real ed25519 keypairs (purchases filtered by buyer, invalid wallet 400, signed write accepted + read back, other wallet isolated, tampered sig 401 + no overwrite); frontend part used two isolated browser contexts as two machines — like on machine A pushed to server, machine B started with empty localStorage and rebuilt collection + likes after Phantom connect. npm run ci green. Post-merge 2026-07-27: VERIFIED in prod — live smoke on fontainor-protocol.vercel.app: purchases endpoint durable:true, signed favorites write/read-back with throwaway ed25519 key, tampered sig 401, test data cleaned up."
+      "evidence": "2026-07-27: VERIFIED 11/11 headless: backend part ran the real api/index.js against an Upstash REST stub with real ed25519 keypairs (purchases filtered by buyer, invalid wallet 400, signed write accepted + read back, other wallet isolated, tampered sig 401 + no overwrite); frontend part used two isolated browser contexts as two machines \u2014 like on machine A pushed to server, machine B started with empty localStorage and rebuilt collection + likes after Phantom connect. npm run ci green. Post-merge 2026-07-27: VERIFIED in prod \u2014 live smoke on fontainor-protocol.vercel.app: purchases endpoint durable:true, signed favorites write/read-back with throwaway ed25519 key, tampered sig 401, test data cleaned up."
     },
     {
       "id": "F30",
@@ -227,15 +227,15 @@
       "acceptance": "Logged-in users can claim a unique @handle (3-20 chars a-z0-9_, reserved names blocked) by signing 'Fontainor handle claim: @<name>' with Phantom; login returns the claimed handle; a handle can only be bound/changed by its wallet's signature (409 on steal attempts). Server-side publish gate on /upload and /api/v1/publish: manifests are append-only vs the trusted registry (403 REGISTRY_TAMPER on edit/drop of existing entries, incl. artistWallet payout hijack) and new entries using someone else's claimed handle are rejected (403 HANDLE_OWNED). Profile page has claim/change UI; Publish shows a 'bound to your wallet' hint.",
       "verify": "node tools/handles-test.mjs",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 — pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. Post-merge 2026-07-27: VERIFIED deployed on prod (fontainor-protocol.vercel.app) via non-destructive probes: set-handle invalid name -> 400 HANDLE_INVALID with exact new message, forged ed25519 signature -> 401, no data written. Full claim/steal/guard flow in prod ASSUMED (would write permanent handle data; covered 26/26 in headless suite; Upstash env vars verified present)."
+      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 \u2014 pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. Post-merge 2026-07-27: VERIFIED deployed on prod (fontainor-protocol.vercel.app) via non-destructive probes: set-handle invalid name -> 400 HANDLE_INVALID with exact new message, forged ed25519 signature -> 401, no data written. Full claim/steal/guard flow in prod ASSUMED (would write permanent handle data; covered 26/26 in headless suite; Upstash env vars verified present)."
     },
     {
       "id": "F31",
       "title": "Protected @fontainor handle (treasury-wallet-only)",
-      "acceptance": "'fontainor' is removed from the never-claimable reserved list and becomes a protected name: POST /api/v1/auth/set-handle claims of @fontainor from any wallet other than the treasury wallet (env TREASURY_WALLET, fallback 6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo — same resolution as api/paymentBridge.js) return 403 HANDLE_PROTECTED; the treasury wallet can claim it normally. Publishing under the name 'fontainor' from a non-treasury artistWallet is rejected 403 HANDLE_OWNED even BEFORE the handle is claimed (findHandleConflicts treats protected names as owned). Admin-type reserved names (admin, root, support, staff, mod, system, treasury, ...) stay fully unclaimable.",
+      "acceptance": "'fontainor' is removed from the never-claimable reserved list and becomes a protected name: POST /api/v1/auth/set-handle claims of @fontainor from any wallet other than the treasury wallet (env TREASURY_WALLET, fallback 6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo \u2014 same resolution as api/paymentBridge.js) return 403 HANDLE_PROTECTED; the treasury wallet can claim it normally. Publishing under the name 'fontainor' from a non-treasury artistWallet is rejected 403 HANDLE_OWNED even BEFORE the handle is claimed (findHandleConflicts treats protected names as owned). Admin-type reserved names (admin, root, support, staff, mod, system, treasury, ...) stay fully unclaimable.",
       "verify": "node tools/handles-test.mjs",
       "passes": true,
-      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 35/35 — new units (normalizeHandle allows fontainor, still rejects reserved; getProtectedOwner env override; findHandleConflicts flags unclaimed protected name, allows treasury wallet) + endpoints (non-treasury claim -> 403 HANDLE_PROTECTED, treasury keypair claim -> 200, publish as 'Fontainor' from other wallet -> 403 HANDLE_OWNED, treasury publish OK). npm run ci green, real-flows-test 13/13 no regressions. Post-merge 2026-07-27: VERIFIED on prod via non-destructive probes — validly signed @fontainor claim from a throwaway wallet -> 403 HANDLE_PROTECTED (rejected before any write), @admin -> 400 HANDLE_INVALID. Actual treasury claim left to the wallet owner."
+      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 35/35 \u2014 new units (normalizeHandle allows fontainor, still rejects reserved; getProtectedOwner env override; findHandleConflicts flags unclaimed protected name, allows treasury wallet) + endpoints (non-treasury claim -> 403 HANDLE_PROTECTED, treasury keypair claim -> 200, publish as 'Fontainor' from other wallet -> 403 HANDLE_OWNED, treasury publish OK). npm run ci green, real-flows-test 13/13 no regressions. Post-merge 2026-07-27: VERIFIED on prod via non-destructive probes \u2014 validly signed @fontainor claim from a throwaway wallet -> 403 HANDLE_PROTECTED (rejected before any write), @admin -> 400 HANDLE_INVALID. Actual treasury claim left to the wallet owner."
     },
     {
       "id": "F32",
@@ -276,6 +276,14 @@
       "verify": "node tools/stats-test.mjs && npm run ci",
       "passes": true,
       "evidence": "PR #28 merged; stats-test 9/9; CI green; prod /api/v1/stats live (totalPlays 24, tracksPlayed 9 on 2026-07-27)."
+    },
+    {
+      "id": "F37",
+      "title": "Mobile wallet fallback: Open in Phantom deep link",
+      "acceptance": "On mobile browsers without an injected wallet, the header replaces the dead-end Connect button with an 'Open in Phantom' link (phantom.app/ul/browse/<current-url>?ref=<origin>) that loads the site inside Phantom's in-app browser. Inside Phantom (provider injected) and on desktop, the normal Connect button is unchanged. getConnectedPhantom/AuthContext no-wallet errors are mobile-aware.",
+      "verify": "npm run build && node tools/mobile-wallet-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "mobile-wallet-test 9/9 (mobile UA, injected-provider, desktop contexts); CI green (2026-07-27)."
     }
   ]
 }
