@@ -792,6 +792,78 @@ app.post('/api/v1/publish', async (req, res) => {
     }
 });
 
+// F34: per-release share cards. Crawlers (Slack/Discord/Twitter/WhatsApp)
+// cannot see hash-routed pages, so /share/:id serves real per-release OG
+// meta and bounces humans to the SPA route. Durable registry first, bundled
+// demo catalog as fallback (same order the app itself uses).
+const SHARE_ID_RE = /^[A-Za-z0-9-]{4,64}$/;
+const escHtml = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+function priceText(price) {
+    if (!price || typeof price.amount !== 'number') return null;
+    const cur = String(price.currency || '').toUpperCase();
+    if (cur === 'SOL') return `\u25CE${price.amount} SOL`;
+    return `$${price.amount.toFixed(2)} ${cur || 'USDC'}`.trim();
+}
+
+async function findShareRelease(req, id) {
+    const durable = await readDurableRegistry();
+    const inDurable = (durable || []).find((r) => r && r.id === id);
+    if (inDurable) return inDurable;
+    try {
+        const proto = req.headers['x-forwarded-proto'] || 'https';
+        const resp = await fetch(`${proto}://${req.headers.host}/registry.json`);
+        if (!resp.ok) return null;
+        const demo = await resp.json();
+        return (Array.isArray(demo) ? demo : []).find((r) => r && r.id === id) || null;
+    } catch {
+        return null;
+    }
+}
+
+app.get('/share/:id', async (req, res) => {
+    const id = String(req.params.id || '');
+    const proto = req.headers['x-forwarded-proto'] || 'https';
+    const origin = `${proto}://${req.headers.host}`;
+    const appUrl = `${origin}/#/release/${encodeURIComponent(id)}`;
+    if (!SHARE_ID_RE.test(id)) return res.redirect(302, origin);
+
+    const rel = await findShareRelease(req, id);
+    if (!rel) return res.redirect(302, appUrl);
+
+    const title = `${rel.title} \u2014 ${rel.artist}`;
+    const bits = [priceText(rel.price), rel.editions && rel.editions.total ? `edition of ${rel.editions.total}` : null, 'on Fontainor \u2014 the permanent record shop'].filter(Boolean);
+    const desc = bits.join(' \u00B7 ');
+    const rawCover = typeof rel.coverUri === 'string' && rel.coverUri ? rel.coverUri : '/og.png';
+    const image = /^https?:\/\//.test(rawCover) ? rawCover : `${origin}${rawCover.startsWith('/') ? '' : '/'}${rawCover}`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=3600');
+    return res.status(200).send(`<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>${escHtml(title)}</title>
+<meta name="description" content="${escHtml(desc)}">
+<meta property="og:type" content="music.song">
+<meta property="og:site_name" content="Fontainor">
+<meta property="og:title" content="${escHtml(title)}">
+<meta property="og:description" content="${escHtml(desc)}">
+<meta property="og:image" content="${escHtml(image)}">
+<meta property="og:url" content="${escHtml(appUrl)}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="${escHtml(title)}">
+<meta name="twitter:description" content="${escHtml(desc)}">
+<meta name="twitter:image" content="${escHtml(image)}">
+<meta http-equiv="refresh" content="0;url=${escHtml(appUrl)}">
+</head>
+<body>
+<p>Redirecting to <a href="${escHtml(appUrl)}">${escHtml(title)} on Fontainor</a>\u2026</p>
+<script>location.replace(${JSON.stringify(appUrl)})</script>
+</body>
+</html>`);
+});
+
 app.get('/manifest', (req, res) => {
     res.json({ txId: readManifestPointer() });
 });

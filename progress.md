@@ -228,3 +228,8 @@ Operators can pin a dedicated RPC (Helius/QuickNode) via VITE_SOLANA_RPC env var
 Zero-backend follows (localStorage, same store pattern as F10 favorites): src/state/follows.ts (useFollows, useNewFromFollowed, ensureSeenBaseline), Follow pill next to artist on ReleaseDetail, 'New from artists you follow' rail on Home with count badge + 'Mark all seen'.
 Semantics that matter: first-ever follow sets the seen baseline to now (old catalog never floods); markSeen sets baseline to max(now, newest visible drop) so future-dated/clock-skewed releases can't reappear — this was caught by the test (2 fails on first run) and fixed, not by weakening the test.
 VERIFIED: tools/follows-test.mjs 9/9; npm run ci green. ASSUMED: prod post-deploy.
+
+## 2026-07-27 — Iteration: F34 per-release share cards
+Hash routing means crawlers never see per-release meta; /share/:id (api/index.js) now serves real og/twitter tags (title — artist, price · edition · tagline, cover made absolute, og.png fallback) and bounces humans to /#/release/:id via meta-refresh + location.replace. Registry lookup: durable Redis first, then the deployment's own /registry.json demo fallback (same order as the app). vercel.json rewrite /share/:id -> api before SPA catch-all. Frontend: ShareButton on ReleaseDetail copies the /share URL (clipboard with prompt fallback), 2s "Link copied" state.
+Security: SHARE_ID_RE allowlist + full HTML escaping; test includes an injection-shaped title and asserts no reflection.
+VERIFIED: tools/share-test.mjs 10/10; npm run ci green. ASSUMED: prod until post-deploy check.

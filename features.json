@@ -252,6 +252,14 @@
       "verify": "npm run build && npx vite preview --port 4173 & node tools/follows-test.mjs",
       "passes": true,
       "evidence": "2026-07-27: tools/follows-test.mjs 9/9 (follow persist, rail appear/exclude/dismiss/stay-hidden); npm run ci green. ASSUMED: prod behavior post-deploy."
+    },
+    {
+      "id": "F34",
+      "title": "Per-release share cards (/share/:id OG endpoint + Share button)",
+      "acceptance": "GET /share/:id serves per-release og/twitter meta (title+artist, price+edition desc, absolute cover image) and redirects humans to /#/release/:id; unknown id 302s to the app route, invalid id 302s home with no reflection; all values HTML-escaped. Release page has a Share button copying the /share/ URL.",
+      "verify": "node tools/share-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "2026-07-27: tools/share-test.mjs 10/10 (incl. injection-escape and redirect checks); npm run ci green. ASSUMED until prod check post-deploy."
     }
   ]
 }
