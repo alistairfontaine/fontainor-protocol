@@ -20,7 +20,10 @@ interface PlayerState {
   /** how many entries at the head of upNext were queued by the user */
   queuedCount: number
   toggleShuffle: () => void
-  play: (rel: Release) => void
+  /** play a release; resets any playlist context unless opts.keepContext */
+  play: (rel: Release, opts?: { keepContext?: boolean }) => void
+  /** play an explicit list (e.g. a playlist) in order, starting at `start` */
+  playList: (rels: Release[], start?: number) => void
   /** append to the user queue (plays immediately when nothing is playing) */
   addToQueue: (rel: Release) => void
   /** play the i-th user-queued entry now, consuming it from the queue */
@@ -96,17 +99,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { music } = useRegistry()
   const [shuffle, setShuffle] = useState(false)
   const [order, setOrder] = useState<string[] | null>(null) // shuffled id order when shuffle is on
+  // Playlist context (F39): when set, the base play order is this explicit
+  // list instead of the full catalog. Reset by plain play() and close().
+  const [context, setContext] = useState<Release[] | null>(null)
 
-  // Effective queue = shuffled order (if on) else registry order. Kept in a
-  // ref so the audio 'ended' listener always sees fresh data without re-binding.
+  // Effective queue = shuffled order (if on) else context/registry order. Kept
+  // in a ref so the audio 'ended' listener always sees fresh data without re-binding.
   const queue = useMemo(() => {
-    if (!order) return music
-    const byId = new Map(music.map((r) => [r.id, r]))
+    const base = context ?? music
+    if (!order) return base
+    const byId = new Map(base.map((r) => [r.id, r]))
     const inOrder = order.map((id) => byId.get(id)).filter((r): r is Release => !!r)
     // append anything new that wasn't around when shuffle was toggled
     const seen = new Set(order)
-    return [...inOrder, ...music.filter((r) => !seen.has(r.id))]
-  }, [music, order])
+    return [...inOrder, ...base.filter((r) => !seen.has(r.id))]
+  }, [music, order, context])
   const queueRef = useRef<Release[]>([])
   useEffect(() => {
     queueRef.current = queue
@@ -183,7 +190,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }, 250)
   }, [])
 
-  const play = useCallback(
+  const playNow = useCallback(
     (rel: Release) => {
       stopSim()
       clearAudio()
@@ -233,8 +240,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     [pushHistory, startSim],
   )
   useEffect(() => {
-    playRef.current = play
-  }, [play])
+    playRef.current = playNow
+  }, [playNow])
+
+  /** Public play: a direct pick outside a playlist clears the playlist context. */
+  const play = useCallback(
+    (rel: Release, opts?: { keepContext?: boolean }) => {
+      if (!opts?.keepContext) setContext(null)
+      playNow(rel)
+    },
+    [playNow],
+  )
+
+  /** Play an explicit ordered list (playlist). Shuffle resets so order is honest. */
+  const playList = useCallback(
+    (rels: Release[], start = 0) => {
+      if (!rels.length) return
+      setShuffle(false)
+      setOrder(null)
+      setContext(rels)
+      playNow(rels[Math.min(Math.max(start, 0), rels.length - 1)])
+    },
+    [playNow],
+  )
 
   const toggle = useCallback(() => {
     if (!current) return
@@ -257,12 +285,12 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     (rel: Release) => {
       // Nothing playing → there is no queue UI to see; just start it.
       if (!currentRef.current) {
-        play(rel)
+        playNow(rel)
         return
       }
       setManualSynced([...manualRef.current, rel])
     },
-    [play],
+    [playNow],
   )
 
   const playQueued = useCallback(
@@ -271,9 +299,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       const rel = m[index]
       if (!rel) return
       setManualSynced(m.filter((_, i) => i !== index))
-      play(rel)
+      playNow(rel)
     },
-    [play],
+    [playNow],
   )
 
   const removeQueued = useCallback((index: number) => {
@@ -328,6 +356,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     setCurrent(null)
     currentRef.current = null
+    setContext(null) // closing the player leaves any playlist context behind
     setManualSynced([]) // closing the player discards the user queue
     setPlaying(false)
     setPos(0)
@@ -443,6 +472,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       queuedCount: manual.length,
       toggleShuffle,
       play,
+      playList,
       addToQueue,
       playQueued,
       removeQueued,
@@ -453,7 +483,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seek,
       close,
     }),
-    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, upNext, toggleShuffle, play, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
+    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

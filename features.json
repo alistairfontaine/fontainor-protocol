@@ -292,6 +292,14 @@
    "verify": "npm run build && node tools/queue-test.mjs && npm run ci",
    "passes": false,
    "evidence": ""
+  },
+  {
+   "id": "F39",
+   "title": "User playlists: create, curate, reorder, play in order",
+   "acceptance": "/playlists index with create form + counts; /playlists/:id detail with Play all, per-row play, move up/down, remove, inline rename, two-step delete. Release page 'Playlist' dropdown toggles membership and can create-and-add. Play all sets a playlist context: Next/track-end follow playlist order (looping) until a direct pick elsewhere resets to catalog. localStorage-persisted, zero backend.",
+   "verify": "npm run build && node tools/playlists-test.mjs && npm run ci",
+   "passes": false,
+   "evidence": ""
   }
  ]
 }
