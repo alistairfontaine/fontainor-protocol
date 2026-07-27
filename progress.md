@@ -247,3 +247,6 @@ User confirmed the real subreddit is r/fontainorprotocol (not r/fontainor). Foot
 
 ## 2026-07-27 — Iteration: Collection nav + empty states (user-approved recommendation)
 Collection was invisible until connected + >=1 purchase. Added: /collection route (dedicated page: collected grid + on-chain receipt rows, empty state for zero purchases / not connected), IconDisc, desktop sidebar link, Profile mobile quick-links row (now 3-up incl. Collection), Profile "Your collection" section now always visible with EmptyState -> /library. VERIFIED: tsc clean, npm run ci green.
+
+## 2026-07-27 — Iteration: Vercel Analytics + /api/v1/stats (user question: how to gauge usage)
+Added @vercel/analytics inject() in main.tsx (no-op until Web Analytics is flipped on in the Vercel dashboard) and GET /api/v1/stats aggregating totalPlays + tracksPlayed (all-time zset), totalBuys + uniqueBuyers + totalLamports/totalSol (durable purchase receipts). New tools/stats-test.mjs (9 checks, fake Upstash shim with LPUSH/LRANGE). VERIFIED: stats-test 9/9, npm run ci green. Zero-cost.

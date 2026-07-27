@@ -15,11 +15,15 @@ window.addEventListener('vite:preloadError', (e) => {
     window.location.reload()
   }
 })
+import { inject } from '@vercel/analytics'
 import { HashRouter } from 'react-router-dom'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { formatEntry, recordError } from './lib/errlog'
 import './styles/index.css'
+
+// Vercel Web Analytics — no-op until it's enabled in the Vercel dashboard.
+inject()
 
 // Absolute last resort: if an uncaught error still empties #root (React 18
 // unmounts the tree when no boundary catches), never leave a silent black
