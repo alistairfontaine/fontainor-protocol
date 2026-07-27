@@ -228,6 +228,14 @@
    "verify": "node tools/handles-test.mjs",
    "passes": true,
    "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 — pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. Post-merge 2026-07-27: VERIFIED deployed on prod (fontainor-protocol.vercel.app) via non-destructive probes: set-handle invalid name -> 400 HANDLE_INVALID with exact new message, forged ed25519 signature -> 401, no data written. Full claim/steal/guard flow in prod ASSUMED (would write permanent handle data; covered 26/26 in headless suite; Upstash env vars verified present)."
+  },
+  {
+   "id": "F31",
+   "title": "Protected @fontainor handle (treasury-wallet-only)",
+   "acceptance": "'fontainor' is removed from the never-claimable reserved list and becomes a protected name: POST /api/v1/auth/set-handle claims of @fontainor from any wallet other than the treasury wallet (env TREASURY_WALLET, fallback 6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo — same resolution as api/paymentBridge.js) return 403 HANDLE_PROTECTED; the treasury wallet can claim it normally. Publishing under the name 'fontainor' from a non-treasury artistWallet is rejected 403 HANDLE_OWNED even BEFORE the handle is claimed (findHandleConflicts treats protected names as owned). Admin-type reserved names (admin, root, support, staff, mod, system, treasury, ...) stay fully unclaimable.",
+   "verify": "node tools/handles-test.mjs",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 35/35 — new units (normalizeHandle allows fontainor, still rejects reserved; getProtectedOwner env override; findHandleConflicts flags unclaimed protected name, allows treasury wallet) + endpoints (non-treasury claim -> 403 HANDLE_PROTECTED, treasury keypair claim -> 200, publish as 'Fontainor' from other wallet -> 403 HANDLE_OWNED, treasury publish OK). npm run ci green, real-flows-test 13/13 no regressions."
   }
  ]
 }

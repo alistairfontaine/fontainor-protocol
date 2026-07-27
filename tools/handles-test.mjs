@@ -11,7 +11,7 @@
 import http from 'http';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
-import { canonical, checkAppendOnly, findHandleConflicts, normalizeHandle } from '../api/registryGuard.js';
+import { canonical, checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from '../api/registryGuard.js';
 
 let passed = 0;
 let failed = 0;
@@ -26,7 +26,15 @@ console.log('registryGuard unit tests');
 check('normalizeHandle strips @ and lowercases', normalizeHandle('@Tapiwa_Music') === 'tapiwa_music');
 check('normalizeHandle rejects short', normalizeHandle('ab') === null);
 check('normalizeHandle rejects bad chars', normalizeHandle('has space') === null && normalizeHandle('a.b.c') === null);
-check('normalizeHandle rejects reserved', normalizeHandle('fontainor') === null && normalizeHandle('@ADMIN') === null);
+check('normalizeHandle rejects reserved', normalizeHandle('treasury') === null && normalizeHandle('@ADMIN') === null);
+check('normalizeHandle allows fontainor (protected, not reserved)', normalizeHandle('@Fontainor') === 'fontainor');
+process.env.TREASURY_WALLET = 'TreasuryTestWallet';
+check('getProtectedOwner: fontainor -> treasury wallet (env override)', getProtectedOwner('fontainor') === 'TreasuryTestWallet');
+check('getProtectedOwner: other names unprotected', getProtectedOwner('tapiwa_music') === null);
+check('findHandleConflicts: protected name owned even before claim',
+    (await findHandleConflicts([{ id: 'FONT-PROT01', artist: 'Fontainor', artistWallet: 'WalletB' }], async () => null)).length === 1);
+check('findHandleConflicts: protected name fine for treasury wallet',
+    (await findHandleConflicts([{ id: 'FONT-PROT02', artist: 'fontainor', artistWallet: 'TreasuryTestWallet' }], async () => null)).length === 0);
 check('normalizeHandle rejects address-derived fallback shape', normalizeHandle('@4EgH...JJXX') === null);
 
 const e1 = { id: 'FONT-AAA111', title: 'One', artist: 'alice', artistWallet: 'WalletA', price: { amount: 1, currency: 'USD' } };
@@ -131,8 +139,11 @@ const BASE = 'http://127.0.0.1:8798';
 
 const A = nacl.sign.keyPair();
 const B = nacl.sign.keyPair();
+const T = nacl.sign.keyPair(); // stands in for the treasury wallet
 const walletA = bs58.encode(A.publicKey);
 const walletB = bs58.encode(B.publicKey);
+const walletT = bs58.encode(T.publicKey);
+process.env.TREASURY_WALLET = walletT;
 
 function signedPayload(kp, message, extra = {}) {
     const sig = nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey);
@@ -179,6 +190,12 @@ check('set-handle: forged signature -> 401', out.status === 401, JSON.stringify(
 out = await post('/api/v1/auth/set-handle', signedPayload(A, 'Fontainor handle claim: @x', { handle: 'x' }));
 check('set-handle: invalid handle -> 400', out.status === 400 && out.data.code === 'HANDLE_INVALID', JSON.stringify(out));
 
+// protected handle: non-treasury wallet -> 403, treasury wallet -> 200
+out = await post('/api/v1/auth/set-handle', signedPayload(B, 'Fontainor handle claim: @fontainor', { handle: 'fontainor' }));
+check('set-handle: non-treasury wallet claiming @fontainor -> 403 HANDLE_PROTECTED', out.status === 403 && out.data.code === 'HANDLE_PROTECTED', JSON.stringify(out));
+out = await post('/api/v1/auth/set-handle', signedPayload(T, 'Fontainor handle claim: @fontainor', { handle: '@Fontainor' }));
+check('set-handle: treasury wallet claims @fontainor', out.status === 200 && out.data.handle === '@fontainor', JSON.stringify(out));
+
 // seed the registry via /upload with A's legit release
 const relA = { type: 'release', id: 'FONT-TESTA1', title: 'Anthem', artist: '@tapiwa_music', price: { amount: 1, currency: 'USD' }, editions: { total: 10 }, status: 'REGISTERED_ON_FONTAINOR', date: new Date().toISOString(), desc: '', audioUri: null, coverUri: null, artistWallet: walletA };
 out = await post('/upload', [relA]);
@@ -200,6 +217,17 @@ check('upload: dropping existing entry -> 403 REGISTRY_TAMPER', out.status === 4
 // appending a clean new entry by B under an unclaimed free-text name -> OK
 out = await post('/upload', [relA, { ...relA, id: 'FONT-TESTB2', title: 'Legit', artist: 'DJ Freetext', artistWallet: walletB }]);
 check('upload: appending clean new entry succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
+
+// current registry after the clean append (baseline for the next probes)
+const seeded = [relA, { ...relA, id: 'FONT-TESTB2', title: 'Legit', artist: 'DJ Freetext', artistWallet: walletB }];
+
+// publishing under the protected 'fontainor' name with a non-treasury wallet -> 403 even though claimed by T
+out = await post('/upload', [...seeded, { ...relA, id: 'FONT-TESTB3', title: 'Fake Official', artist: 'Fontainor', artistWallet: walletB }]);
+check('upload: publishing as Fontainor from non-treasury wallet -> 403 HANDLE_OWNED', out.status === 403 && out.data.code === 'HANDLE_OWNED', JSON.stringify(out));
+
+// treasury wallet publishing under 'fontainor' -> OK
+out = await post('/upload', [...seeded, { ...relA, id: 'FONT-TESTT1', title: 'Official Drop', artist: '@Fontainor', artistWallet: walletT }]);
+check('upload: treasury wallet publishing as Fontainor succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
 
 server.close();
 fakeUpstash.close();

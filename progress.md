@@ -201,3 +201,8 @@ Design choice: free-text artist names that aren't handle-shaped stay allowed (re
 
 ## 2026-07-27 — F30 prod probe (post-merge of PR #13)
 VERIFIED deployed on prod without writing data: POST /api/v1/auth/set-handle with invalid handle -> 400 HANDLE_INVALID (new copy verbatim), forged ed25519 signature -> 401 "Cryptographic signature validation rejected." Auto-deploy landed within ~5 min of merge. Full claim flow left ASSUMED in prod on purpose: a real claim writes permanent handle data to the live Upstash; behavior is covered 26/26 in tools/handles-test.mjs and env vars are verified present, so no 503 path expected.
+
+## 2026-07-27 — Iteration: F31 protected @fontainor handle (user: "free me to claim fontainor only lock domain admin")
+'fontainor' moved out of RESERVED_HANDLES into a new protected tier: getProtectedOwner() in api/registryGuard.js maps it to the treasury wallet (process.env.TREASURY_WALLET || 6Bh5...W2Fo, mirroring paymentBridge.js, read at call time so tests can override). set-handle returns 403 HANDLE_PROTECTED for any other wallet; findHandleConflicts treats protected names as owned even before they are claimed, so nobody can publish as 'Fontainor' pre-claim either. Admin-type names stay hard-reserved.
+VERIFIED: tools/handles-test.mjs 35/35 (was 26); npm run ci green; real-flows-test 13/13.
+ASSUMED: prod claim of @fontainor — Tapiwa performs it from his own Phantom (wallet 6Bh5...W2Fo). NOTE: if TREASURY_WALLET env var is set on Alistair's Vercel to a different address, THAT wallet is the only one that can claim/publish as fontainor.

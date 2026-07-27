@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bs58 from 'bs58';
-import { checkAppendOnly, findHandleConflicts, normalizeHandle } from './registryGuard.js';
+import { checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from './registryGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -585,6 +585,14 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
         }
 
         const wallet = bs58.encode(publicKeyBytes);
+        const protectedOwner = getProtectedOwner(bare);
+        if (protectedOwner && protectedOwner !== wallet) {
+            return res.status(403).json({
+                success: false,
+                code: 'HANDLE_PROTECTED',
+                message: `@${bare} is reserved for the project and can only be claimed by its official wallet.`,
+            });
+        }
         const existingOwner = await getWalletForHandle(bare);
         if (existingOwner && existingOwner !== wallet) {
             return res.status(409).json({ success: false, code: 'HANDLE_TAKEN', message: `@${bare} is already claimed.` });

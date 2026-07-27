@@ -14,9 +14,26 @@
 
 /** Reserved names that can never be claimed as handles. */
 export const RESERVED_HANDLES = new Set([
-    'fontainor', 'admin', 'administrator', 'root', 'support', 'help',
+    'admin', 'administrator', 'root', 'support', 'help',
     'official', 'staff', 'team', 'moderator', 'mod', 'system', 'treasury',
 ]);
+
+/** Default treasury wallet (same fallback as api/paymentBridge.js). */
+const DEFAULT_TREASURY = '6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo';
+
+/**
+ * Protected names: claimable, but only by one specific wallet. `fontainor`
+ * belongs to the project treasury wallet (env TREASURY_WALLET overrides,
+ * mirroring paymentBridge.js). Returns the required owner wallet or null
+ * when the name is unprotected. Read at call time so tests/deploys can
+ * override via env.
+ */
+export function getProtectedOwner(bareHandle) {
+    if (bareHandle === 'fontainor') {
+        return process.env.TREASURY_WALLET || DEFAULT_TREASURY;
+    }
+    return null;
+}
 
 /**
  * Normalize a raw handle: strips one leading '@', lowercases, and validates
@@ -97,7 +114,8 @@ export async function findHandleConflicts(newEntries, lookupWallet) {
         if (!e || typeof e !== 'object') continue;
         const bare = normalizeHandle(typeof e.artist === 'string' ? e.artist : '');
         if (!bare) continue; // free-text artist names that aren't handle-shaped stay allowed
-        const owner = await lookupWallet(bare);
+        // Protected names are owned even before they are claimed.
+        const owner = (await lookupWallet(bare)) || getProtectedOwner(bare);
         if (owner && owner !== e.artistWallet) {
             conflicts.push({ id: entryId(e), artist: e.artist, owner });
         }
