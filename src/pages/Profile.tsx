@@ -1,8 +1,10 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
-import { IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
+import { IconExternal, IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
+import { loadPurchases, solscanTx, type PurchaseReceipt } from '../lib/purchase'
+import type { Release } from '../lib/registry'
 import { shortAddress, useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
 
@@ -44,7 +46,13 @@ export default function Profile() {
     )
   }
 
-  const mine = releases.filter((r) => r.artist === (user.handle ?? '') || r.artist === user.address)
+  const mine = releases.filter(
+    (r) => r.artistWallet === user.address || r.artist === (user.handle ?? '') || r.artist === user.address,
+  )
+  const purchases = loadPurchases()
+  const collected = purchases
+    .map((p) => ({ receipt: p, rel: releases.find((r) => r.id === p.trackId) }))
+    .filter((x): x is { receipt: PurchaseReceipt; rel: Release } => !!x.rel)
 
   return (
     <>
@@ -98,6 +106,34 @@ export default function Profile() {
         />
       ) : (
         <ReleaseGrid items={mine} />
+      )}
+
+      {purchases.length > 0 && (
+        <section className="mt-12" aria-label="Your collection">
+          <h2 className="mb-4 text-xl font-semibold">Your collection</h2>
+          {collected.length > 0 && <ReleaseGrid items={collected.map((c) => c.rel)} />}
+          <div className="mt-5 space-y-2">
+            {purchases.map((p) => (
+              <a
+                key={p.signature}
+                href={solscanTx(p.signature)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 text-[13px] transition-colors hover:bg-raised"
+              >
+                <span className="min-w-0 truncate text-body">
+                  {p.title} <span className="text-faint">· {p.artist}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted">
+                  ◎{(p.lamports / 1e9).toFixed(4)} <IconExternal size={13} />
+                </span>
+              </a>
+            ))}
+          </div>
+          <p className="mt-3 text-[12px] text-faint">
+            Each row links to the on-chain receipt — 98% of every purchase went straight to the artist.
+          </p>
+        </section>
       )}
     </>
   )

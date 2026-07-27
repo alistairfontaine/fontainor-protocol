@@ -5,19 +5,7 @@ import { useEffect, useState } from 'react'
 import { IconCheck, IconExternal, IconSpinner, IconWallet } from '../components/icons'
 import { Button, PageHead } from '../components/ui'
 import { CHANNELS, TIP_PRESETS, TIP_WALLET } from '../config/support'
-
-interface PhantomLike {
-  isPhantom?: boolean
-  publicKey?: { toString(): string } | null
-  connect(): Promise<{ publicKey: { toString(): string } }>
-  signAndSendTransaction(tx: unknown): Promise<{ signature: string }>
-}
-
-function getPhantom(): PhantomLike | null {
-  const w = window as unknown as { solana?: PhantomLike; phantom?: { solana?: PhantomLike } }
-  const p = w.solana ?? w.phantom?.solana ?? null
-  return p?.isPhantom ? p : null
-}
+import { getPhantom } from '../lib/phantom'
 
 type TipState =
   | { phase: 'idle' }

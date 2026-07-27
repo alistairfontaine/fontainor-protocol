@@ -1,11 +1,13 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconExternal, IconHeart, IconPause, IconPlay, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconSpinner, IconTag } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
+import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
 import { edLabel, fmtDate, isSold, priceLabel, prettyStatus, type Release } from '../lib/registry'
+import { useAuth } from '../state/AuthContext'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -106,9 +108,7 @@ export default function ReleaseDetail() {
               <IconHeart size={18} filled={fav} className={fav ? 'text-accent' : undefined} />
               {fav ? 'Saved' : 'Save'}
             </Button>
-            <Button size="lg" disabled title="Purchases open once on-chain payment verification ships">
-              Collect — coming soon
-            </Button>
+            <CollectCta rel={rel} sold={sold} />
           </div>
 
           {rel.desc && <p className="mt-8 max-w-xl text-[15px] leading-relaxed text-body">{rel.desc}</p>}
@@ -160,6 +160,95 @@ export default function ReleaseDetail() {
       </div>
 
       <MoreLikeThis rel={rel} all={releases} />
+    </div>
+  )
+}
+
+/** F28: real edition purchase — 98% to the artist, 2% treasury, paid in SOL via Phantom. */
+function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
+  const { user, connect, connecting } = useAuth()
+  type St =
+    | { phase: 'idle' }
+    | { phase: 'quoting' }
+    | { phase: 'confirm'; quote: PurchaseQuote }
+    | { phase: 'paying' }
+    | { phase: 'done'; signature: string }
+    | { phase: 'error'; message: string }
+  const [st, setSt] = useState<St>({ phase: 'idle' })
+  const owned = useMemo(() => hasPurchased(rel.id), [rel.id, st.phase])
+
+  if (rel.type !== 'release' || rel.price.amount <= 0) return null
+
+  if (!isPurchasable(rel)) {
+    return (
+      <Button size="lg" disabled title="This release predates on-chain sales — it has no payout wallet on record.">
+        Collect — unavailable
+      </Button>
+    )
+  }
+
+  const start = async () => {
+    if (!user) {
+      if (connecting) return
+      const r = await connect()
+      if (!r.success) {
+        setSt({ phase: 'error', message: r.error ?? 'Connect Phantom to collect.' })
+        return
+      }
+    }
+    setSt({ phase: 'quoting' })
+    try {
+      const quote = await quotePurchase(rel)
+      setSt({ phase: 'confirm', quote })
+    } catch (e) {
+      setSt({ phase: 'error', message: String((e as Error)?.message || e) })
+    }
+  }
+
+  const pay = async (quote: PurchaseQuote) => {
+    setSt({ phase: 'paying' })
+    const res = await purchase(rel, quote)
+    if (res.ok && res.receipt) setSt({ phase: 'done', signature: res.receipt.signature })
+    else setSt({ phase: 'error', message: res.msg })
+  }
+
+  const doneSig = st.phase === 'done' ? st.signature : owned?.signature
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-3">
+        {st.phase === 'confirm' ? (
+          <>
+            <Button variant="primary" size="lg" onClick={() => pay(st.quote)}>
+              Pay ◎{st.quote.sol.toFixed(4)}
+              {st.quote.usdShown != null && <span className="font-normal opacity-80"> (≈${st.quote.usdShown.toFixed(2)})</span>}
+            </Button>
+            <Button size="lg" onClick={() => setSt({ phase: 'idle' })}>
+              Cancel
+            </Button>
+          </>
+        ) : (
+          <Button
+            size="lg"
+            variant={doneSig ? 'secondary' : 'primary'}
+            disabled={sold || st.phase === 'quoting' || st.phase === 'paying'}
+            title={sold ? 'This edition is sold out' : undefined}
+            onClick={start}
+          >
+            {st.phase === 'quoting' || st.phase === 'paying' ? <IconSpinner size={18} /> : doneSig ? <IconCheck size={18} /> : null}
+            {st.phase === 'paying' ? 'Confirm in Phantom…' : st.phase === 'quoting' ? 'Pricing…' : doneSig ? 'Collect another' : `Collect ${priceLabel(rel.price)}`}
+          </Button>
+        )}
+      </div>
+      {st.phase === 'confirm' && (
+        <p className="text-[12px] text-faint">One Phantom approval — 98% goes to {rel.artist}, 2% keeps Fontainor running.</p>
+      )}
+      {st.phase === 'error' && <p className="max-w-md text-[13px] text-warn">{st.message}</p>}
+      {doneSig && st.phase !== 'confirm' && st.phase !== 'error' && (
+        <a href={solscanTx(doneSig)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-[13px] text-muted hover:text-accent">
+          In your collection — on-chain receipt <IconExternal size={13} />
+        </a>
+      )}
     </div>
   )
 }

@@ -1,6 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { FALLBACK, loadRegistry, type RegistrySource } from '../lib/api'
-import { loadLocalPublications } from '../lib/localPublish'
 import { normalize, type Release } from '../lib/registry'
 
 interface RegistryState {
@@ -24,11 +23,7 @@ export function RegistryProvider({ children }: { children: ReactNode }) {
   const reload = useCallback(async () => {
     setLoading(true)
     const r = await loadRegistry(FALLBACK)
-    const remote = normalize(r.data)
-    // demo-mode publications live in this browser; merge them in, newest first
-    const local = normalize(loadLocalPublications())
-    const remoteIds = new Set(remote.map((x) => x.id))
-    setReleases([...local.filter((x) => !remoteIds.has(x.id)), ...remote])
+    setReleases(normalize(r.data))
     setSource(r.source)
     setRepaired(r.repaired)
     setLoading(false)
