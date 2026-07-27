@@ -54,6 +54,24 @@ export function useFavorites() {
   return { ids, toggle, has }
 }
 
+// --- Non-hook access for the wallet-portable sync layer (src/lib/profileSync.ts) ---
+
+export function getFavoriteIds(): string[] {
+  return favStore.get()
+}
+
+/** Union server + local likes, local order first. Saves (and notifies) only on change. */
+export function mergeFavoriteIds(incoming: string[]): string[] {
+  const cur = favStore.get()
+  const merged = [...cur, ...incoming.map(String).filter((id) => !cur.includes(id))]
+  if (merged.length !== cur.length) favStore.save(merged)
+  return favStore.get()
+}
+
+export function subscribeFavorites(l: Listener): () => void {
+  return favStore.subscribe(l)
+}
+
 export function useHistoryLog() {
   const ids = useSyncExternalStore(histStore.subscribe, histStore.get)
   const push = useCallback((id: string) => {

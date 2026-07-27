@@ -57,6 +57,8 @@ const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 // vars (free tier at upstash.com). Without them, behavior is unchanged
 // (Arweave manifest pointer + ephemeral filesystem).
 const REGISTRY_KEY = 'fontainor:registry:v1';
+const PURCHASES_KEY = 'fontainor:purchases:v1';
+const favoritesKey = (wallet) => `fontainor:favorites:v1:${wallet}`;
 let redis = null;
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
     try {
@@ -400,7 +402,7 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         let receiptStored = false;
         if (redis) {
             try {
-                await redis.lpush('fontainor:purchases:v1', JSON.stringify({
+                await redis.lpush(PURCHASES_KEY, JSON.stringify({
                     trackId,
                     signature,
                     artistWallet,
@@ -462,7 +464,95 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
         return res.status(500).json({ success: false, message: authError.message });
     }
 });
-// 6. Publish Manifest Pointer Update
+// 6. Wallet-Portable Profile — purchases + favorites follow the wallet across devices.
+//    Reads are public (everything here is already public on-chain / low-stakes);
+//    favorites writes require the same TweetNaCl signature the sovereign login uses.
+
+const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
+
+function profileCors(req, res) {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') { res.status(200).end(); return true; }
+    return false;
+}
+
+// 6a. Purchases by buyer wallet — rebuilds "Your collection" on any machine.
+app.get('/api/v1/purchases', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        const wallet = String(req.query.wallet || '');
+        if (!WALLET_RE.test(wallet)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing wallet address.' });
+        }
+        if (!redis) return res.json({ success: true, durable: false, purchases: [] });
+
+        const raw = await redis.lrange(PURCHASES_KEY, 0, 999);
+        const purchases = (Array.isArray(raw) ? raw : [])
+            .map((item) => {
+                try { return typeof item === 'string' ? JSON.parse(item) : item; }
+                catch { return null; }
+            })
+            .filter((p) => p && p.buyerWallet === wallet);
+        return res.json({ success: true, durable: true, purchases });
+    } catch (err) {
+        console.error('Purchases lookup failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// 6b. Favorites, keyed by wallet.
+app.get('/api/v1/favorites', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        const wallet = String(req.query.wallet || '');
+        if (!WALLET_RE.test(wallet)) {
+            return res.status(400).json({ success: false, message: 'Invalid or missing wallet address.' });
+        }
+        if (!redis) return res.json({ success: true, durable: false, ids: [] });
+        const stored = await redis.get(favoritesKey(wallet));
+        const ids = Array.isArray(stored) ? stored.map(String) : [];
+        return res.json({ success: true, durable: true, ids });
+    } catch (err) {
+        console.error('Favorites read failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.post('/api/v1/favorites', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        const { publicKey, signature, message, ids } = req.body || {};
+        if (!publicKey || !signature || !Array.isArray(ids)) {
+            return res.status(400).json({ success: false, message: 'Missing publicKey, signature or ids.' });
+        }
+        if (ids.length > 500 || ids.some((id) => typeof id !== 'string' || id.length === 0 || id.length > 200)) {
+            return res.status(400).json({ success: false, message: 'ids must be up to 500 non-empty strings.' });
+        }
+
+        // Same proof of wallet ownership the sovereign login produces — the app
+        // stores it for the session so likes never trigger extra Phantom popups.
+        const nacl = await import('tweetnacl');
+        const encodedMessage = new TextEncoder().encode(message || 'Authenticate Fontainor Sovereign Session');
+        const signatureBytes = Uint8Array.from(JSON.parse(signature));
+        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
+        const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
+        if (!verified) {
+            return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
+        }
+
+        const wallet = bs58.encode(publicKeyBytes);
+        if (!redis) return res.json({ success: true, durable: false, wallet });
+        await redis.set(favoritesKey(wallet), ids.map(String));
+        return res.json({ success: true, durable: true, wallet });
+    } catch (err) {
+        console.error('Favorites write failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+// 7. Publish Manifest Pointer Update
 app.post('/api/v1/publish', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');

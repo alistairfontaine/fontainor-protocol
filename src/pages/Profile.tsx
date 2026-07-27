@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
 import { IconExternal, IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
-import { loadPurchases, solscanTx, type PurchaseReceipt } from '../lib/purchase'
+import { solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
 import type { Release } from '../lib/registry'
 import { shortAddress, useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -11,6 +11,7 @@ import { useRegistry } from '../state/RegistryContext'
 export default function Profile() {
   const { user, connect, connecting, logout } = useAuth()
   const { releases } = useRegistry()
+  const purchases = usePurchases()
   const [err, setErr] = useState<string | null>(null)
 
   if (!user) {
@@ -49,10 +50,13 @@ export default function Profile() {
   const mine = releases.filter(
     (r) => r.artistWallet === user.address || r.artist === (user.handle ?? '') || r.artist === user.address,
   )
-  const purchases = loadPurchases()
-  const collected = purchases
-    .map((p) => ({ receipt: p, rel: releases.find((r) => r.id === p.trackId) }))
-    .filter((x): x is { receipt: PurchaseReceipt; rel: Release } => !!x.rel)
+  // Receipts recovered from the durable server record carry no title/artist —
+  // resolve them from the registry by trackId.
+  const rows = purchases.map((p) => {
+    const rel = releases.find((r) => r.id === p.trackId)
+    return { receipt: p, rel, title: p.title || rel?.title || p.trackId, artist: p.artist || rel?.artist || 'unknown artist' }
+  })
+  const collected = rows.filter((x): x is { receipt: PurchaseReceipt; rel: Release; title: string; artist: string } => !!x.rel)
 
   return (
     <>
@@ -113,7 +117,7 @@ export default function Profile() {
           <h2 className="mb-4 text-xl font-semibold">Your collection</h2>
           {collected.length > 0 && <ReleaseGrid items={collected.map((c) => c.rel)} />}
           <div className="mt-5 space-y-2">
-            {purchases.map((p) => (
+            {rows.map(({ receipt: p, title, artist }) => (
               <a
                 key={p.signature}
                 href={solscanTx(p.signature)}
@@ -122,7 +126,7 @@ export default function Profile() {
                 className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 text-[13px] transition-colors hover:bg-raised"
               >
                 <span className="min-w-0 truncate text-body">
-                  {p.title} <span className="text-faint">· {p.artist}</span>
+                  {title} <span className="text-faint">· {artist}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted">
                   ◎{(p.lamports / 1e9).toFixed(4)} <IconExternal size={13} />

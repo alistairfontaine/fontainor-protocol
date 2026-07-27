@@ -1,8 +1,9 @@
 // Phantom wallet auth — sovereign login (signature verified server-side
 // at /api/v1/auth/sovereign-login, TweetNaCl). Same flow as upstream,
 // incl. the Firefox service-worker workarounds.
-import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_BASE } from '../lib/api'
+import { clearSessionProof, saveSessionProof, startFavoritesAutoPush, syncProfile } from '../lib/profileSync'
 
 export interface User {
   address: string
@@ -119,14 +120,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         /* private mode */
       }
+      // Keep the verified signature for the session so favorites sync can
+      // authenticate writes without extra Phantom popups, then rebuild the
+      // wallet's collection + likes from the durable server records.
+      saveSessionProof({
+        publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
+        signature: JSON.stringify(Array.from(signed.signature)),
+        message: msg,
+        wallet: address,
+      })
+      void syncProfile(address)
       return { success: true }
     } finally {
       setConnecting(false)
     }
   }, [])
 
+  // Wallet-portable profile: push likes while a session exists, and re-sync
+  // restored sessions on app start (fresh machine → collection follows the wallet).
+  useEffect(() => {
+    startFavoritesAutoPush()
+    if (user?.address) void syncProfile(user.address)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
   const logout = useCallback(() => {
     setUser(null)
+    clearSessionProof()
     try {
       localStorage.removeItem(USER_KEY)
     } catch {
