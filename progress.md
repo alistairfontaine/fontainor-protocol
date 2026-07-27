@@ -240,3 +240,4 @@ VERIFIED on prod: /share/FONT-4WHPZ2Q17 returns 200 with og:title "Fontainor Gen
 ## 2026-07-27 — Iteration: contact email + socials (user directive)
 User (DM 13:08): all contact points -> silentics.org@gmail.com only for now; Instagram + X handles are @fontainor. Changes: Contact page consolidated 3 fictional fontainor.xyz addresses into one real mailto card + Instagram/X cards; footer community row gained Instagram + X; twitter:site @fontainor added to index.html and the /share/:id OG template.
 VERIFIED: share-test 10/10, npm run ci green. ASSUMED: prod until deploy check.
+Post-deploy: prod-VERIFIED — silentics.org@gmail.com + instagram.com/fontainor + x.com/fontainor in served bundle; twitter:site on / and /share cards.
