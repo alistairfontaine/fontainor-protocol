@@ -244,6 +244,14 @@
       "verify": "node tools/plays-test.mjs && npm run ci",
       "passes": true,
       "evidence": "2026-07-27: tools/plays-test.mjs 6/6 (real Express app + fake Upstash REST with ZINCRBY/ZRANGE/EXPIRE); npm run ci green. Rail hidden below 3 played releases by design. ASSUMED: prod behavior until deploy + first real plays."
+    },
+    {
+      "id": "F33",
+      "title": "Retention: artist follow + new-release awareness (local, zero-backend)",
+      "acceptance": "Follow/Following toggle on release pages persisted in localStorage; Home shows 'New from artists you follow' rail listing only followed artists' releases newer than the seen baseline; Mark all seen hides it durably (baseline = max(now, newest visible drop)); first follow sets baseline so old catalog never floods.",
+      "verify": "npm run build && npx vite preview --port 4173 & node tools/follows-test.mjs",
+      "passes": true,
+      "evidence": "2026-07-27: tools/follows-test.mjs 9/9 (follow persist, rail appear/exclude/dismiss/stay-hidden); npm run ci green. ASSUMED: prod behavior post-deploy."
     }
   ]
 }

@@ -7,6 +7,7 @@ import { fetchTopPlays, type TopPlay } from '../lib/plays'
 import { recommendFor } from '../lib/recommend'
 import { fmtDate, type Release } from '../lib/registry'
 import { useFavorites, useHistoryLog } from '../state/collections'
+import { useNewFromFollowed } from '../state/follows'
 import { useRegistry } from '../state/RegistryContext'
 
 /** Trending rail (F32) — weekly play counts from the registry API. Hidden
@@ -41,6 +42,34 @@ function Trending() {
       <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
         {rows.map((x) => (
           <ReleaseCard key={x.rel.id} rel={x.rel} note={`${x.plays} play${x.plays === 1 ? '' : 's'} this week`} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
+/** New-from-followed rail (F33) — local follows diffed against the registry.
+ *  Only shows drops newer than the user's last check-in; dismiss = mark seen. */
+function NewFromFollowed() {
+  const { releases } = useRegistry()
+  const { fresh, markSeen } = useNewFromFollowed(releases)
+  if (fresh.length === 0) return null
+  return (
+    <section className="mt-12" aria-label="New from artists you follow">
+      <div className="mb-4 flex items-baseline justify-between">
+        <h2 className="text-xl font-semibold">
+          New from artists you follow
+          <span className="ml-2 inline-block rounded-full bg-accent/15 px-2 py-0.5 align-middle text-[12px] font-medium text-accent">
+            {fresh.length}
+          </span>
+        </h2>
+        <button onClick={markSeen} className="cursor-pointer text-[13px] text-faint transition-colors hover:text-ink">
+          Mark all seen
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {fresh.slice(0, 5).map((r) => (
+          <ReleaseCard key={r.id} rel={r} note={fmtDate(r.date) ?? undefined} />
         ))}
       </div>
     </section>
@@ -164,6 +193,7 @@ export default function Home() {
 
       {!loading && (
         <>
+          <NewFromFollowed />
           <Trending />
           <MadeForYou />
         </>

@@ -9,6 +9,7 @@ import { similarTo } from '../lib/recommend'
 import { edLabel, fmtDate, isSold, priceLabel, prettyStatus, type Release } from '../lib/registry'
 import { useAuth } from '../state/AuthContext'
 import { useFavorites } from '../state/collections'
+import { ensureSeenBaseline, useFollows } from '../state/follows'
 import { usePlayer } from '../state/PlayerContext'
 import { useRegistry } from '../state/RegistryContext'
 
@@ -17,6 +18,7 @@ export default function ReleaseDetail() {
   const { releases, loading } = useRegistry()
   const { play, toggle, current, playing } = usePlayer()
   const { ids, toggle: toggleFav } = useFavorites()
+  const { toggle: toggleFollow, isFollowing } = useFollows()
   const navigate = useNavigate()
 
   const rel = releases.find((r) => r.id === id)
@@ -74,12 +76,28 @@ export default function ReleaseDetail() {
           </div>
 
           <PageHead title={rel.title} />
-          <p className="-mt-5 text-[15px] text-muted">
-            by{' '}
-            <Link to={`/library?q=${encodeURIComponent(rel.artist)}`} className="font-medium text-body hover:text-accent">
-              {rel.artist}
-            </Link>
-            {rel.label && <span className="text-faint"> · {rel.label}</span>}
+          <p className="-mt-5 flex flex-wrap items-center gap-x-2 text-[15px] text-muted">
+            <span>
+              by{' '}
+              <Link to={`/library?q=${encodeURIComponent(rel.artist)}`} className="font-medium text-body hover:text-accent">
+                {rel.artist}
+              </Link>
+              {rel.label && <span className="text-faint"> · {rel.label}</span>}
+            </span>
+            <button
+              onClick={() => {
+                ensureSeenBaseline()
+                toggleFollow(rel.artist)
+              }}
+              aria-pressed={isFollowing(rel.artist)}
+              className={`cursor-pointer rounded-full border px-2.5 py-0.5 text-[12px] font-medium transition-colors ${
+                isFollowing(rel.artist)
+                  ? 'border-accent/40 bg-accent/10 text-accent'
+                  : 'border-line text-muted hover:border-accent/40 hover:text-accent'
+              }`}
+            >
+              {isFollowing(rel.artist) ? 'Following' : 'Follow'}
+            </button>
           </p>
 
           {/* value row: price is the headline (HIER-02) */}
