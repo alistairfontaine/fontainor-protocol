@@ -112,11 +112,21 @@ export async function purchase(rel: Release, quote: PurchaseQuote): Promise<Purc
     }
 
     // Wait for confirmation so the receipt is real before we claim success.
+    let confirmed = false
     for (let i = 0; i < 20; i++) {
       const st = (await connection.getSignatureStatuses([signature])).value[0]
       if (st?.err) return { ok: false, msg: 'The transaction failed on-chain — nothing was collected. ' + JSON.stringify(st.err) }
-      if (st?.confirmationStatus === 'confirmed' || st?.confirmationStatus === 'finalized') break
+      if (st?.confirmationStatus === 'confirmed' || st?.confirmationStatus === 'finalized') {
+        confirmed = true
+        break
+      }
       await new Promise((r) => setTimeout(r, 1500))
+    }
+    if (!confirmed) {
+      return {
+        ok: false,
+        msg: `The transaction was sent but has not confirmed yet. Check the receipt before retrying: ${solscanTx(signature)}`,
+      }
     }
 
     // Server-side re-verification + durable receipt (best-effort).

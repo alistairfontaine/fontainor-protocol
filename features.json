@@ -68,10 +68,10 @@
   {
    "id": "F9",
    "title": "Publish flow",
-   "acceptance": "Multi-step publish modal/page: metadata form (validated), cover + audio via chunk upload or TX-ID paste, POST /manifest, success/error/timeout states incl. mock modes (?mock=ok|writefail|400|timeout).",
+   "acceptance": "REAL publish: musician-pays storage via Irys pay-with-SOL from Phantom (quote -> fund -> upload audio/cover -> tagged manifest -> repoint registry). No demo mode, no platform wallet.",
    "verify": "npm run ci",
    "passes": true,
-   "evidence": "VERIFIED 2026-07-26 (demo mode — user has no funded Arweave wallet, chose mock publish): full publish flow live-tested headless against deployed site — wallet login -> #/publish shows demo-mode banner, form validated, submit -> 'Adding to the registry…' -> done screen 'Published — demo mode.' with TX DEMO_*; publication persisted to localStorage (fontainor_local_pubs_v1), merged into registry view, visible in Library AND Profile 'Your publications' (commit ea0bb6c). Real-chain path (uploadAudioChunks + POST /upload + ?mock modes) unchanged and gated behind DEMO_PUBLISH=false; flipping to real Arweave needs only a funded wallet + DEMO_PUBLISH flip. npm run ci green."
+   "evidence": "2026-07-27: DEMO_PUBLISH removed. VERIFIED: npm run ci green; 13/13 headless checks incl. REAL Irys mainnet storage quote reaching the cost-confirm screen through the lazy chunk (Phantom mocked). ASSUMED: an actual funded mainnet upload (spends real SOL) — flow code mirrors the verified quote path."
   },
   {
    "id": "F10",
@@ -87,7 +87,7 @@
    "acceptance": "GET /registry returns seeded demo catalog on the preview deployment (not []); manifest pointer survives cold starts (durable store or REGISTRY_MANIFEST env fallback documented); write path validated with Zod as before.",
    "verify": "curl -s $PREVIEW_URL/registry | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>0'",
    "passes": false,
-   "evidence": ""
+   "evidence": "2026-07-27: Upstash durable-registry code merged (reads durable first, backfills from gateway; /upload + /api/v1/publish write durable). PLUS registry self-heal: /registry recovers the newest 'App-Name: Fontainor-Protocol / Type: registry-manifest' manifest from Irys GraphQL when pointer+durable are empty (VERIFIED locally: routes behave, recovery returns [] when no manifests exist). Still `passes: false` until UPSTASH_REDIS_REST_URL/TOKEN land on the production Vercel project (Alistair's) and a live publish survives a redeploy."
   },
   {
    "id": "F12",
@@ -196,6 +196,22 @@
    "acceptance": "After 15 play starts, a small dismissible strip above the content offers 'chip in' linking to /support. Never a modal, never covers the player, playback untouched. Dismissing suppresses it for 150 further plays. Hidden on /support itself. Counters in localStorage, best-effort (private mode must not throw).",
    "passes": true,
    "evidence": "2026-07-27: npm run ci green; recordPlay() wired into PlayerContext.play; thresholds in src/config/support.ts. Runtime behavior ASSUMED from code review (logic is 3 small pure functions); not yet exercised in a headless browser."
+  },
+  {
+   "id": "F27",
+   "title": "Musician-pays permanent storage (Irys pay-with-SOL)",
+   "acceptance": "Publishing a release with files shows the exact one-time storage cost (SOL + USD) BEFORE any charge; on confirm the artist's Phantom wallet funds Irys for the shortfall only; audio/cover/manifest land on the permanent record with App-Name/Type tags; live registry is repointed (validated server-side) with durable-store fallback; friendly errors for rejection/insufficient SOL; Irys SDK loads lazily (main bundle unaffected).",
+   "verify": "node .tmp-real-flows-test.mjs (publish section) against vite preview",
+   "passes": true,
+   "evidence": "2026-07-27: VERIFIED — ci green; headless: real mainnet Irys quote (◎<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
+  },
+  {
+   "id": "F28",
+   "title": "Real edition purchases (98/2 SOL split via Phantom)",
+   "acceptance": "Releases with price>0 AND artistWallet show a Collect CTA with the listed price; click -> live quote (USD-pegged listings convert at live SOL rate) -> one Phantom transaction with two SystemProgram transfers (98% artist, 2% treasury) -> confirmation polling -> on-chain Solscan receipt; receipt stored locally and re-verified server-side (durable when Upstash configured); Profile shows 'Your collection'; releases without a payout wallet are honestly unavailable; unconfirmed txs never claim success.",
+   "verify": "node .tmp-real-flows-test.mjs (purchase section) against vite preview",
+   "passes": true,
+   "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, ◎0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
   }
  ]
 }

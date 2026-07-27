@@ -36,8 +36,10 @@ live `/registry` API (with seeded data).
   Vercel — move pointer to a durable store or env-var + fallback), seedable
   sample data, keep `/registry`, `/upload`, `/manifest`, chunk-upload and
   payment routes API-compatible (2026-07-26).
-- Payments purchase flow UI is stubbed behind a "coming soon" state in v1;
-  wallet **auth** (Phantom) is real (2026-07-26).
+- Payments purchase flow is REAL as of 2026-07-27: one Phantom tx, 98/2
+  split (artistWallet / treasury), on-chain receipt; releases without
+  artistWallet stay unavailable. Publish is REAL musician-pays Irys
+  storage (no platform wallet, no demo mode).
 - Deferred pages in v1: Insights, Iceberg, Offramp, Discover, Staff Picks,
   Now Listening (no data source behind them) (2026-07-26).
 
@@ -53,7 +55,9 @@ live `/registry` API (with seeded data).
 
 ## Current phase
 
-foundation — scaffold new frontend workspace, CI gate, design tokens.
+launch-readiness — real publish + purchases shipped; remaining gates are
+ops (Upstash env vars on the production Vercel project) and real-SOL
+smoke tests (one publish, one purchase, one tip).
 
 ## Launch decisions (Zero-Dollar Launch Plan, 2026-07-27)
 
@@ -68,3 +72,7 @@ foundation — scaffold new frontend workspace, CI gate, design tokens.
 - Launch gate unchanged: no Reddit/HN marketing until a stranger can
   publish a real track and find it tomorrow from another device (Arweave
   wallet funded + durable registry merged) (2026-07-27).
+
+- Commit identity: ALL commits must be authored as
+  `tapiwamakandigona <230673668+tapiwamakandigona@users.noreply.github.com>`
+  — never any assistant identity, no Co-authored-by trailers (2026-07-27).
