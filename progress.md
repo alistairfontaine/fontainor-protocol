@@ -186,3 +186,6 @@ Problem: purchases collection UI, favorites, history were localStorage-only — 
 VERIFIED: npm run ci green; tools/portable-profile-test.mjs 11/11 (7 backend checks against the real Express app + Upstash REST stub + real ed25519 sigs incl. tampered-sig 401; 4 frontend checks with two browser contexts = two machines: like pushed, empty machine B rebuilt collection + likes after connect).
 ASSUMED: prod behavior on Alistair's Vercel (endpoints not yet hit in prod; Upstash env vars themselves VERIFIED present today via durable:true probe).
 Gotcha for future tests: Upstash REST stub must answer /pipeline with an ARRAY of {result} objects — a bare {result} makes @upstash/redis throw 'res.map is not a function'. Frontend tests: preview on port 4174 to avoid clashing with real-flows-test on 4173.
+
+## 2026-07-27 — F29 prod smoke (post-merge of PR #12)
+VERIFIED against live production (fontainor-protocol.vercel.app, real Upstash): GET /api/v1/purchases → durable:true; signed favorites write with a throwaway ed25519 keypair accepted + read back exactly; tampered signature → 401; favorites cleaned up after the test. Wallet-portable profile is live end-to-end. (Earlier same day: Upstash env vars confirmed via durable:true on a content-identical /upload probe, user-approved.)
