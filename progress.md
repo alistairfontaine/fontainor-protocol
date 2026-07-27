@@ -244,3 +244,6 @@ Post-deploy: prod-VERIFIED — silentics.org@gmail.com + instagram.com/fontainor
 
 ## 2026-07-27 — Iteration: subreddit URL correction
 User confirmed the real subreddit is r/fontainorprotocol (not r/fontainor). Footer community link updated; campaign kit updated to match. VERIFIED: CI green.
+
+## 2026-07-27 — Iteration: Collection nav + empty states (user-approved recommendation)
+Collection was invisible until connected + >=1 purchase. Added: /collection route (dedicated page: collected grid + on-chain receipt rows, empty state for zero purchases / not connected), IconDisc, desktop sidebar link, Profile mobile quick-links row (now 3-up incl. Collection), Profile "Your collection" section now always visible with EmptyState -> /library. VERIFIED: tsc clean, npm run ci green.

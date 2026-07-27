@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
-import { IconExternal, IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
+import { IconDisc, IconExternal, IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
 import type { Release } from '../lib/registry'
@@ -151,12 +151,18 @@ export default function Profile() {
       </div>
 
       {/* quick links — the sidebar is desktop-only, so surface these here for mobile */}
-      <div className="mb-8 grid grid-cols-2 gap-3 lg:hidden">
+      <div className="mb-8 grid grid-cols-3 gap-3 lg:hidden">
         <Link
           to="/favorites"
           className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3.5 text-sm font-medium text-body transition-colors hover:bg-raised hover:text-ink"
         >
           <IconHeart size={18} className="text-accent" /> Favorites
+        </Link>
+        <Link
+          to="/collection"
+          className="flex items-center gap-2.5 rounded-card border border-line bg-surface px-4 py-3.5 text-sm font-medium text-body transition-colors hover:bg-raised hover:text-ink"
+        >
+          <IconDisc size={18} className="text-accent" /> Collection
         </Link>
         <Link
           to="/history"
@@ -184,9 +190,21 @@ export default function Profile() {
         <ReleaseGrid items={mine} />
       )}
 
-      {purchases.length > 0 && (
-        <section className="mt-12" aria-label="Your collection">
-          <h2 className="mb-4 text-xl font-semibold">Your collection</h2>
+      <section className="mt-12" aria-label="Your collection">
+        <h2 className="mb-4 text-xl font-semibold">Your collection</h2>
+        {purchases.length === 0 ? (
+          <EmptyState
+            icon={<IconDisc size={26} />}
+            title="Nothing collected yet"
+            body="Collect a supporter edition on any release page — it lands here with its on-chain receipt."
+            action={
+              <Link to="/library">
+                <Button variant="primary">Browse the library</Button>
+              </Link>
+            }
+          />
+        ) : (
+          <>
           {collected.length > 0 && <ReleaseGrid items={collected.map((c) => c.rel)} />}
           <div className="mt-5 space-y-2">
             {rows.map(({ receipt: p, title, artist }) => (
@@ -209,8 +227,9 @@ export default function Profile() {
           <p className="mt-3 text-[12px] text-faint">
             Each row links to the on-chain receipt — 98% of every purchase went straight to the artist.
           </p>
-        </section>
-      )}
+          </>
+        )}
+      </section>
     </>
   )
 }
