@@ -259,7 +259,14 @@ export default function Publish() {
           <input className={inputCls} value={title} onChange={(e) => setTitle(e.target.value)} placeholder={type === 'release' ? 'Album or track title' : 'Article headline'} />
         </Field>
 
-        <Field label={type === 'release' ? 'Artist' : 'Author'}>
+        <Field
+          label={type === 'release' ? 'Artist' : 'Author'}
+          hint={
+            user?.claimed && user.handle && artistValue.trim().toLowerCase() === user.handle.toLowerCase()
+              ? `${user.handle} is bound to your wallet — nobody else can publish under it.`
+              : undefined
+          }
+        >
           <input className={inputCls} value={artistValue} onChange={(e) => setArtist(e.target.value)} placeholder="Name shown on the registry" />
         </Field>
 

@@ -220,6 +220,14 @@
    "verify": "npm run build && npx vite preview --port 4174 & node tools/portable-profile-test.mjs",
    "passes": true,
    "evidence": "2026-07-27: VERIFIED 11/11 headless: backend part ran the real api/index.js against an Upstash REST stub with real ed25519 keypairs (purchases filtered by buyer, invalid wallet 400, signed write accepted + read back, other wallet isolated, tampered sig 401 + no overwrite); frontend part used two isolated browser contexts as two machines — like on machine A pushed to server, machine B started with empty localStorage and rebuilt collection + likes after Phantom connect. npm run ci green. Post-merge 2026-07-27: VERIFIED in prod — live smoke on fontainor-protocol.vercel.app: purchases endpoint durable:true, signed favorites write/read-back with throwaway ed25519 key, tampered sig 401, test data cleaned up."
+  },
+  {
+   "id": "F30",
+   "title": "Wallet-bound @handles + registry anti-impersonation",
+   "acceptance": "Logged-in users can claim a unique @handle (3-20 chars a-z0-9_, reserved names blocked) by signing 'Fontainor handle claim: @<name>' with Phantom; login returns the claimed handle; a handle can only be bound/changed by its wallet's signature (409 on steal attempts). Server-side publish gate on /upload and /api/v1/publish: manifests are append-only vs the trusted registry (403 REGISTRY_TAMPER on edit/drop of existing entries, incl. artistWallet payout hijack) and new entries using someone else's claimed handle are rejected (403 HANDLE_OWNED). Profile page has claim/change UI; Publish shows a 'bound to your wallet' hint.",
+   "verify": "node tools/handles-test.mjs",
+   "passes": true,
+   "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 — pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. ASSUMED: live behavior on prod requires UPSTASH env vars on Alistair's Vercel (set-handle returns 503 HANDLES_UNAVAILABLE without them; publish guard degrades to pointer/gateway baseline or no-op when neither exists)."
   }
  ]
 }

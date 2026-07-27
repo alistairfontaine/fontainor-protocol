@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bs58 from 'bs58';
+import { checkAppendOnly, findHandleConflicts, normalizeHandle } from './registryGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -90,6 +91,73 @@ async function writeDurableRegistry(manifestArray) {
         console.error('Redis write error:', e.message);
         return false;
     }
+}
+
+// --- Wallet-bound handles (claimed usernames) ---
+// Two Upstash hashes: wallet -> bare handle, and bare handle -> wallet.
+// Claiming requires a fresh Phantom signature, so a handle can only ever be
+// bound to a wallet whose private key signed the claim.
+const HANDLES_BY_WALLET = 'fontainor:handles:byWallet:v1';
+const HANDLES_BY_NAME = 'fontainor:handles:byName:v1';
+
+async function getHandleForWallet(wallet) {
+    if (!redis) return null;
+    try {
+        const h = await redis.hget(HANDLES_BY_WALLET, wallet);
+        return typeof h === 'string' && h ? h : null;
+    } catch (e) {
+        console.error('Redis handle read error:', e.message);
+        return null;
+    }
+}
+
+async function getWalletForHandle(bareHandle) {
+    if (!redis) return null;
+    try {
+        const w = await redis.hget(HANDLES_BY_NAME, bareHandle);
+        return typeof w === 'string' && w ? w : null;
+    } catch (e) {
+        console.error('Redis handle read error:', e.message);
+        return null;
+    }
+}
+
+/**
+ * Manifest safety gate shared by /upload and /api/v1/publish:
+ * append-only vs. the trusted durable registry + claimed-handle ownership
+ * on new entries. Returns null when clean, otherwise {status, body}.
+ */
+async function guardIncomingManifest(incoming) {
+    // Trusted baseline: durable store first, then the live manifest pointer.
+    // With neither available there is no trusted state to defend yet.
+    let current = await readDurableRegistry();
+    if (!current || current.length === 0) {
+        try {
+            const txId = readManifestPointer();
+            if (txId) {
+                const fromGateway = await fetchRegistryFromGateway(txId);
+                if (Array.isArray(fromGateway)) current = fromGateway;
+            }
+        } catch { /* gateway unreachable — fall through */ }
+    }
+    current = current ?? [];
+    const check = checkAppendOnly(current, incoming);
+    if (!check.ok) {
+        return { status: 403, body: { success: false, error: check.error, code: 'REGISTRY_TAMPER' } };
+    }
+    const conflicts = await findHandleConflicts(check.newEntries, getWalletForHandle);
+    if (conflicts.length > 0) {
+        const c = conflicts[0];
+        return {
+            status: 403,
+            body: {
+                success: false,
+                code: 'HANDLE_OWNED',
+                error: `"${c.artist}" is a claimed handle bound to another wallet. Publish with your own name, or sign in with the wallet that owns it.`,
+            },
+        };
+    }
+    return null;
 }
 
 // --- Manifest Pointer Logic ---
@@ -259,6 +327,11 @@ app.get('/registry', async (req, res) => {
 app.post('/upload', validateUpload, async (req, res) => {
     try {
         const manifestArray = Array.isArray(req.body) ? req.body : [req.body];
+
+        // Tamper/impersonation gate: append-only vs. trusted registry,
+        // claimed handles only publishable by their owner wallet.
+        const guardFail = await guardIncomingManifest(manifestArray);
+        if (guardFail) return res.status(guardFail.status).json(guardFail.body);
 
         // Try the permanent write first when a funded wallet exists.
         const wallet = loadWallet();
@@ -455,15 +528,83 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
         // handle is human-readable (raw `publicKey` is a JSON byte-array string and
         // produces garbage handles like "@[132...,72]") and cannot be spoofed.
         const displayKey = bs58.encode(publicKeyBytes);
+        // Claimed username wins over the address-derived fallback.
+        const claimed = await getHandleForWallet(displayKey);
         return res.json({
             success: true,
             wallet: displayKey,
-            handle: `@${displayKey.slice(0, 4)}...${displayKey.slice(-4)}`
+            handle: claimed ? `@${claimed}` : `@${displayKey.slice(0, 4)}...${displayKey.slice(-4)}`,
+            claimed: Boolean(claimed),
         });
     } catch (authError) {
         return res.status(500).json({ success: false, message: authError.message });
     }
 });
+
+// 5b. Claim / change a wallet-bound @handle.
+// The wallet signs `Fontainor handle claim: @<handle>` so a handle can only
+// ever be bound by whoever controls the wallet's private key. Uniqueness is
+// case-insensitive; changing your handle releases the old one.
+app.post('/api/v1/auth/set-handle', async (req, res) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    if (req.method === 'OPTIONS') return res.status(200).end();
+
+    try {
+        const { publicKey, signature, handle } = req.body;
+        if (!publicKey || !signature || !handle) {
+            return res.status(400).json({ success: false, message: 'Missing wallet verification payload or handle.' });
+        }
+
+        const bare = normalizeHandle(handle);
+        if (!bare) {
+            return res.status(400).json({
+                success: false,
+                code: 'HANDLE_INVALID',
+                message: 'Handles are 3–20 characters: lowercase letters, numbers, underscores (reserved names excluded).',
+            });
+        }
+
+        const nacl = await import('tweetnacl');
+        const expectedMessage = `Fontainor handle claim: @${bare}`;
+        const encodedMessage = new TextEncoder().encode(expectedMessage);
+        const signatureBytes = Uint8Array.from(JSON.parse(signature));
+        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
+        const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
+        if (!verified) {
+            return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
+        }
+
+        if (!redis) {
+            return res.status(503).json({
+                success: false,
+                code: 'HANDLES_UNAVAILABLE',
+                message: 'Username registry is not configured on this deployment yet.',
+            });
+        }
+
+        const wallet = bs58.encode(publicKeyBytes);
+        const existingOwner = await getWalletForHandle(bare);
+        if (existingOwner && existingOwner !== wallet) {
+            return res.status(409).json({ success: false, code: 'HANDLE_TAKEN', message: `@${bare} is already claimed.` });
+        }
+
+        const previous = await getHandleForWallet(wallet);
+        await redis.hset(HANDLES_BY_NAME, { [bare]: wallet });
+        await redis.hset(HANDLES_BY_WALLET, { [wallet]: bare });
+        if (previous && previous !== bare) {
+            try { await redis.hdel(HANDLES_BY_NAME, previous); }
+            catch (e) { console.error('Old handle release failed:', e.message); }
+        }
+
+        return res.json({ success: true, wallet, handle: `@${bare}` });
+    } catch (err) {
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+
 // 6. Wallet-Portable Profile — purchases + favorites follow the wallet across devices.
 //    Reads are public (everything here is already public on-chain / low-stakes);
 //    favorites writes require the same TweetNaCl signature the sovereign login uses.
@@ -575,6 +716,11 @@ app.post('/api/v1/publish', async (req, res) => {
         if (!Array.isArray(manifest) || manifest.length === 0) {
             return res.status(400).json({ success: false, error: 'Manifest is not a non-empty registry array.' });
         }
+        // Tamper/impersonation gate: the new manifest must contain every
+        // existing entry unchanged, and new entries may not use someone
+        // else's claimed handle.
+        const guardFail = await guardIncomingManifest(manifest);
+        if (guardFail) return res.status(guardFail.status).json(guardFail.body);
         writeManifestPointer(txId);
         const durable = await writeDurableRegistry(manifest);
         return res.json({ success: true, txId, durable });

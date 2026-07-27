@@ -8,6 +8,8 @@ import { clearSessionProof, saveSessionProof, startFavoritesAutoPush, syncProfil
 export interface User {
   address: string
   handle?: string
+  /** true when `handle` is a claimed username (not the address-derived fallback) */
+  claimed?: boolean
   via: 'wallet'
 }
 
@@ -31,6 +33,8 @@ interface AuthState {
   connecting: boolean
   hasWallet: boolean
   connect: () => Promise<{ success: boolean; error?: string }>
+  /** Claim or change the wallet-bound @handle (signs a claim message with Phantom). */
+  updateHandle: (handle: string) => Promise<{ success: boolean; error?: string }>
   logout: () => void
 }
 
@@ -113,7 +117,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: data.message || 'The registry rejected the signature. Try again.' }
       }
 
-      const u: User = { address, handle: data.handle, via: 'wallet' }
+      const u: User = { address, handle: data.handle, claimed: Boolean((data as { claimed?: boolean }).claimed), via: 'wallet' }
       setUser(u)
       try {
         localStorage.setItem(USER_KEY, JSON.stringify(u))
@@ -144,6 +148,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
   }, [])
 
+  const updateHandle = useCallback(
+    async (handle: string): Promise<{ success: boolean; error?: string }> => {
+      const bare = handle.trim().replace(/^@/, '').toLowerCase()
+      if (!/^[a-z0-9_]{3,20}$/.test(bare)) {
+        return { success: false, error: 'Handles are 3–20 characters: letters, numbers, underscores.' }
+      }
+      const provider = await getProvider()
+      if (!provider) return { success: false, error: 'Phantom wallet not detected. Unlock the extension and try again.' }
+
+      let publicKey = provider.publicKey ?? null
+      if (!publicKey) {
+        try {
+          publicKey = (await provider.connect()).publicKey
+        } catch {
+          return { success: false, error: 'Phantom is not responding. Unlock the extension and try again.' }
+        }
+      }
+      if (user && publicKey.toString() !== user.address) {
+        return { success: false, error: 'Phantom is on a different wallet than this session. Switch accounts and retry.' }
+      }
+
+      let signed: { signature: Uint8Array }
+      try {
+        signed = await provider.signMessage(new TextEncoder().encode(`Fontainor handle claim: @${bare}`), 'utf8')
+      } catch {
+        return { success: false, error: 'Signature cancelled. Approve the request in Phantom to claim the handle.' }
+      }
+
+      const res = await fetch(`${API_BASE}/api/v1/auth/set-handle`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
+          signature: JSON.stringify(Array.from(signed.signature)),
+          handle: bare,
+        }),
+      })
+      const data = (await res.json().catch(() => ({}))) as { success?: boolean; handle?: string; message?: string }
+      if (!res.ok || !data.success || !data.handle) {
+        return { success: false, error: data.message || 'The registry rejected the handle. Try another one.' }
+      }
+
+      setUser((prev) => {
+        const next: User = prev
+          ? { ...prev, handle: data.handle, claimed: true }
+          : { address: publicKey.toString(), handle: data.handle, claimed: true, via: 'wallet' }
+        try {
+          localStorage.setItem(USER_KEY, JSON.stringify(next))
+        } catch {
+          /* private mode */
+        }
+        return next
+      })
+      return { success: true }
+    },
+    [user],
+  )
+
   const logout = useCallback(() => {
     setUser(null)
     clearSessionProof()
@@ -156,8 +218,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<AuthState>(
-    () => ({ user, connecting, hasWallet, connect, logout }),
-    [user, connecting, hasWallet, connect, logout],
+    () => ({ user, connecting, hasWallet, connect, updateHandle, logout }),
+    [user, connecting, hasWallet, connect, updateHandle, logout],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>
