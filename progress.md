@@ -223,3 +223,8 @@ Root cause VERIFIED by curl: default RPC api.mainnet-beta.solana.com returns 403
 Fix: src/lib/phantom.ts SOLANA_RPC_ENDPOINTS (VITE_SOLANA_RPC first if set, then publicnode, then mainnet-beta last-resort) + getWorkingRpc() session-cached probe. purchase.ts, irysPublish.ts (withRpc), Support.tsx tip jar (was hardcoded mainnet-beta) all resolve through it.
 VERIFIED: npm run ci green; tools/real-flows-test.mjs 13/13 (RPC stub now registered for BOTH endpoints — anyone adding endpoints must extend rpcHandler routes).
 Operators can pin a dedicated RPC (Helius/QuickNode) via VITE_SOLANA_RPC env var in Vercel at build time.
+
+## 2026-07-27 — Iteration: F33 artist follow + new-release awareness
+Zero-backend follows (localStorage, same store pattern as F10 favorites): src/state/follows.ts (useFollows, useNewFromFollowed, ensureSeenBaseline), Follow pill next to artist on ReleaseDetail, 'New from artists you follow' rail on Home with count badge + 'Mark all seen'.
+Semantics that matter: first-ever follow sets the seen baseline to now (old catalog never floods); markSeen sets baseline to max(now, newest visible drop) so future-dated/clock-skewed releases can't reappear — this was caught by the test (2 fails on first run) and fixed, not by weakening the test.
+VERIFIED: tools/follows-test.mjs 9/9; npm run ci green. ASSUMED: prod post-deploy.
