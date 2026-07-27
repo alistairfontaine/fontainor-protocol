@@ -1,0 +1,4 @@
+{
+  "_comment": "Opt-in supporters wall shown on /support. Add entries as {\"name\": \"...\", \"url\": \"optional\", \"note\": \"optional\"}. Never list a donor without their consent.",
+  "supporters": []
+}
