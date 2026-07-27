@@ -9,7 +9,7 @@ import ReleaseDetail from './pages/ReleaseDetail'
 import Publish from './pages/Publish'
 import Profile from './pages/Profile'
 import { EditorialList, EditorialArticle } from './pages/Editorial'
-import { Favorites, History } from './pages/Collections'
+import { Collection, Favorites, History } from './pages/Collections'
 import { About, Terms, Privacy, Contact, Faq, NotFound } from './pages/Static'
 import { Support } from './pages/Support'
 import { AuthProvider } from './state/AuthContext'
@@ -55,6 +55,7 @@ export default function App() {
                 <Route path="/editorial/:id" element={<EditorialArticle />} />
                 <Route path="/publish" element={<Publish />} />
                 <Route path="/profile" element={<Profile />} />
+                <Route path="/collection" element={<Collection />} />
                 <Route path="/favorites" element={<Favorites />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/about" element={<About />} />

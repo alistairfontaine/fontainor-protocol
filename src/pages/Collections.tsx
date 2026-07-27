@@ -1,7 +1,10 @@
 import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
-import { IconHeart, IconHistory } from '../components/icons'
+import { IconDisc, IconExternal, IconHeart, IconHistory } from '../components/icons'
 import { Button, EmptyState, GridSkeleton, PageHead } from '../components/ui'
+import { solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
+import type { Release } from '../lib/registry'
+import { useAuth } from '../state/AuthContext'
 import { useFavorites, useHistoryLog } from '../state/collections'
 import { useRegistry } from '../state/RegistryContext'
 
@@ -66,6 +69,71 @@ export function History() {
         />
       ) : (
         <ReleaseGrid items={items} />
+      )}
+    </>
+  )
+}
+
+export function Collection() {
+  const { releases, loading } = useRegistry()
+  const { user } = useAuth()
+  const purchases = usePurchases()
+  // Receipts recovered from the durable server record carry no title/artist —
+  // resolve them from the registry by trackId (same rule as the Profile page).
+  const rows = purchases.map((p) => {
+    const rel = releases.find((r) => r.id === p.trackId)
+    return { receipt: p, rel, title: p.title || rel?.title || p.trackId, artist: p.artist || rel?.artist || 'unknown artist' }
+  })
+  const collected = rows.filter((x): x is { receipt: PurchaseReceipt; rel: Release; title: string; artist: string } => !!x.rel)
+
+  return (
+    <>
+      <PageHead
+        title="Collection"
+        sub="Supporter editions you own — every purchase has an on-chain receipt, 98% went to the artist."
+      />
+      {loading ? (
+        <GridSkeleton />
+      ) : purchases.length === 0 ? (
+        <EmptyState
+          icon={<IconDisc size={26} />}
+          title={user ? 'Nothing collected yet' : 'Your collection lives here'}
+          body={
+            user
+              ? 'Collect a supporter edition on any release page and it shows up here with its on-chain receipt.'
+              : 'Connect your wallet, collect a supporter edition on any release page, and it shows up here with its on-chain receipt.'
+          }
+          action={
+            <Link to="/library">
+              <Button variant="primary">Browse the library</Button>
+            </Link>
+          }
+        />
+      ) : (
+        <>
+          {collected.length > 0 && <ReleaseGrid items={collected.map((c) => c.rel)} />}
+          <div className="mt-5 space-y-2">
+            {rows.map(({ receipt: p, title, artist }) => (
+              <a
+                key={p.signature}
+                href={solscanTx(p.signature)}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center justify-between gap-3 rounded-card border border-line bg-surface px-4 py-3 text-[13px] transition-colors hover:bg-raised"
+              >
+                <span className="min-w-0 truncate text-body">
+                  {title} <span className="text-faint">· {artist}</span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2 tabular-nums text-muted">
+                  ◎{(p.lamports / 1e9).toFixed(4)} <IconExternal size={13} />
+                </span>
+              </a>
+            ))}
+          </div>
+          <p className="mt-3 text-[12px] text-faint">
+            Each row links to the on-chain receipt — 98% of every purchase went straight to the artist.
+          </p>
+        </>
       )}
     </>
   )

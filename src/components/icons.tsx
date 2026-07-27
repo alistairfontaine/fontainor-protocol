@@ -130,6 +130,13 @@ export const IconHistory = (p: IconProps) => (
   </Svg>
 )
 
+export const IconDisc = ({ filled, ...p }: IconProps) => (
+  <Svg {...p}>
+    <circle cx="12" cy="12" r="8.5" fill={filled ? 'currentColor' : 'none'} fillOpacity={filled ? 0.22 : 0} />
+    <circle cx="12" cy="12" r="2.6" />
+  </Svg>
+)
+
 export const IconClose = (p: IconProps) => (
   <Svg {...p}>
     <path d="m6 6 12 12M18 6 6 18" />
