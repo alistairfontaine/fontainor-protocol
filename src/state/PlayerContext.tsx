@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
+import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
 import { useRegistry } from './RegistryContext'
 import { useHistoryLog } from './collections'
@@ -156,6 +157,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       currentRef.current = rel
       pushHistory(rel.id)
       recordPlay() // support-nudge counter (localStorage, best-effort)
+      postPlay(rel.id) // anonymous trending counter (network, fire-and-forget)
       setPos(0)
       setCur(0)
 
