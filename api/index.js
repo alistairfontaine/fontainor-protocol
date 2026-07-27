@@ -701,6 +701,61 @@ app.post('/api/v1/favorites', async (req, res) => {
     }
 });
 
+// 6c. Play counts — anonymous, durable, powers the Trending rail.
+// Weekly zset (fontainor:plays:v1:w:<ISO week>) + all-time zset. No auth on
+// purpose (plays are anonymous); ids are validated and counts are only ever
+// social proof, never money. Degrades honestly without redis.
+const PLAYS_ALL_KEY = 'fontainor:plays:v1';
+const PLAY_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
+function playsWeekKey(d = new Date()) {
+    // ISO-8601 week number, UTC.
+    const t = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
+    const day = t.getUTCDay() || 7;
+    t.setUTCDate(t.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+    const week = Math.ceil(((t - yearStart) / 86400000 + 1) / 7);
+    return `fontainor:plays:v1:w:${t.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
+}
+
+app.post('/api/v1/plays', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        const id = String((req.body || {}).id || '');
+        if (!PLAY_ID_RE.test(id)) {
+            return res.status(400).json({ success: false, message: 'Invalid release id.' });
+        }
+        if (!redis) return res.json({ success: true, durable: false });
+        const wk = playsWeekKey();
+        await redis.zincrby(PLAYS_ALL_KEY, 1, id);
+        await redis.zincrby(wk, 1, id);
+        await redis.expire(wk, 21 * 86400); // weekly keys self-clean
+        return res.json({ success: true, durable: true });
+    } catch (err) {
+        console.error('Play count write failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
+app.get('/api/v1/plays/top', async (req, res) => {
+    if (profileCors(req, res)) return;
+    try {
+        const window = req.query.window === 'all' ? 'all' : 'week';
+        const n = Math.min(Math.max(parseInt(String(req.query.n || '12'), 10) || 12, 1), 50);
+        if (!redis) return res.json({ success: true, durable: false, window, top: [] });
+        const key = window === 'all' ? PLAYS_ALL_KEY : playsWeekKey();
+        // zrange rev withScores returns [member, score, member, score, ...]
+        const flat = await redis.zrange(key, 0, n - 1, { rev: true, withScores: true });
+        const top = [];
+        for (let i = 0; i + 1 < flat.length; i += 2) {
+            top.push({ id: String(flat[i]), plays: Number(flat[i + 1]) });
+        }
+        return res.json({ success: true, durable: true, window, top });
+    } catch (err) {
+        console.error('Play count read failed:', err.message);
+        return res.status(500).json({ success: false, message: err.message });
+    }
+});
+
 // 7. Publish Manifest Pointer Update
 app.post('/api/v1/publish', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');

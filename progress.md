@@ -209,3 +209,11 @@ ASSUMED: prod claim of @fontainor — Tapiwa performs it from his own Phantom (w
 
 ## 2026-07-27 — F31 prod probe (post-merge of PR #16)
 VERIFIED deployed on prod without writing data: validly signed set-handle claim of @fontainor from a throwaway ed25519 wallet -> 403 HANDLE_PROTECTED (new copy verbatim); @admin still -> 400 HANDLE_INVALID. Deploy landed ~2 min after merge. The actual @fontainor claim is Tapiwa's move from the treasury Phantom; if it unexpectedly 403s, TREASURY_WALLET on the Vercel project is set to a different address and overrides the code fallback.
+
+## 2026-07-27 — Iteration: F32 play counts + Trending rail (user: retention features "nina had" / addictiveness)
+Branch feat/play-counts-trending. Nina-gap analysis logged: shipped #1 of (1) trending/play counts, (2) autoplay radio [already exists via `ended` -> stepFrom(1)], (3) follows+notifications, (4) share cards.
+1. api/index.js: POST /api/v1/plays (anonymous, PLAY_ID_RE validated, zincrby weekly ISO-week key + all-time, weekly EXPIRE 21d) and GET /api/v1/plays/top?window=week|all&n= (zrange rev withScores). Honest durable:false without redis.
+2. src/lib/plays.ts: postPlay fire-and-forget (keepalive, never throws), fetchTopPlays. Wired into PlayerContext.play next to recordPlay.
+3. Home.tsx Trending rail: weekly top mapped through registry, hidden until >=3 releases have plays (empty platform never shows an empty chart), plays-count note on cards.
+VERIFIED: tools/plays-test.mjs 6/6; npm run ci green. ASSUMED: prod behavior post-deploy (needs real plays to render).
+Same day, earlier iterations: OG/social meta + favicons (PR #18), footer community links Discord/Reddit/GitHub (PR #19), Collect live on demo releases as treasury supporter editions (PR #20, prod-VERIFIED 10/10 artistWallet). Fork tapiwamakandigona/fontainor-protocol deleted after containment check (17/18 branches contained; 1 contentless merge commit).

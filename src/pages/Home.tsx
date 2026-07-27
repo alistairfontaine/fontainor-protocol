@@ -1,12 +1,51 @@
-import { useMemo } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
 import { IconArweave, IconEditorial, IconLibrary, IconPublish } from '../components/icons'
 import { Banner, Button, EmptyState, GridSkeleton } from '../components/ui'
+import { fetchTopPlays, type TopPlay } from '../lib/plays'
 import { recommendFor } from '../lib/recommend'
 import { fmtDate, type Release } from '../lib/registry'
 import { useFavorites, useHistoryLog } from '../state/collections'
 import { useRegistry } from '../state/RegistryContext'
+
+/** Trending rail (F32) — weekly play counts from the registry API. Hidden
+ *  until at least 3 releases have real plays, so an empty platform never
+ *  shows an empty chart. */
+function Trending() {
+  const { releases } = useRegistry()
+  const [top, setTop] = useState<TopPlay[]>([])
+  useEffect(() => {
+    let alive = true
+    void fetchTopPlays('week', 12).then((t) => {
+      if (alive) setTop(t)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+  const rows = useMemo(() => {
+    const byId = new Map(releases.map((r) => [r.id, r]))
+    return top
+      .map((t) => ({ rel: byId.get(t.id), plays: t.plays }))
+      .filter((x): x is { rel: Release; plays: number } => Boolean(x.rel && x.rel.type === 'release'))
+      .slice(0, 5)
+  }, [top, releases])
+  if (rows.length < 3) return null
+  return (
+    <section className="mt-12" aria-label="Trending this week">
+      <div className="mb-4 flex items-baseline justify-between">
+        <h2 className="text-xl font-semibold">Trending this week</h2>
+        <span className="text-[13px] text-faint">Most played across the registry</span>
+      </div>
+      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {rows.map((x) => (
+          <ReleaseCard key={x.rel.id} rel={x.rel} note={`${x.plays} play${x.plays === 1 ? '' : 's'} this week`} />
+        ))}
+      </div>
+    </section>
+  )
+}
 
 /** Personalized rail (F15) — appears once there is any listening/favorites signal. */
 function MadeForYou() {
@@ -123,7 +162,12 @@ export default function Home() {
         </section>
       )}
 
-      {!loading && <MadeForYou />}
+      {!loading && (
+        <>
+          <Trending />
+          <MadeForYou />
+        </>
+      )}
 
       {loading ? null : editorial.length > 0 ? (
         <EditorialStrip articles={editorial} />
