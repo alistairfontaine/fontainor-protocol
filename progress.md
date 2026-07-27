@@ -233,3 +233,6 @@ VERIFIED: tools/follows-test.mjs 9/9; npm run ci green. ASSUMED: prod post-deplo
 Hash routing means crawlers never see per-release meta; /share/:id (api/index.js) now serves real og/twitter tags (title — artist, price · edition · tagline, cover made absolute, og.png fallback) and bounces humans to /#/release/:id via meta-refresh + location.replace. Registry lookup: durable Redis first, then the deployment's own /registry.json demo fallback (same order as the app). vercel.json rewrite /share/:id -> api before SPA catch-all. Frontend: ShareButton on ReleaseDetail copies the /share URL (clipboard with prompt fallback), 2s "Link copied" state.
 Security: SHARE_ID_RE allowlist + full HTML escaping; test includes an injection-shaped title and asserts no reflection.
 VERIFIED: tools/share-test.mjs 10/10; npm run ci green. ASSUMED: prod until post-deploy check.
+
+## 2026-07-27 — Post-deploy verification F33/F34
+VERIFIED on prod: /share/FONT-4WHPZ2Q17 returns 200 with og:title "Fontainor Genesis — Alistair Fontaine", price/edition description, absolute cover URL, redirect to /#/release/. Served JS bundle contains the F33 rail + Follow UI and F34 Share button strings. Retention queue from the 2026-07-27 Nina-gap list is complete: F32 trending, autoplay (pre-existing), F33 follows, F34 share cards.
