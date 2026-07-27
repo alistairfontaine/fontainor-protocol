@@ -155,9 +155,15 @@ export function Privacy() {
 
 export function Contact() {
   const rows = [
-    { label: 'General & support', value: 'support@fontainor.xyz', note: 'Bugs, publishing help, account questions. We reply within 2 business days.' },
-    { label: 'Artists & labels', value: 'artists@fontainor.xyz', note: 'Catalog migrations, bulk publishing, editorial pitches.' },
-    { label: 'Rights & takedown requests', value: 'legal@fontainor.xyz', note: 'Include the registry ID and proof of ownership. See the Terms for what delisting can and cannot do.' },
+    {
+      label: 'Everything — support, artists, rights',
+      value: 'silentics.org@gmail.com',
+      note: 'Bugs, publishing help, catalog migrations, editorial pitches, rights and takedown requests (include the registry ID and proof of ownership). One inbox, read by a human.',
+    },
+  ]
+  const socials = [
+    { label: 'Instagram', value: '@fontainor', href: 'https://instagram.com/fontainor' },
+    { label: 'X', value: '@fontainor', href: 'https://x.com/fontainor' },
   ]
   return (
     <Doc title="Contact" sub="No ticket systems, no chatbots — email a human.">
@@ -170,6 +176,20 @@ export function Contact() {
             </a>
             <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{r.note}</p>
           </div>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-4">
+        {socials.map((s) => (
+          <a
+            key={s.label}
+            href={s.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded-card border border-line bg-surface px-5 py-3 text-[14px] text-muted transition-colors hover:border-accent/40 hover:text-ink"
+          >
+            <span className="text-[12px] font-medium uppercase tracking-wider text-faint">{s.label}</span>{' '}
+            <span className="ml-1 font-medium text-ink">{s.value}</span>
+          </a>
         ))}
       </div>
       <p className="text-[13px] text-muted">
