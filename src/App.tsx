@@ -9,6 +9,7 @@ import ReleaseDetail from './pages/ReleaseDetail'
 import Publish from './pages/Publish'
 import Profile from './pages/Profile'
 import { EditorialList, EditorialArticle } from './pages/Editorial'
+import { Playlists, PlaylistDetail } from './pages/Playlists'
 import { Collection, Favorites, History } from './pages/Collections'
 import { About, Terms, Privacy, Contact, Faq, NotFound } from './pages/Static'
 import { Support } from './pages/Support'
@@ -57,6 +58,8 @@ export default function App() {
                 <Route path="/profile" element={<Profile />} />
                 <Route path="/collection" element={<Collection />} />
                 <Route path="/favorites" element={<Favorites />} />
+                <Route path="/playlists" element={<Playlists />} />
+                <Route path="/playlists/:id" element={<PlaylistDetail />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/about" element={<About />} />
                 <Route path="/support" element={<Support />} />

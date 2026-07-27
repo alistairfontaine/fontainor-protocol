@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
@@ -11,6 +11,7 @@ import { useAuth } from '../state/AuthContext'
 import { useFavorites } from '../state/collections'
 import { ensureSeenBaseline, useFollows } from '../state/follows'
 import { usePlayer } from '../state/PlayerContext'
+import { usePlaylists } from '../state/playlists'
 import { useRegistry } from '../state/RegistryContext'
 
 export default function ReleaseDetail() {
@@ -127,6 +128,7 @@ export default function ReleaseDetail() {
               {fav ? 'Saved' : 'Save'}
             </Button>
             <QueueButton rel={rel} />
+            <PlaylistButton rel={rel} />
             <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
           </div>
@@ -274,6 +276,78 @@ function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
 }
 
 /** F34: copy a crawler-friendly share link (/share/:id serves real OG meta). */
+/** F39: save/remove this release to playlists via a small dropdown. */
+function PlaylistButton({ rel }: { rel: Release }) {
+  const { lists, create, addTrack, removeTrack } = usePlaylists()
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState('')
+  const inCount = lists.filter((pl) => pl.ids.includes(rel.id)).length
+  return (
+    <div className="relative">
+      <Button size="lg" aria-label={`Save ${rel.title} to playlist`} aria-expanded={open} onClick={() => setOpen((o) => !o)}>
+        <IconPlus size={18} className={inCount > 0 ? 'text-accent' : undefined} />
+        {inCount > 0 ? `In ${inCount} playlist${inCount === 1 ? '' : 's'}` : 'Playlist'}
+      </Button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-30" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div
+            className="absolute left-0 top-full z-40 mt-2 w-72 rounded-card border border-line bg-surface p-2 shadow-pop"
+            role="menu"
+            aria-label="Save to playlist"
+          >
+            {lists.length === 0 ? (
+              <p className="px-2 pb-1.5 pt-1 text-[13px] text-muted">No playlists yet — name one below.</p>
+            ) : (
+              <ul className="max-h-56 overflow-y-auto">
+                {lists.map((pl) => {
+                  const inPl = pl.ids.includes(rel.id)
+                  return (
+                    <li key={pl.id}>
+                      <button
+                        onClick={() => (inPl ? removeTrack(pl.id, rel.id) : addTrack(pl.id, rel.id))}
+                        aria-pressed={inPl}
+                        className="flex w-full cursor-pointer items-center gap-2 rounded-chip px-2 py-2 text-left text-sm text-ink transition-colors hover:bg-raised"
+                      >
+                        <span className="min-w-0 flex-1 truncate">{pl.name}</span>
+                        <span className="shrink-0 text-[11px] tabular-nums text-faint">{pl.ids.length}</span>
+                        {inPl && <IconCheck size={15} className="shrink-0 text-accent" />}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+            <form
+              className="mt-1 flex gap-1.5 border-t border-line pt-2"
+              onSubmit={(e) => {
+                e.preventDefault()
+                const pl = create(name)
+                if (pl) {
+                  addTrack(pl.id, rel.id)
+                  setName('')
+                }
+              }}
+            >
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="New playlist"
+                aria-label="New playlist name"
+                className="h-9 min-w-0 flex-1 rounded-btn border border-line bg-bg px-3 text-[13px] text-ink placeholder:text-faint focus:border-accent/60 focus:outline-none"
+                maxLength={80}
+              />
+              <Button size="sm" variant="primary" type="submit" disabled={!name.trim()}>
+                Add
+              </Button>
+            </form>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 /** F38: append this release to the user play queue, with brief ✓ feedback. */
 function QueueButton({ rel }: { rel: Release }) {
   const { addToQueue } = usePlayer()

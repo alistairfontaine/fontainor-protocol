@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { usePlayer } from '../state/PlayerContext'
 import { Footer } from './Footer'
-import { IconClose, IconDisc, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
+import { IconClose, IconDisc, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconQueue, IconSearch } from './icons'
 import { PlayerBar } from './PlayerBar'
 import { SupportNudge } from './SupportNudge'
 
@@ -153,6 +153,9 @@ function Sidebar() {
             <IconHeart size={19} filled={isActive} /> Favorites
           </>
         )}
+      </NavLink>
+      <NavLink to="/playlists" className={sideLink}>
+        <IconQueue size={19} /> Playlists
       </NavLink>
       <NavLink to="/collection" className={sideLink}>
         {({ isActive }) => (

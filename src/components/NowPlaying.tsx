@@ -341,7 +341,7 @@ function QueueList({
   upNext: Release[]
   queuedCount: number
   shuffle: boolean
-  play: (rel: Release) => void
+  play: (rel: Release, opts?: { keepContext?: boolean }) => void
   playQueued: (index: number) => void
   removeQueued: (index: number) => void
   cur: number
@@ -374,7 +374,7 @@ function QueueList({
         {upNext.map((rel, i) => (
           <li key={`${rel.id}:${i}`} className="flex items-center rounded-chip transition-colors hover:bg-raised">
             <button
-              onClick={() => (i < queuedCount ? playQueued(i) : play(rel))}
+              onClick={() => (i < queuedCount ? playQueued(i) : play(rel, { keepContext: true }))}
               className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 px-3 py-2 text-left"
             >
               <span className="w-4 shrink-0 text-[12px] tabular-nums text-faint">{i + 1}</span>
