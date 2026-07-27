@@ -72,4 +72,4 @@ Full text in [`LICENSE`](LICENSE). Copyright (c) 2026 Alistair Fontaine and tapi
 
 ## 💛 Support
 
-Fontainor runs on a zero-burn stack — donations keep it that way and fund storage subsidies for artists who can't cover their own Arweave upload. See the in-app [Support page](https://fontainor-protocol-two.vercel.app/support) (SOL tip jar + more channels).
+Fontainor runs on a zero-burn stack — donations keep it that way and fund storage subsidies for artists who can't cover their own Arweave upload. See the in-app [Support page](https://fontainor-protocol.vercel.app/support) (SOL tip jar + more channels).
