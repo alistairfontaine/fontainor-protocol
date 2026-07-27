@@ -39,7 +39,9 @@ async function main() {
   await page.route('https://lite-api.jup.ag/**', (r) =>
     r.fulfill({ json: { data: {} }, headers: { 'access-control-allow-origin': '*' } }))
   // simulated Solana JSON-RPC
-  await page.route('https://api.mainnet-beta.solana.com/**', async (r) => {
+  // The app resolves a working RPC at runtime (publicnode first, mainnet-beta
+  // fallback) — stub BOTH so the simulated chain always answers.
+  const rpcHandler = async (r) => {
     const body = r.request().postDataJSON()
     const reply = (result, id) => ({ jsonrpc: '2.0', id, result })
     const one = (m) => {
@@ -48,7 +50,9 @@ async function main() {
       return reply(null, m.id)
     }
     await r.fulfill({ json: Array.isArray(body) ? body.map(one) : one(body), headers: { 'access-control-allow-origin': '*' } })
-  })
+  }
+  await page.route('https://api.mainnet-beta.solana.com/**', rpcHandler)
+  await page.route('https://solana-rpc.publicnode.com/**', rpcHandler)
 
   // ── Phantom mock ──
   await page.addInitScript(`(() => {

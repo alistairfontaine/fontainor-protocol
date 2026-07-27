@@ -5,7 +5,7 @@ import { useEffect, useState } from 'react'
 import { IconCheck, IconExternal, IconSpinner, IconWallet } from '../components/icons'
 import { Button, PageHead } from '../components/ui'
 import { CHANNELS, TIP_PRESETS, TIP_WALLET, TIP_WALLET_HANDLE } from '../config/support'
-import { getPhantom } from '../lib/phantom'
+import { getPhantom, getWorkingRpc } from '../lib/phantom'
 
 type TipState =
   | { phase: 'idle' }
@@ -42,7 +42,7 @@ function TipJar() {
       }
       const pubkey = provider.publicKey ?? (await provider.connect()).publicKey
       const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js')
-      const connection = new Connection('https://api.mainnet-beta.solana.com', 'confirmed')
+      const connection = new Connection(await getWorkingRpc(), 'confirmed')
       const from = new PublicKey(pubkey.toString())
       const tx = new Transaction().add(
         SystemProgram.transfer({

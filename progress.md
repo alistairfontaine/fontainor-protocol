@@ -217,3 +217,9 @@ Branch feat/play-counts-trending. Nina-gap analysis logged: shipped #1 of (1) tr
 3. Home.tsx Trending rail: weekly top mapped through registry, hidden until >=3 releases have plays (empty platform never shows an empty chart), plays-count note on cards.
 VERIFIED: tools/plays-test.mjs 6/6; npm run ci green. ASSUMED: prod behavior post-deploy (needs real plays to render).
 Same day, earlier iterations: OG/social meta + favicons (PR #18), footer community links Discord/Reddit/GitHub (PR #19), Collect live on demo releases as treasury supporter editions (PR #20, prod-VERIFIED 10/10 artistWallet). Fork tapiwamakandigona/fontainor-protocol deleted after containment check (17/18 branches contained; 1 contentless merge commit).
+
+## 2026-07-27 — Fix: Collect 403 on prod (user bug report: Grape Soda purchase failed, "failed to get recent blockhash: 403")
+Root cause VERIFIED by curl: default RPC api.mainnet-beta.solana.com returns 403 "Access forbidden" to browser/dApp traffic. solana-rpc.publicnode.com answers 200 with a real blockhash and is CORS-open (ACAO: *), keyless.
+Fix: src/lib/phantom.ts SOLANA_RPC_ENDPOINTS (VITE_SOLANA_RPC first if set, then publicnode, then mainnet-beta last-resort) + getWorkingRpc() session-cached probe. purchase.ts, irysPublish.ts (withRpc), Support.tsx tip jar (was hardcoded mainnet-beta) all resolve through it.
+VERIFIED: npm run ci green; tools/real-flows-test.mjs 13/13 (RPC stub now registered for BOTH endpoints — anyone adding endpoints must extend rpcHandler routes).
+Operators can pin a dedicated RPC (Helius/QuickNode) via VITE_SOLANA_RPC env var in Vercel at build time.
