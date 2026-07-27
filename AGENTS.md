@@ -35,7 +35,7 @@ unchanged; label claims VERIFIED/ASSUMED.
 stack, changing API routes/shapes, anything destructive on the upstream repo.
 
 **Never:** edit verify commands or acceptance criteria in `features.json`;
-commit secrets (they live in /work/secrets/u0bktuagrpy/ only); force-push;
+commit secrets (credentials live outside the repo, never in git); force-push;
 touch `dist/` by hand.
 
 ## Deeper docs

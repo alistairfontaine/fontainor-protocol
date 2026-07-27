@@ -147,3 +147,14 @@ User: slim the repo, remove unnecessary files; LICENSE/name cleanup — final di
 - LICENSE: resolved committed merge-conflict markers (<<<<<<< blocks were live in the file); now "Copyright (c) 2026 Alistair Fontaine and tapiwamakandigona".
 - README rewritten to be accurate: real clone URL + branch, real commands, correct production link (fontainor-protocol-two), repo layout; dropped fake env-var quickstart and the nonexistent "Disaster Recovery rollback log" claim.
 - F12 flipped with evidence.
+
+## 2026-07-27 — Iteration: Zero-Dollar Launch Plan repo items (user request via DM)
+Implemented the code/repo-implementable items from Fontainor_Zero-Dollar_Launch_Plan.pdf on branch launch/zero-dollar-plan (4 commits, npm run ci green after each):
+1. Relicense MIT -> AGPL-3.0-only: canonical text from gnu.org (661 lines), package.json license field, README license section rewritten (obligations in plain language), NOTICE file (Fontainor™ name not licensed to forks). F24.
+2. .github/FUNDING.yml: custom link -> /support; Sponsors/Ko-fi/Liberapay staged but commented until accounts exist.
+3. /support "Keep Fontainor running" page: cost transparency, storage-subsidy funding target, one-tap Phantom SOL tip (0.05/0.1/0.5 presets, dynamic import of @solana/web3.js so the main bundle stays nav-network-free — lazy chunk ~311KB only on tip click), copy-address fallback, opt-in supporters wall (public/supporters.json), footer "Support us" link. F25.
+4. Gentle nudge after 15th play, dismissible, quiet for 150 plays after dismissal (src/lib/supportPlays.ts + SupportNudge in AppShell; recordPlay() in PlayerContext.play). F26.
+VERIFIED: ci green x4; tip wallet base58 = 32 bytes; dist contains page copy + supporters.json; web3.js not in main chunk (index ~120KB unchanged).
+ASSUMED (flagged in features.json): actual on-chain tip transfer and nudge runtime behavior — not exercised against a live wallet/browser yet.
+NOT done deliberately: merging fork PR #1 (Upstash — needs Vercel env vars + user call), funding Arweave wallet (spends money), creating Sponsors/Ko-fi/Liberapay accounts, any Reddit/HN posting.
+Hygiene: AGENTS.md secrets pointer made generic (was an internal sandbox path in a public repo).

@@ -54,3 +54,17 @@ live `/registry` API (with seeded data).
 ## Current phase
 
 foundation — scaffold new frontend workspace, CI gate, design tokens.
+
+## Launch decisions (Zero-Dollar Launch Plan, 2026-07-27)
+
+- License: AGPL-3.0-only (strongest still-open-source anti-clone option;
+  name protected separately via NOTICE — the license covers code, not the
+  "Fontainor" name). Requires both copyright holders; lands via PR so
+  Alistair's approval is his consent on record (2026-07-27).
+- Donations posture: WinRAR honor system — never gate, never nag hard.
+  /support page + SOL tip jar (treasury wallet in src/config/support.ts);
+  fiat channels config-gated until the accounts exist, no dead buttons
+  (2026-07-27).
+- Launch gate unchanged: no Reddit/HN marketing until a stranger can
+  publish a real track and find it tomorrow from another device (Arweave
+  wallet funded + durable registry merged) (2026-07-27).

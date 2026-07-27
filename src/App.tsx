@@ -11,6 +11,7 @@ import Profile from './pages/Profile'
 import { EditorialList, EditorialArticle } from './pages/Editorial'
 import { Favorites, History } from './pages/Collections'
 import { About, Terms, Privacy, Contact, Faq, NotFound } from './pages/Static'
+import { Support } from './pages/Support'
 import { AuthProvider } from './state/AuthContext'
 import { PlayerProvider } from './state/PlayerContext'
 import { RegistryProvider } from './state/RegistryContext'
@@ -57,6 +58,7 @@ export default function App() {
                 <Route path="/favorites" element={<Favorites />} />
                 <Route path="/history" element={<History />} />
                 <Route path="/about" element={<About />} />
+                <Route path="/support" element={<Support />} />
                 <Route path="/terms" element={<Terms />} />
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/contact" element={<Contact />} />

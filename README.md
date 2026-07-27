@@ -59,4 +59,17 @@ Deployment: pushes to `v06-development` auto-deploy to Vercel (static `dist/` + 
 ---
 
 ## 📜 Open-Source Protocol Standards
-Fontainor is MIT-licensed, offering an un-censorable platform for creators to own their work and for users to stream music permanently.
+
+Fontainor™ is free software licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)** — an un-censorable platform for creators to own their work and for users to stream music permanently.
+
+What that means in practice:
+
+- You can use, study, modify, and self-host Fontainor freely.
+- If you run a **modified** version as a network service, you must make your modified source available to its users (AGPL §13).
+- The license covers the code, **not the name**: forks must not call themselves Fontainor or present as the official deployment. See [`NOTICE`](NOTICE).
+
+Full text in [`LICENSE`](LICENSE). Copyright (c) 2026 Alistair Fontaine and tapiwamakandigona.
+
+## 💛 Support
+
+Fontainor runs on a zero-burn stack — donations keep it that way and fund storage subsidies for artists who can't cover their own Arweave upload. See the in-app [Support page](https://fontainor-protocol-two.vercel.app/support) (SOL tip jar + more channels).

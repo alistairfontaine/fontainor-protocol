@@ -4,6 +4,7 @@ import { usePlayer } from '../state/PlayerContext'
 import { Footer } from './Footer'
 import { IconClose, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconSearch } from './icons'
 import { PlayerBar } from './PlayerBar'
+import { SupportNudge } from './SupportNudge'
 
 // ── top bar ─────────────────────────────────────────────────
 
@@ -248,6 +249,7 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
       <div className="mx-auto flex max-w-[1360px] gap-6 px-4 sm:px-6">
         <Sidebar />
         <main className={`min-w-0 flex-1 py-7 ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}>
+          <SupportNudge />
           {children}
           <Footer />
         </main>
