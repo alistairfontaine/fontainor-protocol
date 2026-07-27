@@ -1,0 +1,9 @@
+# Funding channels for Fontainor Protocol (Zero-Dollar Launch Plan §4).
+# Uncomment each line once the account actually exists — a dead link on
+# launch day is worse than no link.
+
+# github: [tapiwamakandigona]   # enable after GitHub Sponsors enrollment is approved
+# ko_fi: fontainor              # enable after creating the Ko-fi page
+# liberapay: fontainor          # enable after creating the Liberapay account
+custom:
+  - "https://fontainor-protocol-two.vercel.app/support"
