@@ -4,7 +4,7 @@
 // the Arweave permanent record, then the serverless pointer is updated.
 // All Irys/web3 code loads lazily so the main bundle stays slim.
 import { API_BASE, type PublishResult } from './api'
-import { getConnectedPhantom, PhantomError, SOLANA_RPC } from './phantom'
+import { getConnectedPhantom, getWorkingRpc, PhantomError } from './phantom'
 import { getSolUsd } from './solPrice'
 
 export const IRYS_GATEWAY = 'https://gateway.irys.xyz'
@@ -39,7 +39,7 @@ async function buildIrys(): Promise<IrysLike> {
     import('@irys/web-upload-solana'),
   ])
   try {
-    return (await WebUploader(WebSolana).withProvider(provider).withRpc(SOLANA_RPC).mainnet()) as unknown as IrysLike
+    return (await WebUploader(WebSolana).withProvider(provider).withRpc(await getWorkingRpc()).mainnet()) as unknown as IrysLike
   } catch (e) {
     throw new PhantomError('network', 'Could not reach the Irys storage network: ' + ((e as Error)?.message || e))
   }

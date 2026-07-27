@@ -5,7 +5,7 @@
 // purchase record when the durable store is configured.
 import { useSyncExternalStore } from 'react'
 import { API_BASE } from './api'
-import { getConnectedPhantom, PhantomError, SOLANA_RPC } from './phantom'
+import { getConnectedPhantom, getWorkingRpc, PhantomError } from './phantom'
 import { TIP_WALLET } from '../config/support'
 import { getSolUsd } from './solPrice'
 import type { Release } from './registry'
@@ -126,7 +126,7 @@ export async function purchase(rel: Release, quote: PurchaseQuote): Promise<Purc
     if (!buyer) throw new PhantomError('rejected', 'Wallet not connected.')
 
     const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js')
-    const connection = new Connection(SOLANA_RPC, 'confirmed')
+    const connection = new Connection(await getWorkingRpc(), 'confirmed')
 
     const treasuryLamports = Math.floor(quote.lamports * PROTOCOL_FEE_RATE)
     const artistLamports = quote.lamports - treasuryLamports
