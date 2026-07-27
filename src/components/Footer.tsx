@@ -27,6 +27,12 @@ const COLS: Array<{ head: string; links: Array<{ to: string; label: string }> }>
   },
 ]
 
+const COMMUNITY: Array<{ href: string; label: string }> = [
+  { href: 'https://discord.gg/uc4SJbRBH', label: 'Discord' },
+  { href: 'https://www.reddit.com/r/fontainor/', label: 'Reddit' },
+  { href: 'https://github.com/alistairfontaine/fontainor-protocol', label: 'GitHub' },
+]
+
 /**
  * Footer. Compact on phones (per user feedback: the stacked version was way
  * too tall): the three link columns sit side by side in one row and spacing
@@ -59,7 +65,20 @@ export function Footer() {
           </nav>
         ))}
       </div>
-      <p className="mt-5 border-t border-line pt-4 text-[11px] leading-relaxed text-faint sm:mt-10 sm:pt-5 sm:text-[12px]">
+      <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-line pt-4 sm:mt-10 sm:pt-5">
+        {COMMUNITY.map((c) => (
+          <a
+            key={c.href}
+            href={c.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[12px] font-medium text-muted transition-colors hover:text-ink sm:text-[13px]"
+          >
+            {c.label}
+          </a>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] leading-relaxed text-faint sm:mt-4 sm:text-[12px]">
         © {new Date().getFullYear()} Fontainor Protocol · Demo catalog: public-domain / CC0 recordings under fictional
         names, artwork generated for this demo.
       </p>
