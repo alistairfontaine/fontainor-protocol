@@ -8,7 +8,7 @@ const connection = new Connection(SOLANA_RPC_ENDPOINT, 'confirmed');
 
 /** Protocol treasury (same wallet as the /support tip jar). Override via env. */
 export const PROTOCOL_TREASURY_ADDRESS =
-    process.env.TREASURY_WALLET || '71FvemD53qhyPSbT4abM19PUcFkhkPGCAW85SRZt9eKg';
+    process.env.TREASURY_WALLET || '6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo';
 
 /** 2% protocol treasury share; the remaining 98% goes to the artist. */
 export const PROTOCOL_FEE_RATE = 0.02;

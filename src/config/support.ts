@@ -3,7 +3,10 @@
 // renders only channels marked `live: true`, so we never ship a dead button.
 
 /** Fontainor treasury / tip-jar wallet (Solana mainnet). */
-export const TIP_WALLET = '71FvemD53qhyPSbT4abM19PUcFkhkPGCAW85SRZt9eKg'
+export const TIP_WALLET = '6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo'
+
+/** Phantom username attached to the treasury wallet (Phantom users can send to this handle). */
+export const TIP_WALLET_HANDLE = '@fontainor'
 
 /** Preset tip amounts in SOL for the one-tap Phantom flow. */
 export const TIP_PRESETS = [0.05, 0.1, 0.5] as const
