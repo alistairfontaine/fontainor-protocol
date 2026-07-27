@@ -2,12 +2,13 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { IconArweave, IconCheck, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Banner, Button, Chip, EmptyState, PageHead } from '../components/ui'
-import { DEMO_PUBLISH, publishDemo, publishManifest, uploadAudioChunks, type PublishResult } from '../lib/api'
+import { loadRawRegistryArray, type PublishResult } from '../lib/api'
+import { publishReal, quotePublish, type PublishStage, type StorageQuote } from '../lib/irysPublish'
 import { buildAsset, type AssetType } from '../lib/registry'
 import { useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
 
-type Phase = 'form' | 'uploading' | 'etching' | 'done'
+type Phase = 'form' | 'quoting' | 'confirm' | 'publishing' | 'done'
 
 const inputCls =
   'h-11 w-full rounded-btn border border-line bg-surface px-3.5 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:outline-none'
@@ -21,6 +22,17 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
     </label>
   )
 }
+
+const STAGE_COPY: Record<PublishStage, { title: string; body: string }> = {
+  quote: { title: 'Preparing…', body: 'Connecting to the permanent storage network.' },
+  funding: { title: 'Approve the storage payment', body: 'Phantom is asking you to fund the exact storage cost — this is the only charge.' },
+  audio: { title: 'Uploading audio…', body: 'Your track is being written to the permanent record.' },
+  cover: { title: 'Uploading cover art…', body: 'Artwork is being written to the permanent record.' },
+  manifest: { title: 'Etching the registry…', body: 'The updated registry manifest is being written on-chain.' },
+  listing: { title: 'Listing your release…', body: 'Pointing the live registry at the new manifest.' },
+}
+
+const fmtSol = (sol: number): string => (sol >= 0.001 ? `◎${sol.toFixed(4)}` : sol > 0 ? '◎<0.001' : '◎0')
 
 export default function Publish() {
   const { user, connect, connecting } = useAuth()
@@ -38,10 +50,13 @@ export default function Publish() {
   const [audioMode, setAudioMode] = useState<'file' | 'uri'>('uri')
   const [audioFile, setAudioFile] = useState<File | null>(null)
   const [audioUri, setAudioUri] = useState('')
+  const [coverMode, setCoverMode] = useState<'file' | 'uri'>('uri')
+  const [coverFile, setCoverFile] = useState<File | null>(null)
   const [coverUri, setCoverUri] = useState('')
 
   const [phase, setPhase] = useState<Phase>('form')
-  const [progress, setProgress] = useState(0)
+  const [stage, setStage] = useState<PublishStage>('quote')
+  const [quote, setQuote] = useState<StorageQuote | null>(null)
   const [result, setResult] = useState<PublishResult | null>(null)
   const [connectErr, setConnectErr] = useState<string | null>(null)
 
@@ -81,28 +96,29 @@ export default function Publish() {
     )
   }
 
-  const submit = async () => {
+  const effectiveAudioFile = type === 'release' && audioMode === 'file' ? audioFile : null
+  const effectiveCoverFile = type === 'release' && coverMode === 'file' ? coverFile : null
+
+  /** Step 1: price the storage and ask for one clear confirmation. */
+  const requestQuote = async () => {
     setResult(null)
-    let finalAudioUri = audioUri.trim()
-
-    if (type === 'release' && audioMode === 'file' && audioFile) {
-      if (DEMO_PUBLISH) {
-        // demo mode: no Arweave writer — play the file from this session's memory
-        finalAudioUri = URL.createObjectURL(audioFile)
-      } else {
-        setPhase('uploading')
-        setProgress(0)
-        const up = await uploadAudioChunks(audioFile, setProgress)
-        if (!up.ok) {
-          setPhase('form')
-          setResult({ ok: false, failure: 'write', msg: up.error ?? 'Audio upload failed.', txId: null })
-          return
-        }
-        finalAudioUri = up.audioUri ?? ''
-      }
+    setPhase('quoting')
+    try {
+      const registry = await loadRawRegistryArray()
+      const q = await quotePublish(registry, effectiveAudioFile, effectiveCoverFile)
+      setQuote(q)
+      setPhase('confirm')
+    } catch (e) {
+      setResult({ ok: false, failure: 'network', msg: String((e as Error)?.message || e), txId: null })
+      setPhase('form')
     }
+  }
 
-    setPhase('etching')
+  /** Step 2: the real musician-pays publish. */
+  const submit = async () => {
+    setPhase('publishing')
+    setStage('quote')
+    const registry = await loadRawRegistryArray()
     const asset = buildAsset({
       type,
       title: title.trim(),
@@ -111,10 +127,17 @@ export default function Publish() {
       price: type === 'release' ? price : 0,
       currency,
       total: type === 'release' ? total : 0,
-      audioUri: type === 'release' ? finalAudioUri : '',
-      coverUri: coverUri.trim(),
+      audioUri: type === 'release' && audioMode === 'uri' ? audioUri.trim() : '',
+      coverUri: type === 'release' && coverMode === 'uri' ? coverUri.trim() : '',
+      artistWallet: user.address,
     })
-    const res = DEMO_PUBLISH ? await publishDemo(asset) : await publishManifest(asset)
+    const res = await publishReal({
+      asset,
+      audioFile: effectiveAudioFile,
+      coverFile: effectiveCoverFile,
+      currentRegistry: registry,
+      onStage: setStage,
+    })
     setResult(res)
     if (res.ok) {
       setPhase('done')
@@ -124,27 +147,48 @@ export default function Publish() {
     }
   }
 
-  if (phase === 'uploading' || phase === 'etching') {
+  if (phase === 'quoting' || phase === 'publishing') {
+    const copy = phase === 'quoting' ? { title: 'Pricing storage…', body: 'Fetching the exact one-time cost for your files.' } : STAGE_COPY[stage]
     return (
       <div className="mx-auto max-w-md py-16 text-center">
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-card bg-raised text-accent">
           <IconSpinner size={26} />
         </div>
-        <h1 className="mt-5 text-2xl font-semibold">
-          {phase === 'uploading' ? 'Uploading audio…' : DEMO_PUBLISH ? 'Adding to the registry…' : 'Etching onto Arweave…'}
-        </h1>
-        <p className="mt-2 text-sm text-muted">
-          {phase === 'uploading'
-            ? 'Streaming your track in 256KB chunks to the permanent store.'
-            : DEMO_PUBLISH
-              ? 'Demo mode — recording your release locally. No chain write happens yet.'
-              : 'Committing the updated registry manifest. This can take a few moments — keep the tab open.'}
+        <h1 className="mt-5 text-2xl font-semibold">{copy.title}</h1>
+        <p className="mt-2 text-sm text-muted">{copy.body}</p>
+        {phase === 'publishing' && <p className="mt-6 text-[12px] text-faint">Keep this tab open until the etching completes.</p>}
+      </div>
+    )
+  }
+
+  if (phase === 'confirm' && quote) {
+    return (
+      <div className="fade-up mx-auto max-w-md py-16">
+        <div className="mx-auto grid h-14 w-14 place-items-center rounded-card bg-raised text-accent">
+          <IconArweave size={26} />
+        </div>
+        <h1 className="mt-5 text-center text-2xl font-semibold">One-time storage cost</h1>
+        <p className="mt-2 text-center text-sm text-muted">
+          Fontainor fronts nothing and takes nothing here — your wallet pays the permanent storage network directly.
         </p>
-        {phase === 'uploading' && (
-          <div className="mx-auto mt-6 h-1.5 w-full overflow-hidden rounded-full bg-raised">
-            <div className="h-full bg-accent transition-[width] duration-200" style={{ width: `${Math.round(progress * 100)}%` }} />
+        <div className="mt-6 rounded-card border border-line bg-surface p-5">
+          <div className="flex items-baseline justify-between">
+            <span className="text-sm text-muted">Permanent storage ({(quote.totalBytes / (1024 * 1024)).toFixed(2)} MB)</span>
+            <span className="text-xl font-semibold tabular-nums text-ink">{fmtSol(quote.sol)}</span>
           </div>
-        )}
+          <div className="mt-1 flex items-baseline justify-between text-[12px] text-faint">
+            <span>Paid once from your Phantom wallet · stored forever</span>
+            {quote.usd != null && <span>≈ ${quote.usd < 0.01 && quote.usd > 0 ? '<0.01' : quote.usd.toFixed(2)}</span>}
+          </div>
+        </div>
+        <div className="mt-6 flex justify-center gap-3">
+          <Button variant="primary" size="lg" onClick={submit}>
+            <IconPublish size={18} /> Pay &amp; publish
+          </Button>
+          <Button size="lg" onClick={() => setPhase('form')}>
+            Back
+          </Button>
+        </div>
       </div>
     )
   }
@@ -155,11 +199,11 @@ export default function Publish() {
         <div className="mx-auto grid h-14 w-14 place-items-center rounded-card bg-ok/10 text-ok">
           <IconCheck size={28} />
         </div>
-        <h1 className="mt-5 text-2xl font-semibold">{DEMO_PUBLISH ? 'Published — demo mode.' : 'Published, permanently.'}</h1>
+        <h1 className="mt-5 text-2xl font-semibold">Published, permanently.</h1>
         <p className="mt-2 text-sm text-muted">{result.msg}</p>
         {result.txId && (
           <p className="mt-4 break-all rounded-btn bg-surface px-4 py-3 text-[12px] tabular-nums text-muted ring-1 ring-line">
-            TX {result.txId}
+            Manifest {result.txId}
           </p>
         )}
         <div className="mt-7 flex justify-center gap-3">
@@ -173,7 +217,9 @@ export default function Publish() {
               setDesc('')
               setAudioFile(null)
               setAudioUri('')
+              setCoverFile(null)
               setCoverUri('')
+              setQuote(null)
               setResult(null)
             }}
           >
@@ -190,13 +236,6 @@ export default function Publish() {
         title="Publish"
         sub="One write, permanent record. Your release is stored on Arweave and listed in the registry."
       />
-
-      {DEMO_PUBLISH && (
-        <Banner tone="info">
-          Demo mode: no Arweave wallet is funded yet, so publishes are saved in this browser and appear across the app —
-          they are not written on-chain. Everything moves to real permanent storage once a wallet is configured.
-        </Banner>
-      )}
 
       {result && !result.ok && (
         <Banner tone="warn">
@@ -270,14 +309,7 @@ export default function Publish() {
                   <input className={inputCls} value={audioUri} onChange={(e) => setAudioUri(e.target.value)} placeholder="https://arweave.net/…" />
                 </Field>
               ) : (
-                <Field
-                  label=""
-                  hint={
-                    DEMO_PUBLISH
-                      ? 'Demo mode: the file plays from this session only and won\u2019t survive a reload — paste a hosted audio URL for something that persists.'
-                      : 'Uploaded in 256KB chunks and written to Arweave by the registry node.'
-                  }
-                >
+                <Field label="" hint="Written straight to Arweave — you pay the exact storage cost from your wallet, shown before anything is charged.">
                   <input
                     type="file"
                     accept="audio/*"
@@ -288,9 +320,33 @@ export default function Publish() {
               )}
             </div>
 
-            <Field label="Cover art URL" hint="Optional — a deterministic generative cover is used when empty.">
-              <input className={inputCls} value={coverUri} onChange={(e) => setCoverUri(e.target.value)} placeholder="https://arweave.net/… or https://…" />
-            </Field>
+            <div className="rounded-card border border-line bg-surface p-4">
+              <div className="mb-3 flex items-center justify-between">
+                <span className="text-[13px] font-medium text-body">Cover art</span>
+                <div className="flex gap-1.5">
+                  <Chip active={coverMode === 'uri'} onClick={() => setCoverMode('uri')}>
+                    URL
+                  </Chip>
+                  <Chip active={coverMode === 'file'} onClick={() => setCoverMode('file')}>
+                    Upload file
+                  </Chip>
+                </div>
+              </div>
+              {coverMode === 'uri' ? (
+                <Field label="" hint="Optional — a deterministic generative cover is used when empty.">
+                  <input className={inputCls} value={coverUri} onChange={(e) => setCoverUri(e.target.value)} placeholder="https://arweave.net/… or https://…" />
+                </Field>
+              ) : (
+                <Field label="" hint="Optional — small images usually cost a fraction of a cent.">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setCoverFile(e.target.files?.[0] ?? null)}
+                    className="block w-full cursor-pointer text-sm text-muted file:mr-4 file:cursor-pointer file:rounded-btn file:border-0 file:bg-raised file:px-4 file:py-2.5 file:text-sm file:font-medium file:text-body hover:file:bg-overlay"
+                  />
+                </Field>
+              )}
+            </div>
           </>
         )}
 
@@ -298,21 +354,13 @@ export default function Publish() {
           <div className="flex items-center gap-2.5 text-[13px] text-muted">
             <IconArweave size={18} className="text-accent" />
             <span>
-              {DEMO_PUBLISH ? (
-                <>
-                  Demo publish — stored <span className="font-medium text-body">in this browser</span>, not on-chain.
-                </>
-              ) : (
-                <>
-                  Writes are <span className="font-medium text-body">permanent</span> and public.
-                </>
-              )}
+              Writes are <span className="font-medium text-body">permanent</span> and public. You pay storage directly — no middleman.
             </span>
           </div>
           <Badge tone="accent">98% to you</Badge>
         </div>
 
-        <Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={submit}>
+        <Button variant="primary" size="lg" className="w-full" disabled={!valid} onClick={requestQuote}>
           <IconPublish size={18} /> Publish to the registry
         </Button>
         {!valid && <p className="text-center text-[12px] text-faint">Title and {type === 'release' ? 'artist' : 'author'} are required{type === 'release' && audioMode === 'file' ? '; choose an audio file or switch to URL' : ''}.</p>}

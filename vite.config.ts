@@ -1,9 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { nodePolyfills } from 'vite-plugin-node-polyfills'
 
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  // node polyfills are required by the (lazily loaded) Irys upload SDK;
+  // they land in the lazy chunk, not the main bundle.
+  plugins: [react(), tailwindcss(), nodePolyfills()],
   build: process.env.SINGLE_FILE
     ? {
         // one-file build used for self-contained HTML previews

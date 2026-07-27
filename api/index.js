@@ -52,6 +52,44 @@ function loadWallet() {
 
 const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 
+// --- Durable registry via Upstash Redis (survives serverless redeploys) ---
+// Configure UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN in Vercel env
+// vars (free tier at upstash.com). Without them, behavior is unchanged
+// (Arweave manifest pointer + ephemeral filesystem).
+const REGISTRY_KEY = 'fontainor:registry:v1';
+let redis = null;
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+        const { Redis } = await import('@upstash/redis');
+        redis = Redis.fromEnv();
+        console.log('✓ Upstash Redis configured — registry is durable.');
+    } catch (e) {
+        console.error('⚠️ @upstash/redis failed to load, falling back:', e.message);
+    }
+}
+
+async function readDurableRegistry() {
+    if (!redis) return null;
+    try {
+        const data = await redis.get(REGISTRY_KEY);
+        return Array.isArray(data) ? data : null;
+    } catch (e) {
+        console.error('Redis read error:', e.message);
+        return null;
+    }
+}
+
+async function writeDurableRegistry(manifestArray) {
+    if (!redis) return false;
+    try {
+        await redis.set(REGISTRY_KEY, manifestArray);
+        return true;
+    } catch (e) {
+        console.error('Redis write error:', e.message);
+        return false;
+    }
+}
+
 // --- Manifest Pointer Logic ---
 const POINTER_FILE = path.join(__dirname, 'pointer.json');
 
@@ -124,9 +162,52 @@ function writeManifestPointer(txId) {
 
 async function fetchRegistryFromGateway(txId) {
     if (!txId) throw new Error('No Manifest ID defined');
-    const response = await fetch(`${GATEWAY}/${txId}`);
-    if (!response.ok) throw new Error('Failed to fetch manifest from gateway');
-    return await response.json();
+    // Manifests can live on Arweave L1 (legacy, server wallet) or be Irys
+    // bundle items (musician-pays publish flow). Try both gateways.
+    for (const base of [GATEWAY, 'https://gateway.irys.xyz']) {
+        try {
+            const response = await fetch(`${base}/${txId}`);
+            if (response.ok) return await response.json();
+        } catch { /* try next gateway */ }
+    }
+    throw new Error('Failed to fetch manifest from gateway');
+}
+
+// --- Registry self-heal via Irys GraphQL ---
+// The musician-pays publish flow uploads every registry manifest to Irys with
+// these tags. If the serverless pointer is lost (cold start) and no durable
+// store is configured, the newest tagged manifest is recovered from the
+// permanent record, so the catalog survives redeploys even with zero env vars.
+// NOTE: tags are not access-controlled; a durable store (Upstash), once
+// configured, always takes precedence over this recovery path.
+const MANIFEST_TAGS = [
+    { name: 'App-Name', value: 'Fontainor-Protocol' },
+    { name: 'Type', value: 'registry-manifest' },
+];
+
+async function recoverLatestManifestFromIrys() {
+    try {
+        const query = `query { transactions(tags: [
+            { name: "App-Name", values: ["Fontainor-Protocol"] },
+            { name: "Type", values: ["registry-manifest"] }
+        ], order: DESC, limit: 1) { edges { node { id } } } }`;
+        const res = await fetch('https://uploader.irys.xyz/graphql', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query }),
+        });
+        if (!res.ok) return null;
+        const out = await res.json();
+        const id = out?.data?.transactions?.edges?.[0]?.node?.id;
+        if (!id) return null;
+        const data = await fetchRegistryFromGateway(id);
+        if (!Array.isArray(data) || data.length === 0) return null;
+        writeManifestPointer(id); // warm-instance cache for subsequent reads
+        return data;
+    } catch (e) {
+        console.error('Irys manifest recovery failed:', e.message);
+        return null;
+    }
 }
 
 // --- Routes ---
@@ -140,12 +221,34 @@ app.get('/registry', async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
+        // durable store first — survives redeploys, no gateway round-trip
+        const durable = await readDurableRegistry();
+        if (durable && durable.length > 0) return res.json(durable);
+
         const txId = readManifestPointer();
-        if (!txId) return res.json([]);
-        const data = await fetchRegistryFromGateway(txId);
-        return res.json(data);
+        if (txId) {
+            const data = await fetchRegistryFromGateway(txId);
+            // backfill the durable store so the next read skips the gateway
+            if (Array.isArray(data) && data.length > 0) {
+                await writeDurableRegistry(data);
+                return res.json(data);
+            }
+        }
+
+        // last resort: recover the newest published manifest from Irys
+        const recovered = await recoverLatestManifestFromIrys();
+        if (recovered) {
+            await writeDurableRegistry(recovered);
+            return res.json(recovered);
+        }
+        return res.json([]);
     } catch (error) {
         console.error('Registry fetch error:', error.message);
+        // even on pointer/gateway errors, attempt permanent-record recovery
+        try {
+            const recovered = await recoverLatestManifestFromIrys();
+            if (recovered) return res.status(200).json(recovered);
+        } catch { /* fall through */ }
         return res.status(200).json([]);
     }
 });
@@ -153,12 +256,33 @@ app.get('/registry', async (req, res) => {
 // 2. Upload (Manifest)
 app.post('/upload', validateUpload, async (req, res) => {
     try {
+        const manifestArray = Array.isArray(req.body) ? req.body : [req.body];
+
+        // Try the permanent write first when a funded wallet exists.
         const wallet = loadWallet();
-        const manifest = JSON.stringify(req.body);
-        const up = await uploadManifest(manifest, { arweave, wallet });
-        if (!up.success) return res.status(502).json({ success: false, error: up.error, code: up.code });
-        writeManifestPointer(up.txId);
-        return res.json({ success: true, txId: up.txId });
+        const hasWallet = wallet && Object.keys(wallet).length > 0;
+        let txId = null;
+        if (hasWallet) {
+            const up = await uploadManifest(JSON.stringify(req.body), { arweave, wallet });
+            if (up.success) {
+                writeManifestPointer(up.txId);
+                txId = up.txId;
+            } else if (!redis) {
+                // no durable fallback either — surface the Arweave failure as before
+                return res.status(502).json({ success: false, error: up.error, code: up.code });
+            }
+        }
+
+        // Durable registry write (works with or without Arweave).
+        const durableOk = await writeDurableRegistry(manifestArray);
+        if (!txId && !durableOk) {
+            return res.status(502).json({
+                success: false,
+                error: 'No write target available: fund an Arweave wallet or set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN.',
+                code: 'NO_WRITE_TARGET',
+            });
+        }
+        return res.json({ success: true, txId: txId ?? 'REGISTRY_' + Date.now().toString(36).toUpperCase(), durable: durableOk, arweave: txId != null });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message, code: 'SERVER_ERR' });
     }
@@ -258,59 +382,43 @@ app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
 
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
 app.post('/api/v1/verify-payment', async (req, res) => {
-    console.log("📡 [Payment Router] Intercepted incoming signature for verification loop...");
     try {
-        const { signature, artistWallet, amountLamports, sender, currency, trackId } = req.body;
+        const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body;
 
-        if (!signature || !artistWallet || !trackId) {
-            return res.status(400).json({ success: false, message: "Missing required signature verification headers." });
+        if (!signature || !artistWallet || !trackId || !(Number(amountLamports) > 0)) {
+            return res.status(400).json({ success: false, message: 'Missing signature, artistWallet, trackId or amountLamports.' });
         }
 
-        // 🛡️ Step A: Dynamically call our hardened Solana web3 verification engine
-        const { verifySolanaPayment, mintCollectorEquityToken } = await import('./paymentBridge.js');
-        const isVerified = await verifySolanaPayment(signature, artistWallet, amountLamports, currency || 'SOL');
-
-
+        // Verify the 98/2 split actually happened on the Solana ledger.
+        const { verifySolanaPayment } = await import('./paymentBridge.js');
+        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL');
         if (!isVerified) {
-            return res.status(400).json({ success: false, message: "On-chain transaction cross-examination failed." });
+            return res.status(400).json({ success: false, message: 'On-chain payment verification failed.' });
         }
 
-        console.log(`✓ [Verification Success] Clearing track registration for ID: ${trackId}`);
-
-        // 💎 Step B: Trigger the on-chain SPL Token Collector Equity Minting loop
-        // Safely extract the collector's public key string directly from the payment request headers
-        const collectorPublicKeyStr = req.body.buyerWallet || artistWallet;
-
-        // Target structural mint asset token profile tracking key
-        const canonicalTrackMintPubKeyStr = "Gh9ZwEzd6GtxvnZGo4v5RWwK683v8C65u9m4AAn76W";
-
-        const mintResult = await mintCollectorEquityToken(collectorPublicKeyStr, trackId, canonicalTrackMintPubKeyStr);
-
-
-        if (!mintResult.success) {
-            console.error("⚠️ Revenue split passed, but collector token minting failed.");
-        } else {
-            console.log(`✓ [Mint Settled] 1 Collector Edition Token deposited into Vault: ${mintResult.tokenAddress}`);
-        }
-
-        return res.json({
-            success: true,
-            message: "Payment successfully validated and collector token minted.",
-            mintTx: mintResult.mintTx || null,
-            tokenVault: mintResult.tokenAddress || null,
-            updatedSocial: {
-                totalTips: amountLamports / 1e9,
-                ledger: [{
-                    sender,
+        // Durable purchase receipt (best-effort; requires Upstash env vars).
+        let receiptStored = false;
+        if (redis) {
+            try {
+                await redis.lpush('fontainor:purchases:v1', JSON.stringify({
+                    trackId,
                     signature,
-                    mintTx: mintResult.mintTx || null,
-                    timestamp: new Date().toISOString()
-                }]
+                    artistWallet,
+                    buyerWallet: buyerWallet || null,
+                    amountLamports: Number(amountLamports),
+                    currency: currency || 'SOL',
+                    verifiedAt: new Date().toISOString(),
+                }));
+                receiptStored = true;
+            } catch (e) {
+                console.error('Purchase receipt write failed:', e.message);
             }
-        });
+        }
+
+        return res.json({ success: true, verified: true, receiptStored, signature });
     } catch (err) {
-        console.error("❌ Critical server-side settlement validation breakdown:", err.message);
-        return res.status(500).json({ success: false, error: "SETTLEMENT_CRASH", message: err.message });
+        console.error('Payment verification endpoint crashed:', err.message);
+        return res.status(500).json({ success: false, error: 'SETTLEMENT_CRASH', message: err.message });
     }
 });
 
@@ -363,11 +471,23 @@ app.post('/api/v1/publish', async (req, res) => {
 
     try {
         const { txId } = req.body;
-        if (!txId || typeof txId !== 'string' || txId.length < 10) {
+        if (!txId || typeof txId !== 'string' || txId.length < 10 || txId.length > 64 || !/^[A-Za-z0-9_-]+$/.test(txId)) {
             return res.status(400).json({ success: false, error: 'Invalid txId' });
         }
+        // Fetch and sanity-check the manifest before repointing the registry:
+        // it must resolve on a gateway and parse as a non-empty array.
+        let manifest = null;
+        try {
+            manifest = await fetchRegistryFromGateway(txId);
+        } catch {
+            return res.status(400).json({ success: false, error: 'Manifest not resolvable on any gateway yet — retry in a few seconds.' });
+        }
+        if (!Array.isArray(manifest) || manifest.length === 0) {
+            return res.status(400).json({ success: false, error: 'Manifest is not a non-empty registry array.' });
+        }
         writeManifestPointer(txId);
-        return res.json({ success: true, txId });
+        const durable = await writeDurableRegistry(manifest);
+        return res.json({ success: true, txId, durable });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
     }

@@ -32,6 +32,8 @@ export interface Release {
   price: Price
   editions: Editions
   royaltyBps: number
+  /** Payout wallet (base58) — present on releases published with wallet auth. */
+  artistWallet: string | null
 }
 
 type Raw = Record<string, unknown>
@@ -66,6 +68,7 @@ export function normalizeOne(a: Raw): Release {
     arweaveTx: str(pick(a, 'arweaveTx', 'txId', 'tx', 'arweave')),
     desc: str(pick(a, 'description', 'desc')) ?? '',
     status: str(pick(a, 'status')),
+    artistWallet: str(pick(a, 'artistWallet', 'artist_wallet', 'payoutWallet')),
     date: str(pick(a, 'date', 'timestamp', 'createdAt')),
     price: {
       amount:
@@ -119,6 +122,7 @@ export function buildAsset(input: {
   audioUri?: string
   coverUri?: string
   desc?: string
+  artistWallet?: string
 }) {
   return {
     type: input.type ?? 'release',
@@ -132,6 +136,7 @@ export function buildAsset(input: {
     desc: input.desc ?? '',
     audioUri: input.audioUri?.trim() ? input.audioUri : null,
     coverUri: input.coverUri?.trim() ? input.coverUri : null,
+    artistWallet: input.artistWallet?.trim() ? input.artistWallet : null,
   }
 }
 
