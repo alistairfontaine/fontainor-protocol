@@ -52,6 +52,44 @@ function loadWallet() {
 
 const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 
+// --- Durable registry via Upstash Redis (survives serverless redeploys) ---
+// Configure UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN in Vercel env
+// vars (free tier at upstash.com). Without them, behavior is unchanged
+// (Arweave manifest pointer + ephemeral filesystem).
+const REGISTRY_KEY = 'fontainor:registry:v1';
+let redis = null;
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+    try {
+        const { Redis } = await import('@upstash/redis');
+        redis = Redis.fromEnv();
+        console.log('✓ Upstash Redis configured — registry is durable.');
+    } catch (e) {
+        console.error('⚠️ @upstash/redis failed to load, falling back:', e.message);
+    }
+}
+
+async function readDurableRegistry() {
+    if (!redis) return null;
+    try {
+        const data = await redis.get(REGISTRY_KEY);
+        return Array.isArray(data) ? data : null;
+    } catch (e) {
+        console.error('Redis read error:', e.message);
+        return null;
+    }
+}
+
+async function writeDurableRegistry(manifestArray) {
+    if (!redis) return false;
+    try {
+        await redis.set(REGISTRY_KEY, manifestArray);
+        return true;
+    } catch (e) {
+        console.error('Redis write error:', e.message);
+        return false;
+    }
+}
+
 // --- Manifest Pointer Logic ---
 const POINTER_FILE = path.join(__dirname, 'pointer.json');
 
@@ -140,9 +178,15 @@ app.get('/registry', async (req, res) => {
     if (req.method === 'OPTIONS') return res.status(200).end();
 
     try {
+        // durable store first — survives redeploys, no gateway round-trip
+        const durable = await readDurableRegistry();
+        if (durable && durable.length > 0) return res.json(durable);
+
         const txId = readManifestPointer();
         if (!txId) return res.json([]);
         const data = await fetchRegistryFromGateway(txId);
+        // backfill the durable store so the next read skips the gateway
+        if (Array.isArray(data) && data.length > 0) await writeDurableRegistry(data);
         return res.json(data);
     } catch (error) {
         console.error('Registry fetch error:', error.message);
@@ -153,12 +197,33 @@ app.get('/registry', async (req, res) => {
 // 2. Upload (Manifest)
 app.post('/upload', validateUpload, async (req, res) => {
     try {
+        const manifestArray = Array.isArray(req.body) ? req.body : [req.body];
+
+        // Try the permanent write first when a funded wallet exists.
         const wallet = loadWallet();
-        const manifest = JSON.stringify(req.body);
-        const up = await uploadManifest(manifest, { arweave, wallet });
-        if (!up.success) return res.status(502).json({ success: false, error: up.error, code: up.code });
-        writeManifestPointer(up.txId);
-        return res.json({ success: true, txId: up.txId });
+        const hasWallet = wallet && Object.keys(wallet).length > 0;
+        let txId = null;
+        if (hasWallet) {
+            const up = await uploadManifest(JSON.stringify(req.body), { arweave, wallet });
+            if (up.success) {
+                writeManifestPointer(up.txId);
+                txId = up.txId;
+            } else if (!redis) {
+                // no durable fallback either — surface the Arweave failure as before
+                return res.status(502).json({ success: false, error: up.error, code: up.code });
+            }
+        }
+
+        // Durable registry write (works with or without Arweave).
+        const durableOk = await writeDurableRegistry(manifestArray);
+        if (!txId && !durableOk) {
+            return res.status(502).json({
+                success: false,
+                error: 'No write target available: fund an Arweave wallet or set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN.',
+                code: 'NO_WRITE_TARGET',
+            });
+        }
+        return res.json({ success: true, txId: txId ?? 'REGISTRY_' + Date.now().toString(36).toUpperCase(), durable: durableOk, arweave: txId != null });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message, code: 'SERVER_ERR' });
     }
