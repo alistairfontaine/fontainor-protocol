@@ -24,9 +24,9 @@ Fontainor is a high-performance, decentralized music equity registry and asset d
 ### 📦 1. Clone and install
 
 ```bash
-git clone https://github.com/tapiwamakandigona/fontainor-protocol.git
+git clone https://github.com/alistairfontaine/fontainor-protocol.git
 cd fontainor-protocol
-git checkout v06-development
+git checkout main
 npm install
 ```
 
