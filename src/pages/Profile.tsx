@@ -9,10 +9,14 @@ import { shortAddress, useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
 
 export default function Profile() {
-  const { user, connect, connecting, logout } = useAuth()
+  const { user, connect, connecting, logout, updateHandle } = useAuth()
   const { releases } = useRegistry()
   const purchases = usePurchases()
   const [err, setErr] = useState<string | null>(null)
+  const [editingHandle, setEditingHandle] = useState(false)
+  const [handleDraft, setHandleDraft] = useState('')
+  const [handleErr, setHandleErr] = useState<string | null>(null)
+  const [handleSaving, setHandleSaving] = useState(false)
 
   if (!user) {
     return (
@@ -76,6 +80,74 @@ export default function Profile() {
       <div className="mb-6 rounded-card border border-line bg-surface p-4">
         <span className="text-[12px] text-faint">Wallet address</span>
         <p className="mt-1 break-all text-[13px] tabular-nums text-body">{user.address}</p>
+      </div>
+
+      {/* Wallet-bound username: claimed handles are unique and enforced at
+          publish time, so nobody can publish under this name from another wallet. */}
+      <div className="mb-6 rounded-card border border-line bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <span className="text-[12px] text-faint">Username</span>
+            <p className="mt-1 text-[14px] text-body">
+              {user.claimed ? (
+                <>
+                  {user.handle} <Badge tone="ok">Claimed</Badge>
+                </>
+              ) : (
+                <span className="text-faint">Not claimed — publishes show your wallet address instead of a name.</span>
+              )}
+            </p>
+          </div>
+          {!editingHandle && (
+            <Button
+              size="sm"
+              onClick={() => {
+                setHandleDraft(user.claimed && user.handle ? user.handle.replace(/^@/, '') : '')
+                setHandleErr(null)
+                setEditingHandle(true)
+              }}
+            >
+              {user.claimed ? 'Change handle' : 'Claim your @handle'}
+            </Button>
+          )}
+        </div>
+        {editingHandle && (
+          <form
+            className="mt-3 flex flex-wrap items-center gap-2"
+            onSubmit={async (e) => {
+              e.preventDefault()
+              setHandleErr(null)
+              setHandleSaving(true)
+              const r = await updateHandle(handleDraft)
+              setHandleSaving(false)
+              if (r.success) setEditingHandle(false)
+              else setHandleErr(r.error ?? 'Could not claim that handle.')
+            }}
+          >
+            <div className="flex items-center rounded-md border border-line bg-bg px-2">
+              <span className="text-[13px] text-faint">@</span>
+              <input
+                className="w-40 bg-transparent px-1 py-1.5 text-[13px] text-body outline-none"
+                value={handleDraft}
+                onChange={(e) => setHandleDraft(e.target.value)}
+                placeholder="yourname"
+                maxLength={20}
+                autoFocus
+              />
+            </div>
+            <Button size="sm" variant="primary" disabled={handleSaving} type="submit">
+              {handleSaving ? <IconSpinner size={14} /> : 'Sign & claim'}
+            </Button>
+            <Button size="sm" type="button" onClick={() => setEditingHandle(false)}>
+              Cancel
+            </Button>
+            <p className="w-full text-[12px] text-faint">
+              3–20 characters (a–z, 0–9, _). You sign a message with Phantom — the name is then bound to this wallet and
+              nobody else can publish under it.
+            </p>
+            {handleErr && <p className="w-full text-[12px] text-warn">{handleErr}</p>}
+          </form>
+        )}
       </div>
 
       {/* quick links — the sidebar is desktop-only, so surface these here for mobile */}
