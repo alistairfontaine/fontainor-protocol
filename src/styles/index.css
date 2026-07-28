@@ -187,10 +187,13 @@ h1, h2, h3, h4 {
 /* Below-fold Home sections skip layout/paint until scrolled near (native
    only — the observable win is on WebView compositors). The placeholder
    size keeps the scrollbar stable. */
-.is-native .cv-auto {
-  content-visibility: auto;
-  contain-intrinsic-size: auto 300px;
-}
+/* v4.2: content-visibility REMOVED on native. It skipped offscreen Home
+   sections, so a fast vertical fling hit a synchronous activation wall at
+   each music rail (layout of 12 complex cards + entrance animations starting
+   mid-scroll) while the 3-link editorial strip activated for free — the
+   exact "music section laggy, editorial smooth" device report. The whole
+   registry is ~30 cards; rendering everything up front is far cheaper than
+   paying layout mid-fling. Do not reintroduce cv-auto on scroll paths. */
 
 /* Rail entrance stagger: each card rises a beat after the previous one.
    Transform-only (see fade-up note); delay is set inline per item. */

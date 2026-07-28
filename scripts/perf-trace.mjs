@@ -131,8 +131,21 @@ async function main() {
     console.log(name.padEnd(28), JSON.stringify(results.scenarios[name]))
   }
 
-  // 1. Home scroll, idle player: repeated flings up and down.
+  // Main-thread work counters (script/layout/style) — activation storms from
+  // skipped content show up here even when a fast desktop CPU hides them
+  // from the rAF frame stats.
+  await cdp.send('Performance.enable')
+  const perfSnap = async () => {
+    const { metrics } = await cdp.send('Performance.getMetrics')
+    const get = (n) => metrics.find((m) => m.name === n)?.value ?? 0
+    return { script_s: get('ScriptDuration'), layout_count: get('LayoutCount'), style_count: get('RecalcStyleCount') }
+  }
+
+  // 1. Home scroll, idle player: repeated flings up and down. The FIRST
+  //    downward pass on a cold page is the one that pays any lazy-activation
+  //    cost, so scroll work is measured from a fresh load.
   let maxScroll = 0
+  const scrollBefore = await perfSnap()
   await run('home-scroll-idle', async () => {
     for (let i = 0; i < 3; i++) {
       await swipe(cdp, { x: 195, y: 640, dy: -420 })
@@ -141,7 +154,13 @@ async function main() {
     for (let i = 0; i < 3; i++) await swipe(cdp, { x: 195, y: 300, dy: 420 })
   })
   results.scroll_moved_px = maxScroll // proof the gestures actually scrolled
-  console.log('max scrollY reached:', maxScroll)
+  const scrollAfter = await perfSnap()
+  results.home_scroll_work = {
+    script_ms: +((scrollAfter.script_s - scrollBefore.script_s) * 1000).toFixed(1),
+    layouts: scrollAfter.layout_count - scrollBefore.layout_count,
+    style_recalcs: scrollAfter.style_count - scrollBefore.style_count,
+  }
+  console.log('home scroll work:', JSON.stringify(results.home_scroll_work))
 
   // Start playback via the card play button (aria-label="Play <title>").
   await page.evaluate(() => window.scrollTo(0, 0))
@@ -173,12 +192,6 @@ async function main() {
   //    re-render cost (CDP Performance metrics show script/style/layout work
   //    even when rAF deltas look clean: main-thread churn that a real device's
   //    weaker cores turn into visible player-UI jank).
-  await cdp.send('Performance.enable')
-  const perfSnap = async () => {
-    const { metrics } = await cdp.send('Performance.getMetrics')
-    const get = (n) => metrics.find((m) => m.name === n)?.value ?? 0
-    return { script_s: get('ScriptDuration'), layout_count: get('LayoutCount'), style_count: get('RecalcStyleCount') }
-  }
   await page.locator('button[aria-label^="Open fullscreen player"]').first().tap({ force: true }).catch(async () => {
     const bar = await page.locator('[aria-label="Audio player"]').boundingBox()
     if (bar) await page.touchscreen.tap(bar.x + bar.width * 0.4, bar.y + bar.height * 0.5)
