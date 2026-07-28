@@ -57,6 +57,25 @@ html {
   padding-top: var(--safe-top, 0px);
 }
 
+/* ── Native perf rules ─────────────────────────────────────────
+   backdrop-filter is the single most expensive effect in the Android
+   WebView compositor: every frame under a blurred fixed surface re-blurs
+   on scroll. The app uses solid surfaces instead — visually near-identical
+   on our dark palette (chrome was already 90–97% opaque), dramatically
+   cheaper. Do NOT relax this to specific selectors; any new blur someone
+   adds must stay dead on native. */
+.is-native *,
+.is-native *::before,
+.is-native *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* With blur gone, near-opaque chrome reads as cheap solid surfaces. */
+.is-native nav[aria-label="Primary"] {
+  background: var(--color-surface);
+}
+
 body {
   background: var(--color-bg);
   color: var(--color-body);
