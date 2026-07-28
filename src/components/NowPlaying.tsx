@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useArtTint } from '../lib/artColor'
 import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
@@ -28,6 +29,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } = usePlayer()
   const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
+  const tint = useArtTint(current)
   const [queueOpen, setQueueOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ y: number; t: number; lastDy: number } | null>(null)
@@ -141,11 +143,16 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Spotify-style color wash: strong at the top, fading into the page bg */}
+      {/* Living color: the wash is derived from the ACTUAL cover art
+          (saturation-weighted average, luminance-clamped — lib/artColor),
+          falling back to brand amber. Same trick Spotify uses to make every
+          track feel like its own place. */}
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 transition-opacity duration-500"
         aria-hidden="true"
-        style={{ background: 'linear-gradient(to bottom, rgba(247,183,51,0.16), rgba(247,183,51,0.05) 38%, transparent 72%)' }}
+        style={{
+          background: `linear-gradient(to bottom, rgba(${tint[0]},${tint[1]},${tint[2]},0.30), rgba(${tint[0]},${tint[1]},${tint[2]},0.10) 38%, transparent 72%)`,
+        }}
       />
 
       {/* header */}

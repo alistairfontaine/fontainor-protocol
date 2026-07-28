@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useArtTint } from '../lib/artColor'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
@@ -40,6 +41,7 @@ export function PlayerBar() {
   } = usePlayer()
   const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
+  const tint = useArtTint(current)
   const [open, setOpen] = useState(false) // desktop queue popover
   const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
 
@@ -203,7 +205,13 @@ export function PlayerBar() {
             if (e.key === 'Enter' || e.key === ' ') setExpanded(true)
           }}
         >
-          <div className="flex items-center gap-3 py-2 pl-2 pr-1">
+          {/* living-color tint bleeding from the cover, Spotify-style */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            aria-hidden="true"
+            style={{ background: `linear-gradient(90deg, rgba(${tint[0]},${tint[1]},${tint[2]},0.22), rgba(${tint[0]},${tint[1]},${tint[2]},0.06) 55%, transparent 85%)` }}
+          />
+          <div className="relative flex items-center gap-3 py-2 pl-2 pr-1">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-chip">
               <Cover rel={current} />
             </div>
