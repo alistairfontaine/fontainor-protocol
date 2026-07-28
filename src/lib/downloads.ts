@@ -1,9 +1,16 @@
-// Offline downloads (F59) — native only.
+// Offline downloads (F59, hardened in v4.1) — native only.
 //
-// Audio (and cover) are copied into the app's private data dir via
-// @capacitor/filesystem; a small localStorage index maps release id →
-// file paths. Playback resolves through `playableSrc()`: a downloaded
-// track plays from disk (airplane-mode safe), everything else streams.
+// Audio (and cover) land in the app's private data dir; a localStorage index
+// maps release id → file paths. Playback resolves through `playableSrc()`:
+// a downloaded track plays from disk (airplane-mode safe), else streams.
+//
+// v4.1 CRASH FIX + progress: v4.0.0 fetched the MP3 into the WebView and
+// pushed it across the Capacitor bridge as ONE multi-megabyte base64 string
+// (Filesystem.writeFile). Huge bridge messages OOM/kill the Android renderer
+// — "clicking download crashes the app" on device. Now the NATIVE layer
+// downloads straight to disk (Filesystem.downloadFile): zero bytes cross the
+// bridge, and its 'progress' events drive a YouTube-style per-item progress
+// UI (downloading % → downloaded, with error + retry states).
 // Web builds keep the API surface but every operation is a no-op.
 import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
@@ -71,15 +78,6 @@ function remoteUrl(path: string): string {
   return new URL(path, location.origin).href
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const r = new FileReader()
-    r.onerror = () => reject(new Error('read failed'))
-    r.onload = () => resolve((r.result as string).split(',', 2)[1] ?? '')
-    r.readAsDataURL(blob)
-  })
-}
-
 export function isDownloaded(id: string): boolean {
   return id in index
 }
@@ -94,47 +92,91 @@ export function playableSrc(rel: Release): string | null {
   return localAudioSrc(rel.id) ?? rel.audio
 }
 
+// ── download progress (YouTube-style states) ──
+export type DownloadProgress =
+  | { state: 'downloading'; pct: number | null } // null = size unknown
+  | { state: 'error'; message: string }
+
+let progressMap: Record<string, DownloadProgress> = {}
+const setProgress = (id: string, p: DownloadProgress | null) => {
+  if (p) progressMap = { ...progressMap, [id]: p }
+  else {
+    const { [id]: _gone, ...rest } = progressMap
+    progressMap = rest
+  }
+  emit()
+}
+
+// One shared native progress listener; downloadFile progress events carry the
+// URL, so in-flight downloads register themselves here by URL.
+const inflightByUrl = new Map<string, string>() // url -> release id
+let progressListenerArmed = false
+function armProgressListener(): void {
+  if (progressListenerArmed || !IS_NATIVE) return
+  progressListenerArmed = true
+  void Filesystem.addListener('progress', (st) => {
+    const id = inflightByUrl.get(st.url)
+    if (!id) return
+    const pct = st.contentLength > 0 ? Math.min(100, Math.round((st.bytes / st.contentLength) * 100)) : null
+    setProgress(id, { state: 'downloading', pct })
+  })
+}
+
 export async function downloadRelease(rel: Release): Promise<void> {
   if (!IS_NATIVE || !rel.audio || isDownloaded(rel.id)) return
-  const audioRes = await fetch(remoteUrl(rel.audio))
-  if (!audioRes.ok) throw new Error(`audio fetch ${audioRes.status}`)
-  const audioBlob = await audioRes.blob()
+  if (progressMap[rel.id]?.state === 'downloading') return // already in flight
+  armProgressListener()
+  const url = remoteUrl(rel.audio)
   const audioPath = `downloads/${rel.id}.mp3`
-  await Filesystem.writeFile({
-    directory: DIR,
-    path: audioPath,
-    data: await blobToBase64(audioBlob),
-    recursive: true,
-  })
-  let coverPath: string | null = null
-  if (rel.coverUrl) {
-    try {
-      const coverRes = await fetch(remoteUrl(rel.coverUrl))
-      if (coverRes.ok) {
-        coverPath = `downloads/${rel.id}.jpg`
-        await Filesystem.writeFile({
-          directory: DIR,
-          path: coverPath,
-          data: await blobToBase64(await coverRes.blob()),
-          recursive: true,
-        })
-      }
-    } catch {
-      coverPath = null // cover is cosmetic; audio is the download
-    }
-  }
-  index = {
-    ...index,
-    [rel.id]: { id: rel.id, title: rel.title, artist: rel.artist, audioPath, coverPath, bytes: audioBlob.size, at: Date.now() },
-  }
-  persist()
+  inflightByUrl.set(url, rel.id)
+  setProgress(rel.id, { state: 'downloading', pct: 0 })
   try {
-    const { uri } = await Filesystem.getUri({ directory: DIR, path: audioPath })
-    uriCache = { ...uriCache, [rel.id]: Capacitor.convertFileSrc(uri) }
-    emit()
-  } catch {
-    /* resolved on next launch */
+    // Native-side streaming download — nothing crosses the JS bridge.
+    await Filesystem.downloadFile({ url, directory: DIR, path: audioPath, progress: true, recursive: true })
+    let bytes = 0
+    try {
+      bytes = (await Filesystem.stat({ directory: DIR, path: audioPath })).size
+    } catch {
+      /* size is cosmetic */
+    }
+    let coverPath: string | null = null
+    if (rel.coverUrl) {
+      try {
+        coverPath = `downloads/${rel.id}.jpg`
+        await Filesystem.downloadFile({ url: remoteUrl(rel.coverUrl), directory: DIR, path: coverPath, recursive: true })
+      } catch {
+        coverPath = null // cover is cosmetic; audio is the download
+      }
+    }
+    index = {
+      ...index,
+      [rel.id]: { id: rel.id, title: rel.title, artist: rel.artist, audioPath, coverPath, bytes, at: Date.now() },
+    }
+    setProgress(rel.id, null)
+    persist()
+    try {
+      const { uri } = await Filesystem.getUri({ directory: DIR, path: audioPath })
+      uriCache = { ...uriCache, [rel.id]: Capacitor.convertFileSrc(uri) }
+      emit()
+    } catch {
+      /* resolved on next launch */
+    }
+  } catch (e) {
+    // Failed/cancelled: clean partial file, surface a retryable error state.
+    try {
+      await Filesystem.deleteFile({ directory: DIR, path: audioPath })
+    } catch {
+      /* nothing written */
+    }
+    setProgress(rel.id, { state: 'error', message: e instanceof Error ? e.message : String(e) })
+  } finally {
+    inflightByUrl.delete(url)
   }
+}
+
+/** Clear an error state (dismiss / before retry). */
+export function clearDownloadError(id: string): void {
+  if (progressMap[id]?.state === 'error') setProgress(id, null)
 }
 
 export async function removeDownload(id: string): Promise<void> {
@@ -156,11 +198,16 @@ export async function removeDownload(id: string): Promise<void> {
 }
 
 // ── React binding ──
-let snapshot: { entries: DownloadEntry[]; ids: Set<string> } | null = null
+export interface DownloadsSnapshot {
+  entries: DownloadEntry[]
+  ids: Set<string>
+  progress: Record<string, DownloadProgress>
+}
+let snapshot: DownloadsSnapshot | null = null
 const getSnapshot = () => {
   if (!snapshot) {
     const entries = Object.values(index).sort((a, b) => b.at - a.at)
-    snapshot = { entries, ids: new Set(entries.map((e) => e.id)) }
+    snapshot = { entries, ids: new Set(entries.map((e) => e.id)), progress: progressMap }
   }
   return snapshot
 }
@@ -168,7 +215,7 @@ listeners.add(() => {
   snapshot = null
 })
 
-export function useDownloads(): { entries: DownloadEntry[]; ids: Set<string> } {
+export function useDownloads(): DownloadsSnapshot {
   return useSyncExternalStore(
     (cb) => {
       listeners.add(cb)

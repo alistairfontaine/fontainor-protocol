@@ -4,7 +4,7 @@ import { FixedSizeGrid } from 'react-window'
 import { Cover } from '../components/Cover'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
 import { IconClose, IconLibrary, IconSearch } from '../components/icons'
-import { removeDownload, useDownloads } from '../lib/downloads'
+import { clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { usePlayer } from '../state/PlayerContext'
@@ -89,13 +89,18 @@ function VirtualGrid({ items }: { items: Release[] }) {
 }
 
 function DownloadsSection() {
-  const { entries } = useDownloads()
+  const { entries, progress } = useDownloads()
   const { music } = useRegistry()
   const { play } = usePlayer()
-  if (!IS_NATIVE || entries.length === 0) return null
   const byId = new Map(music.map((r) => [r.id, r]))
+  // In-flight / failed downloads surface here too (YouTube-style: the shelf
+  // shows what's downloading with live %, not only finished items).
+  const active = Object.entries(progress)
+    .map(([id, p]) => ({ rel: byId.get(id), p }))
+    .filter((x): x is { rel: Release; p: (typeof progress)[string] } => !!x.rel)
+  if (!IS_NATIVE || (entries.length === 0 && active.length === 0)) return null
   const items = entries.map((e) => byId.get(e.id)).filter((r): r is NonNullable<typeof r> => !!r)
-  if (!items.length) return null
+  if (!items.length && !active.length) return null
   return (
     <section className="mb-10" aria-label="Downloads">
       <div className="mb-4 flex items-baseline justify-between">
@@ -103,6 +108,40 @@ function DownloadsSection() {
         <span className="text-[12px] text-faint">available offline</span>
       </div>
       <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+        {active.map(({ rel, p }) => (
+          <li key={`dl-${rel.id}`} className="flex items-center gap-3 px-3 py-2.5">
+            <span className="h-11 w-11 shrink-0 overflow-hidden rounded-btn opacity-70">
+              <Cover rel={rel} />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
+              {p.state === 'downloading' ? (
+                <span className="mt-1 block">
+                  <span className="block h-1 w-full overflow-hidden rounded-full bg-line" aria-hidden="true">
+                    <span
+                      className="block h-full rounded-full bg-accent transition-[width] duration-200"
+                      style={{ width: `${p.pct ?? 30}%` }}
+                    />
+                  </span>
+                  <span className="mt-0.5 block text-[11px] tabular-nums text-faint">
+                    {p.pct != null ? `Downloading ${p.pct}%` : 'Downloading…'}
+                  </span>
+                </span>
+              ) : (
+                <button
+                  onClick={() => {
+                    hapticTick()
+                    clearDownloadError(rel.id)
+                    void downloadRelease(rel)
+                  }}
+                  className="mt-0.5 block cursor-pointer text-[12px] font-medium text-warn hover:text-accent"
+                >
+                  Download failed — tap to retry
+                </button>
+              )}
+            </span>
+          </li>
+        ))}
         {items.map((rel) => (
           <li key={rel.id} className="flex items-center gap-3 px-3 py-2.5">
             <button
