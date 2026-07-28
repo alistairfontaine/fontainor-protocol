@@ -406,8 +406,8 @@
       "id": "F54",
       "name": "v3 signed release APK",
       "description": "versionCode 3 / 3.0.0, owner keystore (SHA-256 fingerprint match verified before use), apksigner-verified, branded icon confirmed in built APK via aapt2.",
-      "passes": false,
-      "evidence": "Pending: assembleRelease + apksigner + aapt2 badging this session."
+      "passes": true,
+      "evidence": "assembleRelease BUILD SUCCESSFUL; apksigner verify: signer SHA-256 0be20d5d...d007 == owner keystore fingerprint (keytool match verified pre-build); aapt2: com.fontainor.app versionCode 3 versionName 3.0.0 label Fontainor targetSdk 35; branded F splash/icon resources visually confirmed inside APK."
     }
   ]
 }
