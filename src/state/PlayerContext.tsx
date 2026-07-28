@@ -38,6 +38,9 @@ interface PlayerState {
   sleepUntil: number | 'track' | null
   /** minutes from now, 'track', or null to cancel */
   setSleepTimer: (v: number | 'track' | null) => void
+  /** crossfade window in seconds; 0 = off */
+  crossfade: number
+  setCrossfade: (sec: number) => void
 }
 
 /**
@@ -113,6 +116,29 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     sleepRef.current = sleepUntil
   }, [sleepUntil])
+  // Crossfade (F58): seconds of overlap between tracks, 0 = off. Persisted.
+  const [crossfade, setCrossfadeState] = useState<number>(() => {
+    try {
+      const v = Number(localStorage.getItem('fontainor.crossfade'))
+      return isFinite(v) && v > 0 ? v : 0
+    } catch {
+      return 0
+    }
+  })
+  const crossfadeRef = useRef(crossfade)
+  useEffect(() => {
+    crossfadeRef.current = crossfade
+  }, [crossfade])
+  const setCrossfade = useCallback((sec: number) => {
+    setCrossfadeState(sec)
+    try {
+      localStorage.setItem('fontainor.crossfade', String(sec))
+    } catch {
+      /* private mode */
+    }
+  }, [])
+  // Active crossfade: the incoming element + its release + the volume ramp.
+  const xfadeRef = useRef<{ b: HTMLAudioElement; rel: Release; timer: ReturnType<typeof setInterval> } | null>(null)
   // Playlist context (F39): when set, the base play order is this explicit
   // list instead of the full catalog. Reset by plain play() and close().
   const [context, setContext] = useState<Release[] | null>(null)
@@ -155,9 +181,30 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  /** Abort an in-flight crossfade: silence the incoming element, restore the outgoing one. */
+  const cancelXfade = (restore = true) => {
+    const x = xfadeRef.current
+    if (!x) return
+    xfadeRef.current = null
+    clearInterval(x.timer)
+    x.b.pause()
+    x.b.src = ''
+    if (restore && audioRef.current) audioRef.current.volume = 1
+  }
+
   const clearAudio = () => {
+    cancelXfade(false)
     audioRef.current?.pause()
     audioRef.current = null
+  }
+
+  /** What would play after the current track ends — WITHOUT consuming anything. */
+  const peekNext = (): Release | null => {
+    if (sleepRef.current === 'track') return null
+    if (repeatRef.current === 'one') return currentRef.current
+    const m = manualRef.current
+    if (m.length > 0) return m[0]
+    return stepFrom(1, repeatRef.current === 'all')
   }
 
   const stepFrom = (offset: 1 | -1, wrap = true): Release | null => {
@@ -223,6 +270,94 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }, 250)
   }, [])
 
+  /** Wire the standard listeners onto an audio element (used for fresh and adopted elements). */
+  const wireAudio = (a: HTMLAudioElement) => {
+    a.addEventListener('loadedmetadata', () => {
+      setDur(a.duration || 0)
+      setMediaPosition(a.duration || 0, 0)
+    })
+    a.addEventListener('timeupdate', () => {
+      if (audioRef.current !== a) return // stale element after a swap
+      setCur(a.currentTime)
+      setDur(a.duration || 0)
+      setPos(a.duration ? a.currentTime / a.duration : 0)
+      setMediaPosition(a.duration || 0, a.currentTime)
+      maybeBeginXfade(a)
+    })
+    a.addEventListener('ended', () => {
+      if (audioRef.current !== a) return
+      if (xfadeRef.current) {
+        finishXfade() // the next track is already audible — just complete the swap
+        return
+      }
+      if (!handleEnded()) setPlaying(false)
+    })
+    a.addEventListener('error', () => {
+      if (audioRef.current !== a) return
+      audioRef.current = null
+      setDur(DEMO_DURATION)
+      startSim(0)
+    })
+  }
+
+  /** Complete a crossfade: consume the queue like handleEnded would, adopt the incoming element. */
+  const finishXfade = () => {
+    const x = xfadeRef.current
+    if (!x) return
+    xfadeRef.current = null
+    clearInterval(x.timer)
+    // consume exactly what peekNext previewed
+    const m = manualRef.current
+    if (repeatRef.current !== 'one' && m.length > 0 && m[0].id === x.rel.id) {
+      manualRef.current = m.slice(1)
+      setManual(m.slice(1))
+    }
+    audioRef.current?.pause()
+    audioRef.current = x.b
+    x.b.volume = 1
+    wireAudio(x.b)
+    setCurrent(x.rel)
+    currentRef.current = x.rel
+    pushHistory(x.rel.id)
+    recordPlay()
+    postPlay(x.rel.id)
+    setMediaMetadata(x.rel)
+    setCur(x.b.currentTime)
+    setDur(x.b.duration || 0)
+    setPos(x.b.duration ? x.b.currentTime / x.b.duration : 0)
+    setPlaying(true)
+  }
+
+  /** Near the end of a track, start the next one quietly and ramp (equal-power). */
+  const maybeBeginXfade = (a: HTMLAudioElement) => {
+    const w = crossfadeRef.current
+    if (!w || xfadeRef.current || !playingRef.current) return
+    const dur = a.duration
+    if (!isFinite(dur) || dur <= w * 2) return // too short to overlap sensibly
+    const remaining = dur - a.currentTime
+    if (remaining > w) return
+    const nxt = peekNext()
+    if (!nxt?.audio) return
+    const b = new Audio(nxt.audio)
+    b.preload = 'auto'
+    b.volume = 0
+    const timer = setInterval(() => {
+      const x = xfadeRef.current
+      if (!x || audioRef.current !== a) return
+      const rem = (a.duration || 0) - a.currentTime
+      const t = Math.min(Math.max(1 - rem / w, 0), 1)
+      // equal-power curves keep perceived loudness constant through the blend
+      a.volume = Math.cos((t * Math.PI) / 2) ** 2
+      x.b.volume = Math.sin((t * Math.PI) / 2) ** 2
+      if (t >= 1) finishXfade()
+    }, 60)
+    xfadeRef.current = { b, rel: nxt, timer }
+    void b.play().catch(() => {
+      // incoming element refused to start: abort, let 'ended' advance normally
+      if (xfadeRef.current?.b === b) cancelXfade()
+    })
+  }
+
   const playNow = useCallback(
     (rel: Release) => {
       stopSim()
@@ -240,25 +375,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (rel.audio) {
         const a = new Audio(rel.audio)
         audioRef.current = a
-        a.addEventListener('loadedmetadata', () => {
-          setDur(a.duration || 0)
-          setMediaPosition(a.duration || 0, 0)
-        })
-        a.addEventListener('timeupdate', () => {
-          setCur(a.currentTime)
-          setDur(a.duration || 0)
-          setPos(a.duration ? a.currentTime / a.duration : 0)
-          setMediaPosition(a.duration || 0, a.currentTime)
-        })
-        a.addEventListener('ended', () => {
-          if (!handleEnded()) setPlaying(false)
-        })
-        a.addEventListener('error', () => {
-          // fall back to simulated playback so the UI stays honest but usable
-          audioRef.current = null
-          setDur(DEMO_DURATION)
-          startSim(0)
-        })
+        wireAudio(a)
         void a.play().catch(() => {
           audioRef.current = null
           setDur(DEMO_DURATION)
@@ -299,6 +416,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => {
     if (!currentRef.current) return
+    if (playingRef.current) cancelXfade()
     if (audioRef.current) {
       if (playingRef.current) audioRef.current.pause()
       else void audioRef.current.play()
@@ -365,6 +483,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const seek = useCallback(
     (fraction: number) => {
+      cancelXfade()
       const f = Math.min(1, Math.max(0, fraction))
       if (audioRef.current && dur) {
         audioRef.current.currentTime = f * dur
@@ -444,6 +563,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /** Pause without toggling logic — used by the sleep timer deadline. */
   const pauseNow = useCallback(() => {
+    cancelXfade()
     if (audioRef.current) audioRef.current.pause()
     else stopSim()
     setPlaying(false)
@@ -534,8 +654,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       close,
       sleepUntil,
       setSleepTimer,
+      crossfade,
+      setCrossfade,
     }),
-    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close, sleepUntil, setSleepTimer],
+    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close, sleepUntil, setSleepTimer, crossfade, setCrossfade],
   )
 
   const progress = useMemo<PlayerProgress>(() => ({ pos, cur, dur }), [pos, cur, dur])

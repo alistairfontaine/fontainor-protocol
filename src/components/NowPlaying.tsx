@@ -27,7 +27,7 @@ import { IconChevronDown, IconClose, IconHeart, IconMoon, IconNext, IconPause, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek, sleepUntil, setSleepTimer } = usePlayer()
+  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek, sleepUntil, setSleepTimer, crossfade, setCrossfade } = usePlayer()
   const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const tint = useArtTint(current)
@@ -293,6 +293,19 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
                 </button>
               </li>
             )}
+            <li className="border-t border-line">
+              <button
+                onClick={() => {
+                  hapticTick()
+                  // cycle Off → 3s → 6s → 12s → Off
+                  setCrossfade(crossfade === 0 ? 3 : crossfade === 3 ? 6 : crossfade === 6 ? 12 : 0)
+                }}
+                className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+              >
+                <span>Crossfade</span>
+                <span className={crossfade ? 'font-medium text-accent' : 'text-faint'}>{crossfade ? `${crossfade}s` : 'Off'}</span>
+              </button>
+            </li>
           </ul>
         </div>
       )}
