@@ -275,7 +275,7 @@ async function ensureConnected(): Promise<Session & { sharedSecret: string; sess
 }
 
 /** Legacy web3.js Transaction (or VersionedTransaction) -> wire bytes. */
-function serializeTransaction(tx: unknown): Uint8Array {
+export function serializeTransaction(tx: unknown): Uint8Array {
   const t = tx as {
     serialize?: (opts?: { requireAllSignatures?: boolean; verifySignatures?: boolean }) => Uint8Array
   }

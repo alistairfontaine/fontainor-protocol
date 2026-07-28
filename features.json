@@ -324,6 +324,41 @@
       "verify": "(cd android && ./gradlew :app:assembleRelease) && apksigner verify --print-certs app-universal-release.apk",
       "passes": true,
       "evidence": "assembleRelease BUILD SUCCESSFUL; universal APK 15.2MB (R8-shrunk from 19MB debug). apksigner verify OK (CN=Fontainor Protocol, v1/v2). Web build bundled at assets/public/ (verified 2026-07-28). ASSUMED: real on-chain SOL smoke test + Play upload key pending owner/device."
+    },
+    {
+      "id": "F43",
+      "name": "Production branding (adaptive icon + splash)",
+      "description": "Launcher icon derived from the official assets/icon.png mark: adaptive icon (yellow F foreground, black background, white monochrome layer for Android 13 themed icons) + branded splash (app-bg #0b0d12, fade-out handoff) at all densities via @capacitor/assets.",
+      "passes": true,
+      "evidence": "aapt2 badging: application-label 'Fontainor', adaptive-icon XML with background/foreground/monochrome layers verified inside app-universal-release.apk; 148 generated res assets; splash launchAutoHide:false + hide({fadeOutDuration:350})."
+    },
+    {
+      "id": "F44",
+      "name": "Production player: native media session, repeat, drag-to-seek",
+      "description": "Real Android MediaSession + mediaPlayback foreground service (@capgo/capacitor-media-session) with lock-screen/notification transport controls and web navigator.mediaSession fallback (src/lib/mediaSession.ts); repeat off/all/one; drag-to-seek SeekBar (pointer events, commit-on-release); prev() no longer wipes playlist context (bug fix: play->playNow).",
+      "passes": true,
+      "evidence": "APK manifest: com.capgo.mediasession.MediaSessionService foregroundServiceType=mediaPlayback + FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS permissions; tsc + vite build green; repeat/seek logic in PlayerContext.tsx, SeekBar.tsx."
+    },
+    {
+      "id": "F45",
+      "name": "Mobile Wallet Adapter (any-wallet native connect)",
+      "description": "Native MWA bridge (MwaPlugin.java, solanamobile clientlib 2.0.8: LocalAssociationScenario + authorize/reauthorize/signMessagesDetached/signAndSendTransactions/deauthorize) + TS provider (src/lib/mwa.ts) + hybrid router (src/lib/nativeWallet.ts) preferring MWA, falling back to Phantom deeplinks; same window.solana shape so app code unchanged.",
+      "passes": true,
+      "evidence": "assembleRelease compiles MwaPlugin against clientlib 2.0.8 (API verified via javap); b64/b58 bridge round-trip tests 4/4; bundle contains registered Mwa plugin + session store key. On-device wallet approval flow ASSUMED until hardware test."
+    },
+    {
+      "id": "F46",
+      "name": "Animations & transitions",
+      "description": "Route transitions (page-in), mini-player entrance (mini-in), Now Playing artwork scale on pause (np-art), splash fade handoff, seek thumb/drag feedback; all composited transform/opacity, prefers-reduced-motion respected via existing global rule.",
+      "passes": true,
+      "evidence": "CSS keyframes present in built bundle (grep page-in/mini-in in APK JS); tsc + build green."
+    },
+    {
+      "id": "F47",
+      "name": "Bug sweep (mobile-v2 pass)",
+      "description": "Full read of player/auth/purchase/registry paths. Fixed: prev() wiping playlist context (F44), repeat-off queue previously never ending (wrap now repeat-gated), SeekBar effect follows repo block-body rule. purchase.ts/irysPublish.ts/registry.ts audited clean.",
+      "passes": true,
+      "evidence": "Code diff in PlayerContext.tsx; npm run ci green."
     }
   ]
 }

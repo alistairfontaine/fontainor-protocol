@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { SeekBar } from './SeekBar'
+import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
  * Fullscreen "Now Playing" view — Spotify-style layout (FSP-01..06, FSP-07).
@@ -24,11 +25,10 @@ import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } =
+  const { current, playing, pos, cur, dur, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } =
     usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [queueOpen, setQueueOpen] = useState(false)
-  const seekRef = useRef<HTMLDivElement>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ y: number; t: number; lastDy: number } | null>(null)
   const dragRaf = useRef(0)
@@ -78,16 +78,6 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (open && !current) onClose()
   }, [open, current, onClose])
-
-  const onSeekAt = useCallback(
-    (clientX: number) => {
-      const el = seekRef.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      seek((clientX - rect.left) / rect.width)
-    },
-    [seek],
-  )
 
   // Swipe-down to close — attached to the whole sheet, Spotify-style.
   // The drag writes transform directly to the DOM inside rAF (GPU-composited,
@@ -176,7 +166,17 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           </div>
           <div className="truncate text-[12px] font-semibold text-ink">{queueOpen ? 'Up next' : current.artist}</div>
         </div>
-        <span className="grid h-11 w-11" aria-hidden="true" />
+        <button
+          onClick={() => setQueueOpen((q) => !q)}
+          disabled={!hasQueue}
+          className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+            queueOpen ? 'text-accent' : 'text-body hover:text-ink'
+          } disabled:cursor-default disabled:opacity-40`}
+          aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
+          aria-pressed={queueOpen}
+        >
+          <IconQueue size={20} />
+        </button>
       </div>
 
       {/* body: main column + (desktop) queue side panel */}
@@ -187,7 +187,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           <div
             className={`min-h-0 flex-1 flex-col items-center justify-center ${queueOpen ? 'hidden lg:flex' : 'flex'}`}
           >
-            <div className="w-full max-w-[min(85vw,44vh)] overflow-hidden rounded-card border border-line shadow-card lg:max-w-[min(40vw,46vh)]">
+            <div
+              className={`np-art w-full max-w-[min(85vw,44vh)] overflow-hidden rounded-card border border-line shadow-card lg:max-w-[min(40vw,46vh)] ${
+                playing ? '' : 'is-paused'
+              }`}
+            >
               <div className="aspect-square">
                 <Cover rel={current} />
               </div>
@@ -227,29 +231,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
           {/* seek */}
           <div className="w-full shrink-0 pt-3">
-            <div
-              ref={seekRef}
-              onClick={(e) => onSeekAt(e.clientX)}
-              className="group relative h-1.5 w-full cursor-pointer rounded-full bg-raised"
-              data-nodrag
-              role="slider"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(pos * 100)}
-              aria-label="Seek"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowRight') seek(pos + 0.05)
-                if (e.key === 'ArrowLeft') seek(pos - 0.05)
-              }}
-            >
-              <div className="h-full rounded-full bg-ink group-hover:bg-accent" style={{ width: `${pos * 100}%` }} />
-              <div
-                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
-                style={{ left: `calc(${pos * 100}% - 6px)` }}
-                aria-hidden="true"
-              />
-            </div>
+            <SeekBar pos={pos} onSeek={seek} />
             <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
               <span>{fmtTime(cur)}</span>
               <span>{fmtTime(dur)}</span>
@@ -293,15 +275,14 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconNext size={30} />
             </button>
             <button
-              onClick={() => setQueueOpen((q) => !q)}
-              disabled={!hasQueue}
+              onClick={toggleRepeat}
               className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
-                queueOpen ? 'text-accent' : 'text-faint hover:text-body'
-              } disabled:cursor-default disabled:opacity-40`}
-              aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
-              aria-pressed={queueOpen}
+                repeat !== 'off' ? 'text-accent' : 'text-faint hover:text-body'
+              }`}
+              aria-label={repeat === 'off' ? 'Enable repeat' : repeat === 'all' ? 'Enable repeat one' : 'Disable repeat'}
+              aria-pressed={repeat !== 'off'}
             >
-              <IconQueue size={21} />
+              {repeat === 'one' ? <IconRepeatOne size={22} /> : <IconRepeat size={22} />}
             </button>
           </div>
         </div>

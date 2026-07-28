@@ -106,6 +106,25 @@ export const IconShuffle = (p: IconProps) => (
   </Svg>
 )
 
+export const IconRepeat = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M17 3.5 20 6.5l-3 3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 6.5H8.5A4.5 4.5 0 0 0 4 11v1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M7 20.5 4 17.5l3-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 17.5h11.5A4.5 4.5 0 0 0 20 13v-1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+)
+
+export const IconRepeatOne = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M17 3.5 20 6.5l-3 3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 6.5H8.5A4.5 4.5 0 0 0 4 11v1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M7 20.5 4 17.5l3-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 17.5h11.5A4.5 4.5 0 0 0 20 13v-1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M11.2 10.4l1.6-1v5.2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
 export const IconQueue = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 6.5h16M4 12h16M4 17.5h9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />

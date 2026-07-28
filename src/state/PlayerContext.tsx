@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
+import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
 import { useRegistry } from './RegistryContext'
@@ -15,6 +16,8 @@ interface PlayerState {
   /** whether prev/next have somewhere to go */
   hasQueue: boolean
   shuffle: boolean
+  repeat: RepeatMode
+  toggleRepeat: () => void
   /** next tracks in play order: user-queued first, then catalog order */
   upNext: Release[]
   /** how many entries at the head of upNext were queued by the user */
@@ -42,50 +45,23 @@ const Ctx = createContext<PlayerState | null>(null)
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
 const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
 
-// ── Media Session (Android/desktop notification + lock-screen controls) ──
-// Real <audio> playback keeps playing when the browser is backgrounded; the
-// Media Session API adds track metadata + cover art + working controls there.
-const hasMediaSession = typeof navigator !== 'undefined' && 'mediaSession' in navigator
-
+// ── Media session (lock-screen / notification controls) ─────────────────────
+// One adapter, two backends: a real Android MediaSession + foreground service
+// in the native app (playback survives the screen turning off and gets a
+// notification card with transport controls), navigator.mediaSession on web.
 function setMediaMetadata(rel: Release) {
-  if (!hasMediaSession) return
-  try {
-    const artwork: MediaImage[] = []
-    if (rel.coverUrl) {
-      // absolute URL so the artwork resolves inside the browser's media UI
-      const src = new URL(rel.coverUrl, location.origin).href
-      artwork.push({ src, sizes: '512x512', type: 'image/jpeg' })
-    }
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: rel.title,
-      artist: rel.artist,
-      album: rel.label ?? 'Fontainor',
-      artwork,
-    })
-  } catch {
-    /* metadata is best-effort — never let it break playback */
-  }
+  msSetMetadata({ title: rel.title, artist: rel.artist, album: rel.label ?? 'Fontainor', artworkUrl: rel.coverUrl ?? undefined })
 }
 
 function setMediaPlaybackState(playing: boolean) {
-  if (!hasMediaSession) return
-  try {
-    navigator.mediaSession.playbackState = playing ? 'playing' : 'paused'
-  } catch {
-    /* best-effort */
-  }
+  msSetPlaybackState(playing)
 }
 
 function setMediaPosition(duration: number, position: number) {
-  if (!hasMediaSession || typeof navigator.mediaSession.setPositionState !== 'function') return
-  try {
-    if (isFinite(duration) && duration > 0) {
-      navigator.mediaSession.setPositionState({ duration, position: Math.min(position, duration), playbackRate: 1 })
-    }
-  } catch {
-    /* best-effort */
-  }
+  msSetPosition(duration, position)
 }
+
+export type RepeatMode = 'off' | 'all' | 'one'
 
 export function PlayerProvider({ children }: { children: ReactNode }) {
   const [current, setCurrent] = useState<Release | null>(null)
@@ -98,6 +74,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const { push: pushHistory } = useHistoryLog()
   const { music } = useRegistry()
   const [shuffle, setShuffle] = useState(false)
+  const [repeat, setRepeat] = useState<RepeatMode>('off')
+  const repeatRef = useRef<RepeatMode>('off')
+  useEffect(() => {
+    repeatRef.current = repeat
+  }, [repeat])
   const [order, setOrder] = useState<string[] | null>(null) // shuffled id order when shuffle is on
   // Playlist context (F39): when set, the base play order is this explicit
   // list instead of the full catalog. Reset by plain play() and close().
@@ -146,17 +127,19 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     audioRef.current = null
   }
 
-  const stepFrom = (offset: 1 | -1): Release | null => {
+  const stepFrom = (offset: 1 | -1, wrap = true): Release | null => {
     const q = queueRef.current
     const c = currentRef.current
     if (!q.length) return null
     const i = c ? q.findIndex((r) => r.id === c.id) : -1
     if (i === -1) return q[0]
-    return q[(i + offset + q.length) % q.length]
+    const j = i + offset
+    if (!wrap && (j < 0 || j >= q.length)) return null
+    return q[(j + q.length) % q.length]
   }
 
   /** Forward step: consume the user queue first, then follow catalog order. */
-  const advance = (): boolean => {
+  const advance = (opts?: { auto?: boolean }): boolean => {
     const m = manualRef.current
     if (m.length > 0) {
       const [head, ...rest] = m
@@ -165,12 +148,24 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       playRef.current(head)
       return true
     }
-    const n = stepFrom(1)
+    // Auto-advance (track ended): repeat none stops at the end of the queue;
+    // repeat all wraps around. A manual "next" tap always wraps.
+    const wrap = opts?.auto ? repeatRef.current === 'all' : true
+    const n = stepFrom(1, wrap)
     if (n) {
       playRef.current(n)
       return true
     }
     return false
+  }
+
+  /** Track finished on its own: honor repeat-one, then the queue. */
+  const handleEnded = (): boolean => {
+    if (repeatRef.current === 'one' && currentRef.current) {
+      playRef.current(currentRef.current)
+      return true
+    }
+    return advance({ auto: true })
   }
 
   const startSim = useCallback((from: number) => {
@@ -182,7 +177,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         stopSim()
         t = DEMO_DURATION
         // auto-advance, same as real audio 'ended'
-        if (!advance()) setPlaying(false)
+        if (!handleEnded()) setPlaying(false)
         return
       }
       setCur(t)
@@ -218,7 +213,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           setMediaPosition(a.duration || 0, a.currentTime)
         })
         a.addEventListener('ended', () => {
-          if (!advance()) setPlaying(false)
+          if (!handleEnded()) setPlaying(false)
         })
         a.addEventListener('error', () => {
           // fall back to simulated playback so the UI stays honest but usable
@@ -325,9 +320,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       return
     }
+    // playNow (not play): stepping back must keep any playlist context alive
     const p = stepFrom(-1)
-    if (p) play(p)
-  }, [cur, playing, play, startSim])
+    if (p) playNow(p)
+  }, [cur, playing, playNow, startSim])
 
   const seek = useCallback(
     (fraction: number) => {
@@ -346,14 +342,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => {
     stopSim()
     clearAudio()
-    if (hasMediaSession) {
-      try {
-        navigator.mediaSession.metadata = null
-        navigator.mediaSession.playbackState = 'none'
-      } catch {
-        /* best-effort */
-      }
-    }
+    msClear()
     setCurrent(null)
     currentRef.current = null
     setContext(null) // closing the player leaves any playlist context behind
@@ -376,51 +365,47 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   // Media Session action handlers (notification / lock-screen buttons).
   // Registered once; handlers read the latest callbacks through a ref.
-  const actionsRef = useRef({ playing: false, toggle: () => {}, next: () => {}, prev: () => {}, seek: (_f: number) => {} })
+  const actionsRef = useRef({ playing: false, toggle: () => {}, next: () => {}, prev: () => {}, seek: (_f: number) => {}, close: () => {} })
   useEffect(() => {
-    actionsRef.current = { playing, toggle, next, prev, seek }
-  }, [playing, toggle, next, prev, seek])
+    actionsRef.current = { playing, toggle, next, prev, seek, close }
+  }, [playing, toggle, next, prev, seek, close])
   useEffect(() => {
-    if (!hasMediaSession) return
-    const ms = navigator.mediaSession
-    const bind = (action: MediaSessionAction, handler: MediaSessionActionHandler) => {
-      try {
-        ms.setActionHandler(action, handler)
-      } catch {
-        /* action not supported on this platform */
-      }
-    }
-    bind('play', () => {
-      if (!actionsRef.current.playing) actionsRef.current.toggle()
-    })
-    bind('pause', () => {
-      if (actionsRef.current.playing) actionsRef.current.toggle()
-    })
-    bind('previoustrack', () => {
-      actionsRef.current.prev()
-    })
-    bind('nexttrack', () => {
-      actionsRef.current.next()
-    })
-    bind('seekto', (details) => {
-      const a = audioRef.current
-      const d = a?.duration
-      if (details.seekTime != null && d && isFinite(d) && d > 0) actionsRef.current.seek(details.seekTime / d)
-    })
-    return () => {
-      for (const action of ['play', 'pause', 'previoustrack', 'nexttrack', 'seekto'] as MediaSessionAction[]) {
-        try {
-          ms.setActionHandler(action, null)
-        } catch {
-          /* ignore */
+    const unbind = msBindActions((details) => {
+      const a = actionsRef.current
+      switch (details.action) {
+        case 'play':
+          if (!a.playing) a.toggle()
+          break
+        case 'pause':
+          if (a.playing) a.toggle()
+          break
+        case 'previoustrack':
+          a.prev()
+          break
+        case 'nexttrack':
+          a.next()
+          break
+        case 'stop':
+          a.close()
+          break
+        case 'seekto': {
+          const el = audioRef.current
+          const d = el?.duration
+          if (details.seekTime != null && d && isFinite(d) && d > 0) a.seek(details.seekTime / d)
+          break
         }
       }
-    }
+    })
+    return unbind
   }, [])
 
   useEffect(() => {
     document.body.classList.toggle('has-player', current != null)
   }, [current])
+
+  const toggleRepeat = useCallback(() => {
+    setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'))
+  }, [])
 
   const toggleShuffle = useCallback(() => {
     setShuffle((on) => {
@@ -468,6 +453,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       dur,
       hasQueue: queue.length > 1 || manual.length > 0,
       shuffle,
+      repeat,
+      toggleRepeat,
       upNext,
       queuedCount: manual.length,
       toggleShuffle,
@@ -483,7 +470,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seek,
       close,
     }),
-    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
+    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
   )
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>

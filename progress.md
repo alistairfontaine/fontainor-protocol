@@ -284,3 +284,13 @@ VERIFIED:
 ASSUMED / cannot do here (no physical device, no funded wallet in sandbox):
 - Real on-chain SOL smoke test (one connect + one purchase/tip) must be run on the phone.
 - Play Store *upload* key: current keystore is a sideload/dev key; a real Play upload key needs the owner's decision (or Play App Signing).
+
+## 2026-07-28 — mobile v2: production rebuild (branding, player, MWA, animations)
+- Branding: adaptive launcher icon from official assets/icon.png (fg/bg/monochrome layers, Android 13 themed icon), branded splash (#0b0d12) with fade handoff (launchAutoHide:false + hide({fadeOutDuration:350})). 148 res assets via @capacitor/assets. VERIFIED in APK (aapt2).
+- Player: native Android MediaSession + mediaPlayback foreground service via @capgo/capacitor-media-session (lock-screen/notification controls, playback survives screen-off); adapter src/lib/mediaSession.ts keeps web behavior identical. Repeat off/all/one (auto-advance honors repeat; manual next always steps). Drag-to-seek SeekBar (pointer capture, commit on release, 44px hit target). VERIFIED: service + permissions in APK manifest, ci green.
+- BUG FIX: prev() called public play() which cleared playlist context — now playNow(). Also: with repeat off the catalog no longer wraps forever (wrap is repeat-gated).
+- Wallets: MWA (Mobile Wallet Adapter) native bridge MwaPlugin.java (clientlib 2.0.8, API shapes verified with javap: LocalAssociationScenario/authorize/reauthorize/signMessagesDetached/signAndSendTransactions/deauthorize) + src/lib/mwa.ts + hybrid router src/lib/nativeWallet.ts (prefers MWA = one-tap any wallet; Phantom deeplink fallback; same window.solana shape). Base64/base58 bridge conversions round-trip 4/4. ASSUMED (needs hardware): actual wallet approval UI flow.
+- Animations: page-in route transitions, mini-player entrance, Now Playing artwork pause-scale, splash fade; transform/opacity only; reduced-motion rule already global.
+- Android 13/14 compliance: POST_NOTIFICATIONS runtime request in MainActivity, FOREGROUND_SERVICE_MEDIA_PLAYBACK permission.
+- versionCode 2 / versionName 2.0.0. assembleRelease green; apksigner verify OK; universal APK 15.3MB.
+- NOT DONE (needs device): on-device MWA/Phantom approval smoke test, real SOL purchase test, lock-screen controls visual check.

@@ -119,6 +119,29 @@ h1, h2, h3, h4 {
 /* Fullscreen player entrance. Transform-only for the same compositor-freeze
    reason as fade-up, and a SMALL offset on purpose: a stalled animation must
    never leave the player parked offscreen. Do not raise the offset. */
+/* Page transitions: each route's content slides up + fades in. Opacity is
+   safe here because the animation is on the INCOMING view only (a stalled
+   animation leaves the page fully visible at worst — see fade-up note). */
+@keyframes page-in {
+  from { opacity: 0.001; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-in { animation: page-in 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Mini player entrance (first track starts): floats up from the bottom nav. */
+@keyframes mini-in {
+  from { opacity: 0.001; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.mini-in { animation: mini-in 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Now Playing artwork: full size while playing, gently recedes when paused
+   (Spotify's pause affordance). Composited transform only — cheap on mobile. */
+.np-art { transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease; }
+.np-art.is-paused { transform: scale(0.94); }
+
+/* Marquee for long titles in the player bar: only scrolls when the text
+   actually overflows (the .overflowing class is set from JS measurement). */
 @keyframes rise-in {
   from { transform: translateY(28px); }
   to { transform: translateY(0); }

@@ -27,8 +27,12 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 900,
-      backgroundColor: '#0b0b0f',
+      // Shown until the JS bundle hides it (setupNativeChrome), then fades
+      // into the app — no hard cut, no fixed timer racing the boot.
+      launchShowDuration: 3000,
+      launchAutoHide: false,
+      launchFadeOutDuration: 350,
+      backgroundColor: '#0b0d12',
       showSpinner: false,
       androidSplashResourceName: 'splash',
     },

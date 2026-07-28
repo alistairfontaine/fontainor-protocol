@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { NowPlaying } from './NowPlaying'
-import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { SeekBar } from './SeekBar'
+import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
  * Player bar — Spotify-style on both breakpoints.
@@ -25,6 +26,8 @@ export function PlayerBar() {
     dur,
     hasQueue,
     shuffle,
+    repeat,
+    toggleRepeat,
     upNext,
     queuedCount,
     toggleShuffle,
@@ -39,7 +42,6 @@ export function PlayerBar() {
     close,
   } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
-  const seekRef = useRef<HTMLDivElement>(null)
   const [open, setOpen] = useState(false) // desktop queue popover
   const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
 
@@ -88,16 +90,6 @@ export function PlayerBar() {
     const vertical = Math.abs(dy) > Math.abs(dx) * 1.2
     if (vertical && (dy <= -48 || (dy <= -20 && vy <= -0.45))) setExpanded(true)
   }
-
-  const onSeek = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const el = seekRef.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      seek((e.clientX - rect.left) / rect.width)
-    },
-    [seek],
-  )
 
   // close the queue popover + fullscreen view when playback is closed
   useEffect(() => {
@@ -201,7 +193,7 @@ export function PlayerBar() {
       <div className="px-2 pb-1.5 sm:hidden">
         <div
           ref={miniRef}
-          className="relative touch-none overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur will-change-transform"
+          className="mini-in relative touch-none overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur will-change-transform"
           onClick={() => setExpanded(true)}
           onTouchStart={onMiniTouchStart}
           onTouchMove={onMiniTouchMove}
@@ -332,35 +324,20 @@ export function PlayerBar() {
               >
                 <IconNext size={19} />
               </button>
-              <span className="grid h-9 w-9" aria-hidden="true" />
+              <button
+                onClick={toggleRepeat}
+                className={`grid h-9 w-9 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                  repeat !== 'off' ? 'text-accent' : 'text-faint hover:text-body'
+                }`}
+                aria-label={repeat === 'off' ? 'Enable repeat' : repeat === 'all' ? 'Enable repeat one' : 'Disable repeat'}
+                title={repeat === 'off' ? 'Repeat off' : repeat === 'all' ? 'Repeat all' : 'Repeat one'}
+              >
+                {repeat === 'one' ? <IconRepeatOne size={17} /> : <IconRepeat size={17} />}
+              </button>
             </div>
             <div className="flex w-full items-center gap-2">
               <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint">{fmtTime(cur)}</span>
-              <div
-                ref={seekRef}
-                onClick={onSeek}
-                className="group relative h-1 flex-1 cursor-pointer rounded-full bg-raised"
-                role="slider"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(pos * 100)}
-                aria-label="Seek"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowRight') seek(pos + 0.05)
-                  if (e.key === 'ArrowLeft') seek(pos - 0.05)
-                }}
-              >
-                <div
-                  className="h-full rounded-full bg-ink transition-[width] duration-150 group-hover:bg-accent"
-                  style={{ width: `${pos * 100}%` }}
-                />
-                <div
-                  className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
-                  style={{ left: `calc(${pos * 100}% - 6px)` }}
-                  aria-hidden="true"
-                />
-              </div>
+              <SeekBar pos={pos} onSeek={seek} size="sm" className="flex-1" />
               <span className="w-10 shrink-0 text-[11px] tabular-nums text-faint">{fmtTime(dur)}</span>
             </div>
           </div>

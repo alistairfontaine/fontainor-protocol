@@ -3,14 +3,14 @@
 // importing this module on the web is a no-op; only the packaged Android app
 // runs the native paths.
 import { Capacitor } from '@capacitor/core'
-import { installNativePhantom } from './phantomDeeplink'
+import { installNativeWallet } from './nativeWallet'
 
 /**
- * Install `window.solana` (Phantom deeplink shim) BEFORE React renders, so
- * AuthContext sees a wallet on first paint. Returns true when native.
+ * Install `window.solana` (MWA + Phantom-deeplink hybrid router) BEFORE React
+ * renders, so AuthContext sees a wallet on first paint. Returns true when native.
  */
 export function bootNativeWalletEarly(): boolean {
-  return installNativePhantom()
+  return installNativeWallet()
 }
 
 /** Post-render native setup: status bar, splash dismissal, back button. */
@@ -38,7 +38,7 @@ export async function setupNativeChrome(): Promise<void> {
   // Dismiss the splash once the JS bundle is live.
   try {
     const { SplashScreen } = await import('@capacitor/splash-screen')
-    await SplashScreen.hide()
+    await SplashScreen.hide({ fadeOutDuration: 350 })
   } catch {
     /* non-fatal */
   }
