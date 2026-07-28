@@ -34,6 +34,10 @@ interface PlayerState {
   prev: () => void
   seek: (fraction: number) => void
   close: () => void
+  /** sleep timer: epoch-ms deadline, 'track' = stop after current track */
+  sleepUntil: number | 'track' | null
+  /** minutes from now, 'track', or null to cancel */
+  setSleepTimer: (v: number | 'track' | null) => void
 }
 
 /**
@@ -102,6 +106,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     repeatRef.current = repeat
   }, [repeat])
   const [order, setOrder] = useState<string[] | null>(null) // shuffled id order when shuffle is on
+  // Sleep timer (F46): epoch-ms deadline or 'track'. Ref mirrors state for
+  // the once-bound audio 'ended' handler, same pattern as repeat/queue.
+  const [sleepUntil, setSleepUntil] = useState<number | 'track' | null>(null)
+  const sleepRef = useRef<number | 'track' | null>(null)
+  useEffect(() => {
+    sleepRef.current = sleepUntil
+  }, [sleepUntil])
   // Playlist context (F39): when set, the base play order is this explicit
   // list instead of the full catalog. Reset by plain play() and close().
   const [context, setContext] = useState<Release[] | null>(null)
@@ -181,8 +192,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return false
   }
 
-  /** Track finished on its own: honor repeat-one, then the queue. */
+  /** Track finished on its own: honor sleep-after-track, repeat-one, then the queue. */
   const handleEnded = (): boolean => {
+    if (sleepRef.current === 'track') {
+      sleepRef.current = null
+      setSleepUntil(null)
+      return false // stop here — the listener asked to fall asleep to this track
+    }
     if (repeatRef.current === 'one' && currentRef.current) {
       playRef.current(currentRef.current)
       return true
@@ -369,6 +385,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentRef.current = null
     setContext(null) // closing the player leaves any playlist context behind
     setManualSynced([]) // closing the player discards the user queue
+    setSleepUntil(null) // and the sleep timer
     setPlaying(false)
     setPos(0)
     setCur(0)
@@ -424,6 +441,33 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.body.classList.toggle('has-player', current != null)
   }, [current])
+
+  /** Pause without toggling logic — used by the sleep timer deadline. */
+  const pauseNow = useCallback(() => {
+    if (audioRef.current) audioRef.current.pause()
+    else stopSim()
+    setPlaying(false)
+  }, [])
+
+  const setSleepTimer = useCallback((v: number | 'track' | null) => {
+    setSleepUntil(v == null ? null : v === 'track' ? 'track' : Date.now() + v * 60_000)
+  }, [])
+
+  // Countdown enforcement: a coarse 1s check while a deadline is set. The
+  // check is wall-clock based, so it stays correct through WebView timer
+  // throttling (it fires late but never early) and screen-off playback.
+  useEffect(() => {
+    if (typeof sleepUntil !== 'number') return
+    const id = setInterval(() => {
+      if (Date.now() >= sleepUntil) {
+        setSleepUntil(null)
+        pauseNow()
+      }
+    }, 1000)
+    return () => {
+      clearInterval(id)
+    }
+  }, [sleepUntil, pauseNow])
 
   const toggleRepeat = useCallback(() => {
     setRepeat((r) => (r === 'off' ? 'all' : r === 'all' ? 'one' : 'off'))
@@ -488,8 +532,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       prev,
       seek,
       close,
+      sleepUntil,
+      setSleepTimer,
     }),
-    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
+    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close, sleepUntil, setSleepTimer],
   )
 
   const progress = useMemo<PlayerProgress>(() => ({ pos, cur, dur }), [pos, cur, dur])

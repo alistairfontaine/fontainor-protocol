@@ -8,7 +8,7 @@ import { useFavorites } from '../state/collections'
 import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { SeekBar } from './SeekBar'
-import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
+import { IconChevronDown, IconClose, IconHeart, IconMoon, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
  * Fullscreen "Now Playing" view — Spotify-style layout (FSP-01..06, FSP-07).
@@ -27,11 +27,12 @@ import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } = usePlayer()
+  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek, sleepUntil, setSleepTimer } = usePlayer()
   const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const tint = useArtTint(current)
   const [queueOpen, setQueueOpen] = useState(false)
+  const [sleepOpen, setSleepOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ y: number; t: number; lastDy: number } | null>(null)
   const dragRaf = useRef(0)
@@ -68,6 +69,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) {
       setQueueOpen(false)
+      setSleepOpen(false)
       drag.current = null
       const el = rootRef.current
       if (el) {
@@ -224,6 +226,16 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           <div className="truncate text-[12px] font-semibold text-ink">{queueOpen ? 'Up next' : current.artist}</div>
         </div>
         <button
+          onClick={() => setSleepOpen((v) => !v)}
+          className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+            sleepUntil != null || sleepOpen ? 'text-accent' : 'text-body hover:text-ink'
+          }`}
+          aria-label="Sleep timer"
+          aria-pressed={sleepUntil != null}
+        >
+          <IconMoon size={19} />
+        </button>
+        <button
           onClick={() => setQueueOpen((q) => !q)}
           disabled={!hasQueue}
           className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
@@ -235,6 +247,55 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           <IconQueue size={20} />
         </button>
       </div>
+
+      {/* sleep timer panel */}
+      {sleepOpen && (
+        <div data-nodrag className="absolute right-3 top-16 z-10 w-56 overflow-hidden rounded-card border border-line bg-surface shadow-pop sm:right-6">
+          <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Sleep timer</div>
+          <ul className="py-1">
+            {([5, 15, 30, 45, 60] as const).map((m) => (
+              <li key={m}>
+                <button
+                  onClick={() => {
+                    hapticTick()
+                    setSleepTimer(m)
+                    setSleepOpen(false)
+                  }}
+                  className="w-full cursor-pointer px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+                >
+                  {m} minutes
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                onClick={() => {
+                  hapticTick()
+                  setSleepTimer('track')
+                  setSleepOpen(false)
+                }}
+                className="w-full cursor-pointer px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+              >
+                End of this track
+              </button>
+            </li>
+            {sleepUntil != null && (
+              <li className="border-t border-line">
+                <button
+                  onClick={() => {
+                    hapticTick()
+                    setSleepTimer(null)
+                    setSleepOpen(false)
+                  }}
+                  className="w-full cursor-pointer px-4 py-2.5 text-left text-sm font-medium text-accent transition-colors hover:bg-raised"
+                >
+                  Turn off timer
+                </button>
+              </li>
+            )}
+          </ul>
+        </div>
+      )}
 
       {/* body: main column + (desktop) queue side panel */}
       <div className="relative flex min-h-0 flex-1 items-stretch justify-center gap-6 px-4 pb-4 sm:px-8 sm:pb-6">
@@ -299,6 +360,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
             <SeekBar pos={pos} onSeek={seek} />
             <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
               <span>{fmtTime(cur)}</span>
+              {sleepUntil != null && (
+                <span className="rounded-chip bg-accent/10 px-2 font-medium text-accent">
+                  {sleepUntil === 'track' ? 'Sleeps after this track' : `Sleep · ${fmtTime(Math.max(0, Math.round((sleepUntil - Date.now()) / 1000)))}`}
+                </span>
+              )}
               <span>{fmtTime(dur)}</span>
             </div>
           </div>

@@ -162,6 +162,12 @@ export const IconPlus = (p: IconProps) => (
   </Svg>
 )
 
+export const IconMoon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 7 7 0 0 0 20 14.5Z" />
+  </Svg>
+)
+
 export const IconClose = (p: IconProps) => (
   <Svg {...p}>
     <path d="m6 6 12 12M18 6 6 18" />
