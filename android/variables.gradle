@@ -1,0 +1,18 @@
+ext {
+    // Aligned to the lanlink/emberdelve production Android baseline:
+    // minSdk 26 (Android 8.0+), compile/target SDK 35.
+    minSdkVersion = 26
+    compileSdkVersion = 36
+    targetSdkVersion = 35
+    androidxActivityVersion = '1.9.2'
+    androidxAppCompatVersion = '1.7.0'
+    androidxCoordinatorLayoutVersion = '1.2.0'
+    androidxCoreVersion = '1.13.1'
+    androidxFragmentVersion = '1.8.3'
+    coreSplashScreenVersion = '1.0.1'
+    androidxWebkitVersion = '1.11.0'
+    junitVersion = '4.13.2'
+    androidxJunitVersion = '1.2.1'
+    androidxEspressoCoreVersion = '3.6.1'
+    cordovaAndroidVersion = '14.0.1'
+}

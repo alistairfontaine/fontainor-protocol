@@ -44,10 +44,17 @@
 :root {
   --player-h: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 html {
   scrollbar-gutter: stable;
+}
+
+/* Native (Capacitor) app: pad the sticky header down past the status bar on
+   edge-to-edge Android/iOS so the logo + wallet button are never clipped. */
+.is-native header {
+  padding-top: var(--safe-top, 0px);
 }
 
 body {

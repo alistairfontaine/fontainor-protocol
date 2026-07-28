@@ -266,3 +266,21 @@ VERIFIED: tools/playlists-test.mjs 18/18 incl. "Next follows playlist order not 
 ## 2026-07-27 — Post-deploy verification F38/F39
 prod-VERIFIED: served bundle index-M-xlELDf.js contains "Add to queue", "Clear queue", "Play all", "Confirm delete", "to playlist", fontainor_playlists_v1; / returns 200. F38+F39 flipped to passing. features.json now 38/39 — only F11 (real publish) red.
 Also VERIFIED same day: phantom.app/ul/browse/<url> 301s to phantom.com and serves a real web page — mobile users WITHOUT Phantom who tap "Open in Phantom" land on Phantom's install page, not a dead end (curl-verified).
+
+## 2026-07-28 — Iteration: F40 native Android app (Capacitor) + F41 Phantom deeplink wallet + F42 production APK build (user request: full production-ready mobile app + APK, Phantom must work perfectly)
+Branch `mobile-v1`. Decision (documented in MOBILE_TODO.md): wrap the existing React/Vite app with **Capacitor 8** rather than rewrite in Flutter. Rationale: fontainor is a mature ~7k-line React dApp with JS-only Irys/Arweave/Solana SDKs; a Flutter rewrite (to match lanlink/emberdelve, which are Flutter) would throw the whole app away and has no Dart equivalents for Irys musician-pays publishing → half-baked. lanlink/emberdelve instead used as references for the production Gradle setup (ABI splits, R8+resource shrink, keystore signing via key.properties, minSdk26/compileSdk36/targetSdk35, universal sideload APK). uxpeak-codex informs the already-mobile-first UI (bottom nav, 44px taps, safe areas) — no redesign needed.
+
+F41 (the hard part): in a WebView there is no injected window.solana (that only exists in Phantom's in-app browser / desktop ext). Implemented Phantom's **encrypted deeplink protocol** in src/lib/phantomDeeplink.ts (x25519 via tweetnacl + bs58, both already deps): connect / signMessage / signAndSendTransaction / disconnect, session persisted via @capacitor/preferences (warm reconnect, no repeat approval), fontainor://onphantom/<method> bounce-back routed through @capacitor/app appUrlOpen, opened via @capacitor/browser. Exposed behind the SAME provider shape the app already reads (window.solana with isPhantom/publicKey{toString,toBytes}/connect/signMessage/signAndSendTransaction) → AuthContext login, purchase.ts, irysPublish.ts and the Support tip jar all work UNCHANGED on native. Installed in main.tsx BEFORE React render so hasWallet is true on first paint (WalletButton shows Connect, not the web "Open in Phantom" fallback). src/lib/native.ts adds status bar theming, splash dismissal, hardware back button, --safe-top inset.
+
+F42: Android project generated (android/, gitignored key.properties + *.jks). Signed release keystore stored OUTSIDE the repo. Build toolchain (JDK 21, Android SDK 36, build-tools 36) provisioned in-sandbox.
+
+VERIFIED:
+- npm run ci green (typecheck + prod build) with native code included.
+- Phantom crypto round-trip test (simulating Phantom's side): 8/8 — shared-secret agreement, connect payload decrypt (public_key+session), request encrypt→Phantom-decrypt (session+message bytes intact), signature response decrypt (64-byte sig). 
+- ./gradlew :app:assembleDebug → BUILD SUCCESSFUL (universal + 3 ABI debug APKs, ~19MB).
+- ./gradlew :app:assembleRelease → BUILD SUCCESSFUL, signed + R8-shrunk (universal APK 15.2MB).
+- apksigner verify: valid v1/v2 signature (CN=Fontainor Protocol). aapt2 badging: package com.fontainor.app, minSdk26/targetSdk35, label Fontainor. Manifest contains the fontainor://onphantom intent-filter. Web build bundled at assets/public/.
+
+ASSUMED / cannot do here (no physical device, no funded wallet in sandbox):
+- Real on-chain SOL smoke test (one connect + one purchase/tip) must be run on the phone.
+- Play Store *upload* key: current keystore is a sideload/dev key; a real Play upload key needs the owner's decision (or Play App Signing).

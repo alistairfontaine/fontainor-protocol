@@ -1,8 +1,24 @@
+import { Capacitor } from '@capacitor/core'
 import { parseRegistryText, type Release } from './registry'
 
-// Same-origin in production (vercel.json rewrites /registry → api function);
-// vite dev server proxies to the deployed API.
-export const API_BASE = ''
+// Where the registry/upload/payment API lives.
+// - Web (browser/PWA): same-origin '' — vercel.json rewrites /registry → the
+//   serverless function; the vite dev server proxies to the deployed API.
+// - Native app (Capacitor): the WebView is served from https://localhost, so
+//   there is no same-origin API. Point at the deployed origin instead (CORS is
+//   open, verified in api/index.js). Overridable at build time via VITE_API_BASE.
+const REMOTE_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || 'https://fontainor-protocol.vercel.app'
+
+function resolveApiBase(): string {
+  try {
+    if (Capacitor.isNativePlatform()) return REMOTE_API_BASE
+  } catch {
+    /* not in a Capacitor runtime — treat as web */
+  }
+  return ''
+}
+
+export const API_BASE = resolveApiBase()
 
 export type RegistrySource = 'api' | 'file' | 'sample'
 
