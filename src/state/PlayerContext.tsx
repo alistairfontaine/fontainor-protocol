@@ -9,10 +9,6 @@ import { useHistoryLog } from './collections'
 interface PlayerState {
   current: Release | null
   playing: boolean
-  /** 0..1 */
-  pos: number
-  cur: number
-  dur: number
   /** whether prev/next have somewhere to go */
   hasQueue: boolean
   shuffle: boolean
@@ -40,7 +36,22 @@ interface PlayerState {
   close: () => void
 }
 
+/**
+ * Progress ticks live in their OWN context. pos/cur/dur update 4×/second
+ * while anything plays; when they lived in the main context every
+ * usePlayer() consumer (each ReleaseCard on a scrolling grid, nav, pages)
+ * re-rendered 4×/s for the whole session — measurable scroll jank on
+ * Android WebViews. Only the seek bar + timestamps actually need ticks.
+ */
+interface PlayerProgress {
+  /** 0..1 */
+  pos: number
+  cur: number
+  dur: number
+}
+
 const Ctx = createContext<PlayerState | null>(null)
+const ProgressCtx = createContext<PlayerProgress>({ pos: 0, cur: 0, dur: 0 })
 
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
 const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
@@ -69,6 +80,17 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [pos, setPos] = useState(0)
   const [cur, setCur] = useState(0)
   const [dur, setDur] = useState(0)
+  // Fresh cur for callbacks (toggle/prev) so THEY don't have to depend on the
+  // 4×/s cur state — keeping the main context value referentially stable
+  // across ticks is the whole point of the Progress context split.
+  const curRef = useRef(0)
+  useEffect(() => {
+    curRef.current = cur
+  }, [cur])
+  const playingRef = useRef(false)
+  useEffect(() => {
+    playingRef.current = playing
+  }, [playing])
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const simRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const { push: pushHistory } = useHistoryLog()
@@ -260,16 +282,16 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   )
 
   const toggle = useCallback(() => {
-    if (!current) return
+    if (!currentRef.current) return
     if (audioRef.current) {
-      if (playing) audioRef.current.pause()
+      if (playingRef.current) audioRef.current.pause()
       else void audioRef.current.play()
     } else {
-      if (playing) stopSim()
-      else startSim(cur)
+      if (playingRef.current) stopSim()
+      else startSim(curRef.current)
     }
     setPlaying((p) => !p)
-  }, [current, playing, cur, startSim])
+  }, [startSim])
 
   // advance() only touches refs + stable setters, so the first instance is safe to capture
   const next = useCallback(() => {
@@ -309,21 +331,21 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   const prev = useCallback(() => {
     // Spotify behavior: past a few seconds in, "previous" restarts the track
-    if (cur > RESTART_THRESHOLD) {
+    if (curRef.current > RESTART_THRESHOLD) {
       if (audioRef.current) {
         audioRef.current.currentTime = 0
-        if (playing) void audioRef.current.play()
+        if (playingRef.current) void audioRef.current.play()
       } else {
         setCur(0)
         setPos(0)
-        if (playing) startSim(0)
+        if (playingRef.current) startSim(0)
       }
       return
     }
     // playNow (not play): stepping back must keep any playlist context alive
     const p = stepFrom(-1)
     if (p) playNow(p)
-  }, [cur, playing, playNow, startSim])
+  }, [playNow, startSim])
 
   const seek = useCallback(
     (fraction: number) => {
@@ -448,9 +470,6 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     () => ({
       current,
       playing,
-      pos,
-      cur,
-      dur,
       hasQueue: queue.length > 1 || manual.length > 0,
       shuffle,
       repeat,
@@ -470,14 +489,26 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       seek,
       close,
     }),
-    [current, playing, pos, cur, dur, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
+    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close],
   )
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>
+  const progress = useMemo<PlayerProgress>(() => ({ pos, cur, dur }), [pos, cur, dur])
+
+  return (
+    <Ctx.Provider value={value}>
+      <ProgressCtx.Provider value={progress}>{children}</ProgressCtx.Provider>
+    </Ctx.Provider>
+  )
 }
 
 export function usePlayer(): PlayerState {
   const v = useContext(Ctx)
   if (!v) throw new Error('usePlayer outside PlayerProvider')
   return v
+}
+
+/** Subscribe to 4×/s playback progress — ONLY where a tick actually renders
+ *  (seek bars, timestamps). Everything else should use usePlayer(). */
+export function usePlayerProgress(): PlayerProgress {
+  return useContext(ProgressCtx)
 }

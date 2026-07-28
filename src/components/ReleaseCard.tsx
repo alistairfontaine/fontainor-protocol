@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { edLabel, isSold, priceLabel, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
@@ -6,7 +6,10 @@ import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { IconCheck, IconHeart, IconPlay, IconQueue } from './icons'
 
-export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
+/** Memoized: grids render dozens of these; the player context is tick-stable
+ *  now (see PlayerContext), so cards only re-render when their props change
+ *  or favorites flip. */
+export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
   const { play, addToQueue } = usePlayer()
   const { ids, toggle } = useFavorites()
   const navigate = useNavigate()
@@ -107,7 +110,7 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
       )}
     </article>
   )
-}
+})
 
 export function ReleaseGrid({ items }: { items: Release[] }) {
   return (

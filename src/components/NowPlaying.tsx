@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
-import { usePlayer } from '../state/PlayerContext'
+import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { SeekBar } from './SeekBar'
 import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
@@ -25,8 +25,8 @@ import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, pos, cur, dur, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } =
-    usePlayer()
+  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } = usePlayer()
+  const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [queueOpen, setQueueOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)

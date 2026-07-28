@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
-import { usePlayer } from '../state/PlayerContext'
+import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { NowPlaying } from './NowPlaying'
 import { SeekBar } from './SeekBar'
@@ -21,9 +21,6 @@ export function PlayerBar() {
   const {
     current,
     playing,
-    pos,
-    cur,
-    dur,
     hasQueue,
     shuffle,
     repeat,
@@ -41,6 +38,7 @@ export function PlayerBar() {
     seek,
     close,
   } = usePlayer()
+  const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const [open, setOpen] = useState(false) // desktop queue popover
   const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
