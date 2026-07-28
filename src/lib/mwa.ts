@@ -27,14 +27,14 @@ interface MwaNativePlugin {
     identityUri: string
     iconUri: string
     identityName: string
-  }): Promise<{ signature: string }>
+  }): Promise<{ signature: string; authToken?: string }>
   signAndSendTransaction(options: {
     transaction: string
     authToken: string
     identityUri: string
     iconUri: string
     identityName: string
-  }): Promise<{ signature: string }>
+  }): Promise<{ signature: string; authToken?: string }>
   deauthorize(options: { authToken: string }): Promise<void>
 }
 
@@ -116,26 +116,67 @@ export async function mwaDisconnect(): Promise<void> {
   await saveSession(null)
 }
 
-export async function mwaSignMessage(message: Uint8Array): Promise<{ signature: Uint8Array }> {
+/** User pressed "decline"/"cancel" in the wallet — never auto-retried. */
+export class MwaUserDeclinedError extends Error {}
+
+// Capacitor rejections carry the plugin's reject code on `.code`.
+const rejectionCode = (e: unknown): string => (e as { code?: string })?.code ?? ''
+
+/**
+ * Run a signing op; on a stale/revoked session (AUTH_INVALID — e.g. the user
+ * cleared the app in Phantom, or an old token from a previous install) drop
+ * the session, run a fresh connect (wallet shows its approve sheet), and
+ * retry ONCE. v4.0.0 surfaced this case as "signature cancelled" even though
+ * the user approved — the retry makes the flow self-heal instead.
+ */
+async function withSessionRetry<T>(op: (s: MwaSession) => Promise<T>): Promise<T> {
   const s = await requireSession()
-  const res = await Mwa.signMessage({
-    ...IDENTITY,
-    message: bytesToB64(message),
-    address: bytesToB64(bs58.decode(s.address)),
-    authToken: s.authToken,
+  try {
+    return await op(s)
+  } catch (e) {
+    const code = rejectionCode(e)
+    if (code === 'USER_DECLINED') throw new MwaUserDeclinedError(e instanceof Error ? e.message : 'Request declined in wallet.')
+    if (code !== 'AUTH_INVALID') throw e
+    await saveSession(null)
+    const fresh = await requireSession() // fresh authorize round-trip
+    try {
+      return await op(fresh)
+    } catch (e2) {
+      if (rejectionCode(e2) === 'USER_DECLINED') throw new MwaUserDeclinedError(e2 instanceof Error ? e2.message : 'Request declined in wallet.')
+      throw e2
+    }
+  }
+}
+
+/** Wallets may rotate the auth token on every reauthorize — persist it. */
+async function adoptRotatedToken(s: MwaSession, next?: string): Promise<void> {
+  if (next && next !== s.authToken) await saveSession({ ...s, authToken: next })
+}
+
+export async function mwaSignMessage(message: Uint8Array): Promise<{ signature: Uint8Array }> {
+  return withSessionRetry(async (s) => {
+    const res = await Mwa.signMessage({
+      ...IDENTITY,
+      message: bytesToB64(message),
+      address: bytesToB64(bs58.decode(s.address)),
+      authToken: s.authToken,
+    })
+    await adoptRotatedToken(s, res.authToken)
+    return { signature: b64ToBytes(res.signature) }
   })
-  return { signature: b64ToBytes(res.signature) }
 }
 
 export async function mwaSignAndSendTransaction(serializedTx: Uint8Array): Promise<{ signature: string }> {
-  const s = await requireSession()
-  const res = await Mwa.signAndSendTransaction({
-    ...IDENTITY,
-    transaction: bytesToB64(serializedTx),
-    authToken: s.authToken,
+  return withSessionRetry(async (s) => {
+    const res = await Mwa.signAndSendTransaction({
+      ...IDENTITY,
+      transaction: bytesToB64(serializedTx),
+      authToken: s.authToken,
+    })
+    await adoptRotatedToken(s, res.authToken)
+    // Solana convention: transaction signatures travel as base58 strings.
+    return { signature: bs58.encode(b64ToBytes(res.signature)) }
   })
-  // Solana convention: transaction signatures travel as base58 strings.
-  return { signature: bs58.encode(b64ToBytes(res.signature)) }
 }
 
 export function mwaAddress(): string | null {

@@ -130,16 +130,14 @@ function openAndAwait(method: string, url: string): Promise<URLSearchParams> {
 
 /** Route an incoming `fontainor://onphantom/<method>` redirect. */
 function handleRedirect(rawUrl: string): void {
-  let method = ''
-  let params: URLSearchParams
-  try {
-    const u = new URL(rawUrl)
-    // fontainor://onphantom/connect?...  -> host=onphantom, path=/connect
-    method = u.pathname.replace(/^\/+/, '') || u.host
-    params = u.searchParams
-  } catch {
-    return
-  }
+  // Parse WITHOUT new URL(): older WebViews treat custom schemes as opaque
+  // (host/pathname come back empty or glued together), which silently
+  // orphaned the waiter -> 3-minute timeout -> bogus "cancelled" error.
+  const m = /^fontainor:\/\/onphantom\/([A-Za-z]+)/.exec(rawUrl)
+  if (!m) return
+  const method = m[1]
+  const qIdx = rawUrl.indexOf('?')
+  const params = new URLSearchParams(qIdx === -1 ? '' : rawUrl.slice(qIdx + 1))
   const waiter = pending.get(method)
   if (!waiter) return
   pending.delete(method)
@@ -147,13 +145,17 @@ function handleRedirect(rawUrl: string): void {
   const errCode = params.get('errorCode')
   if (errCode) {
     const msg = params.get('errorMessage') || `Phantom returned error ${errCode}.`
-    waiter.reject(new PhantomUserError(msg))
+    // 4001 = user rejected (Phantom follows EIP-1193 numbering). Everything
+    // else is a protocol/session failure and must NOT read as a cancel.
+    waiter.reject(errCode === '4001' ? new PhantomUserError(msg) : new PhantomSessionError(msg))
     return
   }
   waiter.resolve(params)
 }
 
 export class PhantomUserError extends Error {}
+/** Session/protocol failure (stale session token, decrypt mismatch, ...). */
+export class PhantomSessionError extends Error {}
 
 let listenerRegistered = false
 function ensureListener(): void {
@@ -227,35 +229,54 @@ async function clearSession(): Promise<void> {
 }
 
 async function signMessage(message: Bytes, _display: string = 'utf8'): Promise<{ signature: Bytes }> {
-  const s = await ensureConnected()
-  const payload = { session: s.session, message: bs58.encode(message) }
-  const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
-  const params = new URLSearchParams({
-    dapp_encryption_public_key: s.dappPub,
-    nonce,
-    redirect_link: REDIRECT('signMessage'),
-    payload: data,
+  return withFreshSessionRetry(async () => {
+    const s = await ensureConnected()
+    const payload = { session: s.session, message: bs58.encode(message) }
+    const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
+    const params = new URLSearchParams({
+      dapp_encryption_public_key: s.dappPub,
+      nonce,
+      redirect_link: REDIRECT('signMessage'),
+      payload: data,
+    })
+    const res = await openAndAwait('signMessage', `${PHANTOM_BASE}/signMessage?${params.toString()}`)
+    const decoded = decodeResponse(res, s.sharedSecret!)
+    return { signature: bs58.decode(String(decoded.signature)) }
   })
-  const res = await openAndAwait('signMessage', `${PHANTOM_BASE}/signMessage?${params.toString()}`)
-  const decoded = decodeResponse(res, s.sharedSecret!)
-  const sig = String(decoded.signature)
-  return { signature: bs58.decode(sig) }
+}
+
+/**
+ * Session errors self-heal: drop the persisted session (it may predate a
+ * reinstall/wallet reset — the exact "approved but still cancelled" trap),
+ * reconnect fresh, retry the op once. User declines are never retried.
+ */
+async function withFreshSessionRetry<T>(op: () => Promise<T>): Promise<T> {
+  try {
+    return await op()
+  } catch (e) {
+    if (e instanceof PhantomUserError) throw e
+    if (!(e instanceof PhantomSessionError) && !/decrypt|session/i.test(e instanceof Error ? e.message : '')) throw e
+    await clearSession()
+    return op()
+  }
 }
 
 async function signAndSendTransaction(tx: unknown): Promise<{ signature: string }> {
-  const s = await ensureConnected()
   const serialized = serializeTransaction(tx)
-  const payload = { session: s.session, transaction: bs58.encode(serialized) }
-  const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
-  const params = new URLSearchParams({
-    dapp_encryption_public_key: s.dappPub,
-    nonce,
-    redirect_link: REDIRECT('signAndSendTransaction'),
-    payload: data,
+  return withFreshSessionRetry(async () => {
+    const s = await ensureConnected()
+    const payload = { session: s.session, transaction: bs58.encode(serialized) }
+    const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
+    const params = new URLSearchParams({
+      dapp_encryption_public_key: s.dappPub,
+      nonce,
+      redirect_link: REDIRECT('signAndSendTransaction'),
+      payload: data,
+    })
+    const res = await openAndAwait('signAndSendTransaction', `${PHANTOM_BASE}/signAndSendTransaction?${params.toString()}`)
+    const decoded = decodeResponse(res, s.sharedSecret!)
+    return { signature: String(decoded.signature) }
   })
-  const res = await openAndAwait('signAndSendTransaction', `${PHANTOM_BASE}/signAndSendTransaction?${params.toString()}`)
-  const decoded = decodeResponse(res, s.sharedSecret!)
-  return { signature: String(decoded.signature) }
 }
 
 function decodeResponse(res: URLSearchParams, sharedSecret: string): Record<string, unknown> {

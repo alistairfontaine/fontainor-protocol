@@ -11,8 +11,10 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.solana.mobilewalletadapter.clientlib.protocol.JsonRpc20Client;
 import com.solana.mobilewalletadapter.clientlib.protocol.MobileWalletAdapterClient;
 import com.solana.mobilewalletadapter.clientlib.scenario.LocalAssociationIntentCreator;
+import com.solana.mobilewalletadapter.common.ProtocolContract;
 import com.solana.mobilewalletadapter.clientlib.scenario.LocalAssociationScenario;
 import com.solana.mobilewalletadapter.clientlib.scenario.Scenario;
 
@@ -112,9 +114,15 @@ public class MwaPlugin extends Plugin {
         }
 
         withLocalScenario(call, client -> {
-            // A fresh association needs a (re)authorization before privileged methods.
-            client.reauthorize(Uri.parse(identityUri), Uri.parse(iconUri), identityName, authToken)
-                    .get(RPC_TIMEOUT_S, TimeUnit.SECONDS);
+            // A fresh association needs a (re)authorization before privileged
+            // methods. v4.0.0 BUG: wallets may ROTATE the auth token on
+            // reauthorize; the rotated token was discarded, so the next wallet
+            // call ran on a revoked token and failed even after the user
+            // approved ("signature cancelled" report). Keep + return it.
+            MobileWalletAdapterClient.AuthorizationResult reauth =
+                    (MobileWalletAdapterClient.AuthorizationResult) client
+                            .reauthorize(Uri.parse(identityUri), Uri.parse(iconUri), identityName, authToken)
+                            .get(RPC_TIMEOUT_S, TimeUnit.SECONDS);
             byte[] message = Base64.decode(messageB64, Base64.NO_WRAP);
             byte[] address = Base64.decode(addressB64, Base64.NO_WRAP);
             MobileWalletAdapterClient.SignMessagesResult result =
@@ -126,6 +134,7 @@ public class MwaPlugin extends Plugin {
             }
             JSObject ret = new JSObject();
             ret.put("signature", Base64.encodeToString(result.messages[0].signatures[0], Base64.NO_WRAP));
+            ret.put("authToken", reauth.authToken);
             return ret;
         });
     }
@@ -143,8 +152,10 @@ public class MwaPlugin extends Plugin {
         }
 
         withLocalScenario(call, client -> {
-            client.reauthorize(Uri.parse(identityUri), Uri.parse(iconUri), identityName, authToken)
-                    .get(RPC_TIMEOUT_S, TimeUnit.SECONDS);
+            MobileWalletAdapterClient.AuthorizationResult reauth =
+                    (MobileWalletAdapterClient.AuthorizationResult) client
+                            .reauthorize(Uri.parse(identityUri), Uri.parse(iconUri), identityName, authToken)
+                            .get(RPC_TIMEOUT_S, TimeUnit.SECONDS);
             byte[] tx = Base64.decode(txB64, Base64.NO_WRAP);
             MobileWalletAdapterClient.SignAndSendTransactionsResult result =
                     (MobileWalletAdapterClient.SignAndSendTransactionsResult) client
@@ -155,6 +166,7 @@ public class MwaPlugin extends Plugin {
             }
             JSObject ret = new JSObject();
             ret.put("signature", Base64.encodeToString(result.signatures[0], Base64.NO_WRAP));
+            ret.put("authToken", reauth.authToken);
             return ret;
         });
     }
@@ -170,6 +182,18 @@ public class MwaPlugin extends Plugin {
             client.deauthorize(authToken).get(RPC_TIMEOUT_S, TimeUnit.SECONDS);
             return new JSObject();
         });
+    }
+
+    /** Unwrap nested ExecutionException/cause chains to the MWA RPC error, if any. */
+    private static JsonRpc20Client.JsonRpc20RemoteException findRpcException(Throwable e) {
+        Throwable t = e;
+        for (int i = 0; t != null && i < 8; i++) {
+            if (t instanceof JsonRpc20Client.JsonRpc20RemoteException) {
+                return (JsonRpc20Client.JsonRpc20RemoteException) t;
+            }
+            t = t.getCause();
+        }
+        return null;
     }
 
     /**
@@ -200,8 +224,24 @@ public class MwaPlugin extends Plugin {
                 T ret = op.run(client);
                 call.resolve(ret);
             } catch (Exception e) {
+                // Map protocol errors to stable codes the JS layer can act on:
+                //  USER_DECLINED    -> user rejected in the wallet (no retry)
+                //  AUTH_INVALID     -> stale/revoked token (JS clears + reconnects)
+                //  WALLET_ERROR     -> everything else (message surfaced verbatim)
+                JsonRpc20Client.JsonRpc20RemoteException rpc = findRpcException(e);
                 String msg = e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
-                call.reject("WALLET_ERROR", msg, e);
+                if (rpc != null) {
+                    String detail = rpc.getMessage() != null ? rpc.getMessage() : ("wallet error " + rpc.code);
+                    if (rpc.code == ProtocolContract.ERROR_NOT_SIGNED || rpc.code == ProtocolContract.ERROR_NOT_SUBMITTED) {
+                        call.reject("USER_DECLINED", detail, e);
+                    } else if (rpc.code == ProtocolContract.ERROR_AUTHORIZATION_FAILED) {
+                        call.reject("AUTH_INVALID", detail, e);
+                    } else {
+                        call.reject("WALLET_ERROR", detail, e);
+                    }
+                } else {
+                    call.reject("WALLET_ERROR", msg, e);
+                }
             } finally {
                 try {
                     scenario.close().get(3, TimeUnit.SECONDS);
