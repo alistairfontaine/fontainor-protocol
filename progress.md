@@ -314,3 +314,8 @@ Note: user asked for Flutter — app is Capacitor (told him; a Flutter port is c
 - F58 crossfade: VERIFIED equal-power blend + adoption swap via instrumented Audio constructor (volumes sampled per second).
 - F59 downloads: local-first resolution is sync via startup-warmed uri cache; crossfade path also resolves local. Device I/O ASSUMED.
 - Measurements (after.json, 4x throttle): home-scroll idle AND playing, rail fling, sheet open/close — all 0.0-0.1% frames over 17.2ms budget, worst 33ms single frame. Screenshots: home / now playing / listening panel.
+
+## 2026-07-28 — v4.1: four device bug reports (jank x2, download crash, wallet)
+- Player/rail jank: usePlayerProgress() at top of NowPlaying+PlayerBar re-rendered whole trees 4x/s (tick leaves now in PlayerTicks.tsx — NEVER subscribe to progress above a leaf). Native cards: killed invisible 32px shadows + hover-scale; rails snap-proximity. Evidence at 8x throttle (4x was too soft to reproduce device jank — use 8x).
+- Download crash: NEVER push file payloads across the Capacitor bridge (multi-MB base64 kills the renderer). Filesystem.downloadFile streams natively + progress events.
+- Wallet: MWA reauthorize ROTATES the auth token — must persist the new one. Map protocol codes: user decline != protocol failure. Phantom custom-scheme redirects: parse with regex, not new URL().
