@@ -138,7 +138,7 @@ export function Rail({ children }: { children: ReactNode }) {
     return <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{children}</div>
   }
   return (
-    <div className="stagger -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+    <div className="stagger -mx-4 flex snap-x snap-proximity gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
       {Children.map(children, (c, i) => (
         <div className="w-[42vw] max-w-[190px] shrink-0 snap-start" style={{ '--stagger': `${Math.min(i, 5) * 40}ms` } as CSSProperties}>
           {c}

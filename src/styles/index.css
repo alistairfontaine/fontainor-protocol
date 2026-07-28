@@ -202,3 +202,18 @@ h1, h2, h3, h4 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Native scroll cost diet (v4.1 — device report: music rails janky,
+      editorial smooth). Editorial cards are plain bordered links; release
+      cards carried a 32px-blur box-shadow + a hover scale transition on the
+      cover + an amber glow shadow on the play button. On the WebView
+      compositor those repaint at texture size during fling; on our near-black
+      bg the big soft shadows are invisible anyway — pure cost. Hover motion
+      is meaningless on touch. Web keeps all of it. */
+.is-native .press .shadow-card {
+  box-shadow: none;
+  border: 1px solid var(--color-line);
+}
+.is-native .press .shadow-glow { box-shadow: none; }
+.is-native .press img { transition-property: none; }
+.is-native .press .group-hover\:scale-\[1\.03\] { transform: none; }

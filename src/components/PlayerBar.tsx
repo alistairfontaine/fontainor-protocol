@@ -2,12 +2,11 @@ import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useArtTint } from '../lib/artColor'
 import { hapticThump, hapticTick } from '../lib/haptics'
-import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
-import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
+import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { NowPlaying } from './NowPlaying'
-import { SeekBar } from './SeekBar'
+import { LiveSeekBar, TickCur, TickDur, TickHairlineFill, TickTime } from './PlayerTicks'
 import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
@@ -37,10 +36,8 @@ export function PlayerBar() {
     toggle,
     next,
     prev,
-    seek,
     close,
   } = usePlayer()
-  const { pos, cur, dur } = usePlayerProgress()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const tint = useArtTint(current)
   const [open, setOpen] = useState(false) // desktop queue popover
@@ -136,7 +133,7 @@ export function PlayerBar() {
                 <span className="block truncate text-[12px] text-muted">{current.artist}</span>
               </div>
               <span className="text-[11px] tabular-nums text-faint">
-                {fmtTime(cur)} / {fmtTime(dur)}
+                <TickTime />
               </span>
             </div>
 
@@ -256,7 +253,7 @@ export function PlayerBar() {
           </div>
           {/* hairline progress, Spotify-style */}
           <div className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-line" aria-hidden="true">
-            <div className="h-full rounded-full bg-ink" style={{ width: `${pos * 100}%` }} />
+            <TickHairlineFill />
           </div>
         </div>
       </div>
@@ -345,9 +342,9 @@ export function PlayerBar() {
               </button>
             </div>
             <div className="flex w-full items-center gap-2">
-              <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint">{fmtTime(cur)}</span>
-              <SeekBar pos={pos} onSeek={seek} size="sm" className="flex-1" />
-              <span className="w-10 shrink-0 text-[11px] tabular-nums text-faint">{fmtTime(dur)}</span>
+              <TickCur className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint" />
+              <LiveSeekBar size="sm" className="flex-1" />
+              <TickDur className="w-10 shrink-0 text-[11px] tabular-nums text-faint" />
             </div>
           </div>
 

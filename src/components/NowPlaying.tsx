@@ -7,7 +7,7 @@ import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { SeekBar } from './SeekBar'
+import { LiveSeekBar, TickCur, TickDur, TickTime } from './PlayerTicks'
 import { IconChevronDown, IconClose, IconHeart, IconMoon, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
@@ -27,8 +27,7 @@ import { IconChevronDown, IconClose, IconHeart, IconMoon, IconNext, IconPause, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek, sleepUntil, setSleepTimer, crossfade, setCrossfade } = usePlayer()
-  const { pos, cur, dur } = usePlayerProgress()
+  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, sleepUntil, setSleepTimer, crossfade, setCrossfade } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const tint = useArtTint(current)
   const [queueOpen, setQueueOpen] = useState(false)
@@ -337,7 +336,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           {/* phone queue screen — Spotify-style: Now playing pinned on top, then Up next */}
           {queueOpen && (
             <div className="flex min-h-0 flex-1 flex-col py-1 lg:hidden">
-              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} />
             </div>
           )}
 
@@ -370,15 +369,11 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
           {/* seek */}
           <div className="w-full shrink-0 pt-3">
-            <SeekBar pos={pos} onSeek={seek} />
+            <LiveSeekBar />
             <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
-              <span>{fmtTime(cur)}</span>
-              {sleepUntil != null && (
-                <span className="rounded-chip bg-accent/10 px-2 font-medium text-accent">
-                  {sleepUntil === 'track' ? 'Sleeps after this track' : `Sleep · ${fmtTime(Math.max(0, Math.round((sleepUntil - Date.now()) / 1000)))}`}
-                </span>
-              )}
-              <span>{fmtTime(dur)}</span>
+              <TickCur />
+              {sleepUntil != null && <SleepChip sleepUntil={sleepUntil} />}
+              <TickDur />
             </div>
           </div>
 
@@ -456,7 +451,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               </span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
-              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} />
             </div>
           </aside>
         )}
@@ -474,8 +469,6 @@ function QueueList({
   play,
   playQueued,
   removeQueued,
-  cur,
-  dur,
 }: {
   current: Release
   upNext: Release[]
@@ -484,8 +477,6 @@ function QueueList({
   play: (rel: Release, opts?: { keepContext?: boolean }) => void
   playQueued: (index: number) => void
   removeQueued: (index: number) => void
-  cur: number
-  dur: number
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -498,9 +489,7 @@ function QueueList({
           <span className="block truncate text-sm font-semibold text-accent">{current.title}</span>
           <span className="block truncate text-[12px] text-muted">{current.artist}</span>
         </div>
-        <span className="shrink-0 text-[11px] tabular-nums text-faint">
-          {fmtTime(cur)} / {fmtTime(dur)}
-        </span>
+        <TickTime className="shrink-0 text-[11px] tabular-nums text-faint" />
       </div>
 
       <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
@@ -545,5 +534,16 @@ function QueueList({
         ))}
       </ul>
     </div>
+  )
+}
+
+/** Sleep-timer countdown chip — subscribes to ticks so the remaining time
+ *  counts down (the parent no longer re-renders per tick, on purpose). */
+function SleepChip({ sleepUntil }: { sleepUntil: number | 'track' }) {
+  usePlayerProgress() // tick subscription = periodic refresh while playing
+  return (
+    <span className="rounded-chip bg-accent/10 px-2 font-medium text-accent">
+      {sleepUntil === 'track' ? 'Sleeps after this track' : `Sleep · ${fmtTime(Math.max(0, Math.round((sleepUntil - Date.now()) / 1000)))}`}
+    </span>
   )
 }

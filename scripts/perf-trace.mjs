@@ -15,7 +15,6 @@ import { extname, join } from 'node:path'
 import { chromium } from 'playwright'
 
 const DIST = new URL('../dist', import.meta.url).pathname
-const CPU_THROTTLE = 4
 const FRAME_BUDGET_MS = 1000 / 60 + 0.5 // 17.2ms: one 60Hz vsync + jitter allowance
 
 const args = process.argv.slice(2)
@@ -25,6 +24,8 @@ const flag = (name, dflt) => {
 }
 const LABEL = flag('label', 'run')
 const OUT = flag('out', `perf/${LABEL}.json`)
+// 4x missed real-device jank once (v4.0.0 device report); default to 8x.
+const CPU_THROTTLE = Number(flag('throttle', 8))
 
 const MIME = {
   '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
@@ -168,7 +169,43 @@ async function main() {
     for (let i = 0; i < 2; i++) await swipe(cdp, { x: 60, y: 560, dx: 260 })
   })
 
-  // 4. Now Playing open + close (sheet animation), 2 cycles.
+  // 4. Now Playing sheet HELD OPEN while playing — isolates the progress-tick
+  //    re-render cost (CDP Performance metrics show script/style/layout work
+  //    even when rAF deltas look clean: main-thread churn that a real device's
+  //    weaker cores turn into visible player-UI jank).
+  await cdp.send('Performance.enable')
+  const perfSnap = async () => {
+    const { metrics } = await cdp.send('Performance.getMetrics')
+    const get = (n) => metrics.find((m) => m.name === n)?.value ?? 0
+    return { script_s: get('ScriptDuration'), layout_count: get('LayoutCount'), style_count: get('RecalcStyleCount') }
+  }
+  await page.locator('button[aria-label^="Open fullscreen player"]').first().tap({ force: true }).catch(async () => {
+    const bar = await page.locator('[aria-label="Audio player"]').boundingBox()
+    if (bar) await page.touchscreen.tap(bar.x + bar.width * 0.4, bar.y + bar.height * 0.5)
+  })
+  await page.waitForTimeout(1200)
+  const sheetOpen = await page.evaluate(() => !!document.querySelector('[role="dialog"][aria-label="Now playing"]'))
+  console.log('sheet open for hold test:', sheetOpen)
+  const HOLD_S = 10
+  const before = await perfSnap()
+  const holdFrames = await recordFrames(page, async () => {}, HOLD_S * 1000)
+  const after = await perfSnap()
+  results.scenarios['nowplaying-hold-playing'] = stats(holdFrames)
+  results.tick_cost_over_hold = {
+    hold_s: HOLD_S,
+    sheet_open: sheetOpen,
+    script_ms: +((after.script_s - before.script_s) * 1000).toFixed(1),
+    layouts: after.layout_count - before.layout_count,
+    style_recalcs: after.style_count - before.style_count,
+  }
+  console.log('nowplaying-hold-playing      ', JSON.stringify(results.scenarios['nowplaying-hold-playing']))
+  console.log('tick cost over hold:', JSON.stringify(results.tick_cost_over_hold))
+  await page.locator('button[aria-label="Close now playing"]').first().tap({ force: true }).catch(async () => {
+    await swipe(cdp, { x: 195, y: 120, dy: 560 })
+  })
+  await page.waitForTimeout(800)
+
+  // 5. Now Playing open + close (sheet animation), 2 cycles.
   await run('nowplaying-open-close', async () => {
     for (let i = 0; i < 2; i++) {
       await page.locator('button[aria-label^="Open fullscreen player"]').first().tap({ force: true }).catch(() => {})
