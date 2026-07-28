@@ -1,5 +1,6 @@
-import { memo, useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, Children, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { IS_NATIVE } from '../lib/platform'
 import { edLabel, isSold, priceLabel, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
@@ -117,6 +118,25 @@ export function ReleaseGrid({ items }: { items: Release[] }) {
     <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((rel) => (
         <ReleaseCard key={rel.id + rel.title} rel={rel} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Rail — on the packaged app, sections lay out as horizontally snapping
+ * rails (the music-app idiom: thumb-friendly, endless-feeling shelves);
+ * on the web they keep the responsive grid. Children are usually
+ * <ReleaseCard>s.
+ */
+export function Rail({ children }: { children: ReactNode }) {
+  if (!IS_NATIVE) {
+    return <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{children}</div>
+  }
+  return (
+    <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {Children.map(children, (c) => (
+        <div className="w-[42vw] max-w-[190px] shrink-0 snap-start">{c}</div>
       ))}
     </div>
   )

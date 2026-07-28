@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
-import { IconArweave, IconEditorial, IconLibrary, IconPublish } from '../components/icons'
+import { Link, useNavigate } from 'react-router-dom'
+import { Rail, ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
+import { IconArweave, IconEditorial, IconHeart, IconLibrary, IconPublish, IconQueue } from '../components/icons'
 import { Banner, Button, EmptyState, GridSkeleton } from '../components/ui'
 import { fetchTopPlays, type TopPlay } from '../lib/plays'
 import { recommendFor } from '../lib/recommend'
 import { fmtDate, type Release } from '../lib/registry'
+import { Cover } from '../components/Cover'
+import { IS_NATIVE } from '../lib/platform'
+import { usePlayer } from '../state/PlayerContext'
 import { useFavorites, useHistoryLog } from '../state/collections'
 import { useNewFromFollowed } from '../state/follows'
 import { useRegistry } from '../state/RegistryContext'
@@ -39,11 +42,11 @@ function Trending() {
         <h2 className="text-xl font-semibold">Trending this week</h2>
         <span className="text-[13px] text-faint">Most played across the registry</span>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <Rail>
         {rows.map((x) => (
           <ReleaseCard key={x.rel.id} rel={x.rel} note={`${x.plays} play${x.plays === 1 ? '' : 's'} this week`} />
         ))}
-      </div>
+      </Rail>
     </section>
   )
 }
@@ -67,11 +70,11 @@ function NewFromFollowed() {
           Mark all seen
         </button>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <Rail>
         {fresh.slice(0, 5).map((r) => (
           <ReleaseCard key={r.id} rel={r} note={fmtDate(r.date) ?? undefined} />
         ))}
-      </div>
+      </Rail>
     </section>
   )
 }
@@ -89,11 +92,11 @@ function MadeForYou() {
         <h2 className="text-xl font-semibold">Made for you</h2>
         <span className="text-[13px] text-faint">From your plays &amp; favorites — kept on this device</span>
       </div>
-      <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+      <Rail>
         {recs.map((r) => (
           <ReleaseCard key={r.rel.id} rel={r.rel} note={r.reason} />
         ))}
-      </div>
+      </Rail>
     </section>
   )
 }
@@ -147,12 +150,68 @@ function EditorialStrip({ articles }: { articles: Release[] }) {
   )
 }
 
+
+// ── native Home lead (packaged app only) ────────────────────────────────────
+// Time-of-day greeting + a Spotify-style shortcut grid: the fastest possible
+// route back into yesterday's session (habit anchor: open app → one tap →
+// sound). Recents come from the local history log; Favorites/Playlists tiles
+// keep the collection one tap away (endowment effect: "my stuff" up front).
+
+function ShortcutTile({ onClick, cover, icon, label }: { onClick: () => void; cover?: Release; icon?: React.ReactNode; label: string }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex h-14 cursor-pointer items-center gap-3 overflow-hidden rounded-btn bg-raised text-left transition-transform active:scale-[0.98]"
+    >
+      <div className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden bg-overlay text-muted">
+        {cover ? <Cover rel={cover} /> : icon}
+      </div>
+      <span className="min-w-0 flex-1 truncate pr-2 text-[13px] font-semibold leading-tight text-ink">{label}</span>
+    </button>
+  )
+}
+
+function NativeHomeLead() {
+  const { music } = useRegistry()
+  const { ids: histIds } = useHistoryLog()
+  const { play } = usePlayer()
+  const navigate = useNavigate()
+  const hour = new Date().getHours()
+  const greet = hour < 5 ? 'Up late?' : hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening'
+
+  const recents = useMemo(() => {
+    const byId = new Map(music.map((r) => [r.id, r]))
+    const out: Release[] = []
+    for (const id of histIds) {
+      const r = byId.get(id)
+      if (r && !out.some((x) => x.id === r.id)) out.push(r)
+      if (out.length === 4) break
+    }
+    return out
+  }, [histIds, music])
+
+  return (
+    <section aria-label="Quick picks" className="mb-8">
+      <h1 className="font-display text-[26px] font-bold text-ink">{greet}</h1>
+      <div className="mt-4 grid grid-cols-2 gap-2.5">
+        {recents.map((r) => (
+          <ShortcutTile key={r.id} cover={r} label={r.title} onClick={() => play(r)} />
+        ))}
+        <ShortcutTile icon={<IconHeart size={22} />} label="Favorites" onClick={() => navigate('/favorites')} />
+        <ShortcutTile icon={<IconQueue size={22} />} label="Playlists" onClick={() => navigate('/playlists')} />
+      </div>
+    </section>
+  )
+}
+
 export default function Home() {
   const { music, editorial, loading } = useRegistry()
 
   return (
     <>
       <SourceBanner />
+
+      {IS_NATIVE && <NativeHomeLead />}
 
       {/* hero: expose the content, don't advertise it (FRICT-01) — hero only when empty */}
       {!loading && music.length === 0 ? (
@@ -182,12 +241,26 @@ export default function Home() {
       ) : (
         <section>
           <div className="mb-5 flex items-baseline justify-between">
-            <h1 className="text-[28px] font-semibold sm:text-[32px]">New on the registry</h1>
+            {IS_NATIVE ? (
+              <h2 className="text-xl font-semibold">New on the registry</h2>
+            ) : (
+              <h1 className="text-[28px] font-semibold sm:text-[32px]">New on the registry</h1>
+            )}
             <Link to="/library" className="hidden text-[13px] text-muted hover:text-accent sm:block">
               Full library →
             </Link>
           </div>
-          {loading ? <GridSkeleton count={10} /> : <ReleaseGrid items={music.slice(0, 15)} />}
+          {loading ? (
+            <GridSkeleton count={10} />
+          ) : IS_NATIVE ? (
+            <Rail>
+              {music.slice(0, 12).map((rel) => (
+                <ReleaseCard key={rel.id + rel.title} rel={rel} />
+              ))}
+            </Rail>
+          ) : (
+            <ReleaseGrid items={music.slice(0, 15)} />
+          )}
         </section>
       )}
 
