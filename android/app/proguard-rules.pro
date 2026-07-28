@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# @capacitor/filesystem (Kotlin coroutines): the plugin is compiled against a
+# newer kotlin-stdlib that has SpillingKt; it's absent at app compile time but
+# never needed at runtime on our paths. R8-generated rule (missing_rules.txt).
+-dontwarn kotlin.coroutines.jvm.internal.SpillingKt

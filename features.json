@@ -448,8 +448,8 @@
       "id": "F60",
       "name": "v4 signed release APK",
       "description": "versionCode 4 / 4.0.0, owner keystore fingerprint re-verified before signing, apksigner + aapt2 verified.",
-      "passes": false,
-      "evidence": "Pending this session's build."
+      "passes": true,
+      "evidence": "assembleRelease BUILD SUCCESSFUL (R8 dontwarn rule for capacitor-filesystem SpillingKt); apksigner signer SHA-256 0be20d5d...d007 == owner keystore (keytool re-verified pre-build); aapt2: versionCode 4 versionName 4.0.0 label Fontainor."
     }
   ]
 }
