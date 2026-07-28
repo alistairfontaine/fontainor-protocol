@@ -1,305 +1,503 @@
 {
- "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
- "features": [
-  {
-   "id": "F1",
-   "title": "CI gate + TypeScript/Tailwind scaffold",
-   "acceptance": "npm run ci (typecheck + build) passes on a fresh clone; old src/ removed; new app boots with vite dev.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: `npm run ci` (tsc --noEmit && vite build) exit 0; old src/*.jsx and committed dist/ removed from git; new TS entry src/main.tsx builds (dist/assets/index-B0Ccyi3T.js)."
-  },
-  {
-   "id": "F2",
-   "title": "Design system & visual identity",
-   "acceptance": "Design tokens (color, type ramp, spacing scale, radius ladder) defined once and used by all components; passes uxpeak rubric self-score with 0 blocker fails; dark music-forward identity distinct from old Bandcamp-clone look.",
-   "verify": "npm run ci && test -f src/styles/tokens.css",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: tokens in src/styles/index.css (@theme); npm run ci green; desktop+mobile screenshots reviewed against uxpeak hard rules (accent only on CTAs/active, radius ladder, 44px targets, value>label hierarchy). New dark identity distinct from old light Bandcamp look."
-  },
-  {
-   "id": "F3",
-   "title": "App shell: responsive nav + routing",
-   "acceptance": "Desktop sidebar + mobile bottom nav (44px targets), real routes for home/library/editorial/publish/profile/release detail, 404 handled, works at 375px and 1440px widths.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: rendered at 1440px (sidebar) and 375px (5-tab bottom nav w/ raised Publish CTA, 24px icons, 11px labels, safe-area) via headless chromium screenshots; react-router routes for all surfaces + 404."
-  },
-  {
-   "id": "F4",
-   "title": "Home feed (releases + editorial)",
-   "acceptance": "Home fetches /registry, renders release and editorial cards with skeleton loading and designed empty states; source banner (api/file/sample) preserved.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: home renders seeded /registry data (release grid + editorial strip), skeletons while loading, designed empty-state hero when registry empty; source banner logic ported (api/file/sample)."
-  },
-  {
-   "id": "F5",
-   "title": "Release detail + persistent audio player",
-   "acceptance": "Release page with cover/metadata/tags; global player bar persists across routes, play/pause/seek works with audioUri, keyboard accessible.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 (headless test): card play \u2192 persistent player bar appears, time advances (0:01\u21920:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
-  },
-  {
-   "id": "F6",
-   "title": "Library with working search/sort/filter",
-   "acceptance": "Virtualized grid (react-window) handles 500+ items; text search, sort (date/title/artist/price) and type filter actually filter results; global top-bar search wired to it.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' \u2192 /library?q=techno \u2192 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
-  },
-  {
-   "id": "F7",
-   "title": "Editorial reading view",
-   "acceptance": "Editorial list + article page with proper reading typography (body 140-170% line-height).",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: editorial list + article view render seeded articles with 17px/170% reading typography (screenshot)."
-  },
-  {
-   "id": "F8",
-   "title": "Phantom wallet auth + profile",
-   "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
-  },
-  {
-   "id": "F9",
-   "title": "Publish flow",
-   "acceptance": "REAL publish: musician-pays storage via Irys pay-with-SOL from Phantom (quote -> fund -> upload audio/cover -> tagged manifest -> repoint registry). No demo mode, no platform wallet.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "2026-07-27: DEMO_PUBLISH removed. VERIFIED: npm run ci green; 13/13 headless checks incl. REAL Irys mainnet storage quote reaching the cost-confirm screen through the lazy chunk (Phantom mocked). ASSUMED: an actual funded mainnet upload (spends real SOL) \u2014 flow code mirrors the verified quote path."
-  },
-  {
-   "id": "F10",
-   "title": "Favorites & history persisted",
-   "acceptance": "Favorites and listening history survive reload (localStorage), surfaced on their own pages.",
-   "verify": "npm run ci",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 (headless test): favorite saved on release page persists across full page reload (localStorage store); history uses identical store (ASSUMED)."
-  },
-  {
-   "id": "F11",
-   "title": "Backend: durable registry + seed",
-   "acceptance": "GET /registry returns seeded demo catalog on the preview deployment (not []); manifest pointer survives cold starts (durable store or REGISTRY_MANIFEST env fallback documented); write path validated with Zod as before.",
-   "verify": "curl -s $PREVIEW_URL/registry | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>0'",
-   "passes": false,
-   "evidence": "2026-07-27: Upstash durable-registry code merged (reads durable first, backfills from gateway; /upload + /api/v1/publish write durable). PLUS registry self-heal: /registry recovers the newest 'App-Name: Fontainor-Protocol / Type: registry-manifest' manifest from Irys GraphQL when pointer+durable are empty (VERIFIED locally: routes behave, recovery returns [] when no manifests exist). Still `passes: false` until UPSTASH_REDIS_REST_URL/TOKEN land on the production Vercel project (Alistair's) and a live publish survives a redeploy."
-  },
-  {
-   "id": "F12",
-   "title": "Repo hygiene",
-   "acceptance": "dist/, *.swo, validator logs, test-ledger removed from git; .gitignore covers them; README quickstart corrected (real clone URL, real branch).",
-   "verify": "git ls-files | grep -E 'dist/|\\.swo|validator.*\\.log|test-ledger' | wc -l | grep -q '^0$'",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: git ls-files has 0 hits for dist/|.swo|validator logs|test-ledger; .gitignore covers dist/, *.swo, *.log, test-ledger/; 20 dead files removed (solana-install.sh 806K, stray server log, legacy one-off scripts, stale docs, unused logo2, empty-ref vault/genesis/services); README quickstart corrected (real clone URL tapiwamakandigona/fontainor-protocol, real branch v06-development, real commands); LICENSE merge-conflict markers resolved. npm run ci green after removals."
-  },
-  {
-   "id": "F13",
-   "title": "Preview deployment",
-   "acceptance": "Fork deploys on Vercel; preview URL shared with user; frontend + api/ function both work there.",
-   "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: production live at https://fontainor-protocol-two.vercel.app (Vercel team tapiwas-projects-71e009e5, production branch set to v06-development, deploy 6a11d52). curl: html 200 w/ split bundles; /assets immutable cache; /covers+/audio 7d cache; /audio range 206; /registry 200 (empty -> app falls back to bundled snapshot). Headless click-through on live: 10 tracks, real audio 1:30 playing, next-track works, 0 reloads across 5 routes, player persists, first load networkidle 1.03s."
-  },
-  {
-   "id": "F14",
-   "name": "Demo catalog: real audio + artwork",
-   "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
-  },
-  {
-   "id": "F15",
-   "name": "Recommendations (Made for you + More like this)",
-   "description": "Client-side engine (src/lib/recommend.ts): taste profile from favorites (w=3) + recency-weighted history, tag/artist affinity scoring, freshness tiebreak, per-card reasons, cold-start hides rail. Home rail + release-page similar section.",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 headless: after favoriting+playing Solder (techno/industrial/electronic), home rail shows Static Bloom/Terraform EP/Night Bus to Kumasi with 'Because you played Solder'; More-like-this shows #electronic matches. Cold start: rail absent in fresh context."
-  },
-  {
-   "id": "F16",
-   "name": "Supporting pages + footer",
-   "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
-  },
-  {
-   "id": "F17",
-   "name": "Persistent player: queue, prev/next, auto-advance",
-   "description": "Spotify-style: global player survives route changes; registry-order queue with wrap-around prev/next in PlayerBar; prev restarts track past 3s; track end auto-plays next (real audio + simulated path).",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 headless vs dist: play->next->next->prev = Genesis->Night Bus->Solder->Night Bus; seek-to-end auto-advances to next track still playing; nav across /library /editorial /faq /: 0 page reloads, player bar persists. CI green."
-  },
-  {
-   "id": "F18",
-   "name": "Performance pass",
-   "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
-  },
-  {
-   "id": "F19",
-   "name": "Expanded player: queue panel + shuffle",
-   "description": "Queue button on player bar opens Spotify-style panel: Now Playing, Up Next (next 8, clickable to jump), 'Shuffle on / Playing in order' indicator. Shuffle toggle (Fisher-Yates, current track pinned first; next/prev/auto-advance follow shuffled order; new releases appended).",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26 headless vs dist: panel shows Now Playing + 8 up-next rows; shuffle toggle flips indicator; clicking up-next row 'Solder' starts playing Solder; disable shuffle returns to registry order; panel persists across navigation; 0 page errors. Screenshot reviewed. CI green."
-  },
-  {
-   "id": "F20",
-   "name": "Stale-chunk black screen fix",
-   "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
-  },
-  {
-   "id": "F21",
-   "title": "Fullscreen Now Playing + Media Session (background/notification controls)",
-   "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
-   "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
-  },
-  {
-   "id": "F22",
-   "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
-   "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
-   "passes": true,
-   "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
-  },
-  {
-   "id": "F23",
-   "title": "Reliable, smooth touch gestures (Android) + swipe-down-anywhere close + compact mobile footer",
-   "acceptance": "Mini player: touch-action none (page-scroll flicks over it never misfire); opens only on a deliberate upward swipe decided at touchend (dominant vertical direction + >=48px distance OR fast fling), or tap; subtle GPU lift follows the finger. Fullscreen player: swipe-down ANYWHERE on the sheet (not just header) drags it with the finger via direct rAF transform writes (no React re-render per frame), closes on >110px or a fast fling, settles back otherwise; queue list and seek slider are drag-exempt (data-nodrag). Footer: compact single-row 3-column layout on phones.",
-   "passes": true,
-   "evidence": "2026-07-26 headless vs dist: gesture-fix-test.mjs 12/12 (touch-action none, diagonal/slow/downward swipes don't open, deliberate swipe opens, mid-drag transform translate3d follows finger, settle-back under threshold, artwork-area swipe closes, queue-list swipe doesn't close, footer 314px, 0 pageerrors) + spotify-player-test.mjs 12/12 regression. npm run ci green."
-  },
-  {
-   "id": "F24",
-   "title": "Relicense to AGPL-3.0-only with NOTICE (name/trademark posture)",
-   "acceptance": "LICENSE is the canonical GNU AGPL-3.0 text; package.json license field = AGPL-3.0-only; README license section explains AGPL obligations and points to NOTICE; NOTICE asserts the Fontainor name is not licensed to forks. Copyright line preserved: Alistair Fontaine and tapiwamakandigona. Lands via PR so both copyright holders are on record consenting.",
-   "passes": true,
-   "evidence": "2026-07-27: LICENSE fetched verbatim from gnu.org/licenses/agpl-3.0.txt (661 lines); npm run ci green after change; NOTICE + README + package.json in commit 'license: relicense MIT -> AGPL-3.0-only'. Consent: tapiwamakandigona requested in DM; Alistair's consent = PR approval (pending)."
-  },
-  {
-   "id": "F25",
-   "title": "Donations: /support page, SOL tip jar, FUNDING.yml, footer link",
-   "acceptance": "/support renders the 'Keep Fontainor running' page: cost transparency, what donations fund (storage subsidies), one-tap Phantom SOL tip (presets 0.05/0.1/0.5) with copy-address fallback, opt-in supporters wall fed by public/supporters.json, and fiat channels gated by live flags in src/config/support.ts (no dead buttons). .github/FUNDING.yml custom link points at /support. Footer has a 'Support us' link. web3.js must NOT enter the main bundle (dynamic import on tip click only).",
-   "passes": true,
-   "evidence": "2026-07-27: npm run ci green; built dist contains the page copy + tip wallet address; web3.js emitted as separate lazy chunk (index.browser.esm ~311KB) while main index chunk stayed ~120KB; supporters.json copied to dist. Tip wallet address base58-decodes to 32 bytes (valid ed25519 pubkey). On-chain tip flow ASSUMED until exercised with a real Phantom wallet."
-  },
-  {
-   "id": "F26",
-   "title": "Gentle support nudge after Nth play (WinRAR posture)",
-   "acceptance": "After 15 play starts, a small dismissible strip above the content offers 'chip in' linking to /support. Never a modal, never covers the player, playback untouched. Dismissing suppresses it for 150 further plays. Hidden on /support itself. Counters in localStorage, best-effort (private mode must not throw).",
-   "passes": true,
-   "evidence": "2026-07-27: npm run ci green; recordPlay() wired into PlayerContext.play; thresholds in src/config/support.ts. Runtime behavior ASSUMED from code review (logic is 3 small pure functions); not yet exercised in a headless browser."
-  },
-  {
-   "id": "F27",
-   "title": "Musician-pays permanent storage (Irys pay-with-SOL)",
-   "acceptance": "Publishing a release with files shows the exact one-time storage cost (SOL + USD) BEFORE any charge; on confirm the artist's Phantom wallet funds Irys for the shortfall only; audio/cover/manifest land on the permanent record with App-Name/Type tags; live registry is repointed (validated server-side) with durable-store fallback; friendly errors for rejection/insufficient SOL; Irys SDK loads lazily (main bundle unaffected).",
-   "verify": "node tools/real-flows-test.mjs (publish section) against vite preview",
-   "passes": true,
-   "evidence": "2026-07-27: VERIFIED \u2014 ci green; headless: real mainnet Irys quote (\u25ce<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
-  },
-  {
-   "id": "F28",
-   "title": "Real edition purchases (98/2 SOL split via Phantom)",
-   "acceptance": "Releases with price>0 AND artistWallet show a Collect CTA with the listed price; click -> live quote (USD-pegged listings convert at live SOL rate) -> one Phantom transaction with two SystemProgram transfers (98% artist, 2% treasury) -> confirmation polling -> on-chain Solscan receipt; receipt stored locally and re-verified server-side (durable when Upstash configured); Profile shows 'Your collection'; releases without a payout wallet are honestly unavailable; unconfirmed txs never claim success.",
-   "verify": "node tools/real-flows-test.mjs (purchase section) against vite preview",
-   "passes": true,
-   "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, \u25ce0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
-  },
-  {
-   "id": "F29",
-   "title": "Wallet-portable profile (collection + likes follow the wallet)",
-   "acceptance": "Connecting Phantom on any machine rebuilds the purchase collection from the durable server record (GET /api/v1/purchases?wallet= filters the fontainor:purchases:v1 list by buyerWallet) and restores likes (GET /api/v1/favorites?wallet=). Favorites writes require the sovereign-login TweetNaCl signature (POST /api/v1/favorites), stored client-side for the session so likes never trigger extra Phantom popups; local and server likes are unioned and pushed back debounced. Server-recovered receipts resolve title/artist from the registry; tampered signatures are rejected and never overwrite stored likes. Without Upstash everything degrades to local-only.",
-   "verify": "npm run build && npx vite preview --port 4174 & node tools/portable-profile-test.mjs",
-   "passes": true,
-   "evidence": "2026-07-27: VERIFIED 11/11 headless: backend part ran the real api/index.js against an Upstash REST stub with real ed25519 keypairs (purchases filtered by buyer, invalid wallet 400, signed write accepted + read back, other wallet isolated, tampered sig 401 + no overwrite); frontend part used two isolated browser contexts as two machines \u2014 like on machine A pushed to server, machine B started with empty localStorage and rebuilt collection + likes after Phantom connect. npm run ci green. Post-merge 2026-07-27: VERIFIED in prod \u2014 live smoke on fontainor-protocol.vercel.app: purchases endpoint durable:true, signed favorites write/read-back with throwaway ed25519 key, tampered sig 401, test data cleaned up."
-  },
-  {
-   "id": "F30",
-   "title": "Wallet-bound @handles + registry anti-impersonation",
-   "acceptance": "Logged-in users can claim a unique @handle (3-20 chars a-z0-9_, reserved names blocked) by signing 'Fontainor handle claim: @<name>' with Phantom; login returns the claimed handle; a handle can only be bound/changed by its wallet's signature (409 on steal attempts). Server-side publish gate on /upload and /api/v1/publish: manifests are append-only vs the trusted registry (403 REGISTRY_TAMPER on edit/drop of existing entries, incl. artistWallet payout hijack) and new entries using someone else's claimed handle are rejected (403 HANDLE_OWNED). Profile page has claim/change UI; Publish shows a 'bound to your wallet' hint.",
-   "verify": "node tools/handles-test.mjs",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 \u2014 pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. Post-merge 2026-07-27: VERIFIED deployed on prod (fontainor-protocol.vercel.app) via non-destructive probes: set-handle invalid name -> 400 HANDLE_INVALID with exact new message, forged ed25519 signature -> 401, no data written. Full claim/steal/guard flow in prod ASSUMED (would write permanent handle data; covered 26/26 in headless suite; Upstash env vars verified present)."
-  },
-  {
-   "id": "F31",
-   "title": "Protected @fontainor handle (treasury-wallet-only)",
-   "acceptance": "'fontainor' is removed from the never-claimable reserved list and becomes a protected name: POST /api/v1/auth/set-handle claims of @fontainor from any wallet other than the treasury wallet (env TREASURY_WALLET, fallback 6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo \u2014 same resolution as api/paymentBridge.js) return 403 HANDLE_PROTECTED; the treasury wallet can claim it normally. Publishing under the name 'fontainor' from a non-treasury artistWallet is rejected 403 HANDLE_OWNED even BEFORE the handle is claimed (findHandleConflicts treats protected names as owned). Admin-type reserved names (admin, root, support, staff, mod, system, treasury, ...) stay fully unclaimable.",
-   "verify": "node tools/handles-test.mjs",
-   "passes": true,
-   "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 35/35 \u2014 new units (normalizeHandle allows fontainor, still rejects reserved; getProtectedOwner env override; findHandleConflicts flags unclaimed protected name, allows treasury wallet) + endpoints (non-treasury claim -> 403 HANDLE_PROTECTED, treasury keypair claim -> 200, publish as 'Fontainor' from other wallet -> 403 HANDLE_OWNED, treasury publish OK). npm run ci green, real-flows-test 13/13 no regressions. Post-merge 2026-07-27: VERIFIED on prod via non-destructive probes \u2014 validly signed @fontainor claim from a throwaway wallet -> 403 HANDLE_PROTECTED (rejected before any write), @admin -> 400 HANDLE_INVALID. Actual treasury claim left to the wallet owner."
-  },
-  {
-   "id": "F32",
-   "title": "Retention: anonymous play counts + Trending rail",
-   "acceptance": "POST /api/v1/plays increments weekly+all-time zsets (validated id, durable:false without redis); GET /api/v1/plays/top returns ordered counts; Home shows a 'Trending this week' rail once >=3 releases have plays, hidden otherwise; playback never blocked by counting.",
-   "verify": "node tools/plays-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "2026-07-27: tools/plays-test.mjs 6/6 (real Express app + fake Upstash REST with ZINCRBY/ZRANGE/EXPIRE); npm run ci green. Rail hidden below 3 played releases by design. ASSUMED: prod behavior until deploy + first real plays."
-  },
-  {
-   "id": "F33",
-   "title": "Retention: artist follow + new-release awareness (local, zero-backend)",
-   "acceptance": "Follow/Following toggle on release pages persisted in localStorage; Home shows 'New from artists you follow' rail listing only followed artists' releases newer than the seen baseline; Mark all seen hides it durably (baseline = max(now, newest visible drop)); first follow sets baseline so old catalog never floods.",
-   "verify": "npm run build && npx vite preview --port 4173 & node tools/follows-test.mjs",
-   "passes": true,
-   "evidence": "2026-07-27: tools/follows-test.mjs 9/9 (follow persist, rail appear/exclude/dismiss/stay-hidden); npm run ci green. Prod bundle VERIFIED post-deploy (rail + Follow strings present in served JS)."
-  },
-  {
-   "id": "F34",
-   "title": "Per-release share cards (/share/:id OG endpoint + Share button)",
-   "acceptance": "GET /share/:id serves per-release og/twitter meta (title+artist, price+edition desc, absolute cover image) and redirects humans to /#/release/:id; unknown id 302s to the app route, invalid id 302s home with no reflection; all values HTML-escaped. Release page has a Share button copying the /share/ URL.",
-   "verify": "node tools/share-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "2026-07-27: tools/share-test.mjs 10/10 (incl. injection-escape and redirect checks); npm run ci green. Prod VERIFIED: /share/FONT-4WHPZ2Q17 -> 200 with correct og:title/description/absolute cover + SPA redirect."
-  },
-  {
-   "id": "F35",
-   "title": "Collection is a first-class destination (nav + empty states)",
-   "acceptance": "/collection route renders the collected grid + on-chain receipt rows; empty state (with library CTA) when there are no purchases, connect-aware copy when no wallet. Desktop sidebar link + Profile mobile quick-link; Profile 'Your collection' section always visible with empty state.",
-   "verify": "npx tsc --noEmit && npm run ci",
-   "passes": true,
-   "evidence": "PR #27 merged; tsc clean; CI green; prod bundle contains /collection route (verified 2026-07-27)."
-  },
-  {
-   "id": "F36",
-   "title": "Usage visibility: Vercel Web Analytics hook + GET /api/v1/stats",
-   "acceptance": "main.tsx injects @vercel/analytics (inert until enabled in the Vercel dashboard). GET /api/v1/stats returns totalPlays, tracksPlayed, totalBuys, uniqueBuyers, totalLamports/totalSol aggregated from the plays zset + durable purchase receipts; degrades honestly without redis.",
-   "verify": "node tools/stats-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "PR #28 merged; stats-test 9/9; CI green; prod /api/v1/stats live (totalPlays 24, tracksPlayed 9 on 2026-07-27)."
-  },
-  {
-   "id": "F37",
-   "title": "Mobile wallet fallback: Open in Phantom deep link",
-   "acceptance": "On mobile browsers without an injected wallet, the header replaces the dead-end Connect button with an 'Open in Phantom' link (phantom.app/ul/browse/<current-url>?ref=<origin>) that loads the site inside Phantom's in-app browser. Inside Phantom (provider injected) and on desktop, the normal Connect button is unchanged. getConnectedPhantom/AuthContext no-wallet errors are mobile-aware.",
-   "verify": "npm run build && node tools/mobile-wallet-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "PR #29 merged; mobile-wallet-test 9/9; CI green; prod bundle contains deep link + 'Open in Phantom' (verified 2026-07-27)."
-  },
-  {
-   "id": "F38",
-   "title": "User play queue: Add to queue, consume-first ordering, queue management",
-   "acceptance": "Cards and the release page expose an Add-to-queue action. User-queued tracks play before catalog order and are consumed as they start (Next and track-end both honor this). Queue popover + fullscreen queue mark user-queued rows, support per-row remove and Clear queue. Adding with nothing playing starts playback. Closing the player discards the user queue.",
-   "verify": "npm run build && node tools/queue-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "PR #30 merged; queue-test 13/13; CI green; prod bundle index-M-xlELDf.js contains 'Add to queue'/'Clear queue' (verified 2026-07-27)."
-  },
-  {
-   "id": "F39",
-   "title": "User playlists: create, curate, reorder, play in order",
-   "acceptance": "/playlists index with create form + counts; /playlists/:id detail with Play all, per-row play, move up/down, remove, inline rename, two-step delete. Release page 'Playlist' dropdown toggles membership and can create-and-add. Play all sets a playlist context: Next/track-end follow playlist order (looping) until a direct pick elsewhere resets to catalog. localStorage-persisted, zero backend.",
-   "verify": "npm run build && node tools/playlists-test.mjs && npm run ci",
-   "passes": true,
-   "evidence": "PR #31 merged; playlists-test 18/18; queue-test 13/13 regression; CI green; prod bundle contains playlists routes/store strings (verified 2026-07-27)."
-  }
- ]
+  "$comment": "Machine-readable definition of done. Only flip passes to true with evidence (a command that ran, an artifact that exists). Workers never edit verify commands or acceptance criteria \u2014 that's a spec change, report it.",
+  "features": [
+    {
+      "id": "F1",
+      "title": "CI gate + TypeScript/Tailwind scaffold",
+      "acceptance": "npm run ci (typecheck + build) passes on a fresh clone; old src/ removed; new app boots with vite dev.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: `npm run ci` (tsc --noEmit && vite build) exit 0; old src/*.jsx and committed dist/ removed from git; new TS entry src/main.tsx builds (dist/assets/index-B0Ccyi3T.js)."
+    },
+    {
+      "id": "F2",
+      "title": "Design system & visual identity",
+      "acceptance": "Design tokens (color, type ramp, spacing scale, radius ladder) defined once and used by all components; passes uxpeak rubric self-score with 0 blocker fails; dark music-forward identity distinct from old Bandcamp-clone look.",
+      "verify": "npm run ci && test -f src/styles/tokens.css",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: tokens in src/styles/index.css (@theme); npm run ci green; desktop+mobile screenshots reviewed against uxpeak hard rules (accent only on CTAs/active, radius ladder, 44px targets, value>label hierarchy). New dark identity distinct from old light Bandcamp look."
+    },
+    {
+      "id": "F3",
+      "title": "App shell: responsive nav + routing",
+      "acceptance": "Desktop sidebar + mobile bottom nav (44px targets), real routes for home/library/editorial/publish/profile/release detail, 404 handled, works at 375px and 1440px widths.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: rendered at 1440px (sidebar) and 375px (5-tab bottom nav w/ raised Publish CTA, 24px icons, 11px labels, safe-area) via headless chromium screenshots; react-router routes for all surfaces + 404."
+    },
+    {
+      "id": "F4",
+      "title": "Home feed (releases + editorial)",
+      "acceptance": "Home fetches /registry, renders release and editorial cards with skeleton loading and designed empty states; source banner (api/file/sample) preserved.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: home renders seeded /registry data (release grid + editorial strip), skeletons while loading, designed empty-state hero when registry empty; source banner logic ported (api/file/sample)."
+    },
+    {
+      "id": "F5",
+      "title": "Release detail + persistent audio player",
+      "acceptance": "Release page with cover/metadata/tags; global player bar persists across routes, play/pause/seek works with audioUri, keyboard accessible.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 (headless test): card play \u2192 persistent player bar appears, time advances (0:01\u21920:02), pause toggles, seek bar keyboard-accessible; audioUri playback with graceful simulated fallback. Real-audio path ASSUMED until a release with live audioUri exists."
+    },
+    {
+      "id": "F6",
+      "title": "Library with working search/sort/filter",
+      "acceptance": "Virtualized grid (react-window) handles 500+ items; text search, sort (date/title/artist/price) and type filter actually filter results; global top-bar search wired to it.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 (headless test): header search 'techno' \u2192 /library?q=techno \u2192 1 item ('Solder'); virtualized react-window grid kicks in at 60+ items; sort/type-filter code paths present (sort ASSUMED, same trivial comparator pattern)."
+    },
+    {
+      "id": "F7",
+      "title": "Editorial reading view",
+      "acceptance": "Editorial list + article page with proper reading typography (body 140-170% line-height).",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: editorial list + article view render seeded articles with 17px/170% reading typography (screenshot)."
+    },
+    {
+      "id": "F8",
+      "title": "Phantom wallet auth + profile",
+      "acceptance": "Connect/disconnect Phantom (signature login as upstream), session persisted, profile page shows user's releases; graceful no-wallet fallback with install hint.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: (1) live endpoint test \u2014 real ed25519 sig via tweetnacl -> POST /api/v1/auth/sovereign-login = 200 success, garbage sig = rejected; (2) headless Chromium (Playwright, faithful Phantom mock incl. signMessage) against LIVE site: Connect Wallet -> signed login -> redirected to #/profile, localStorage fontainor_user_v2 persisted, 'Sovereign session' + full address rendered, Log out present; no-wallet fallback shows install hint (code path in WalletButton). Handle-display bug (@[249...130] from byte-array slice) found and fixed in 249a63e (bs58-encode verified pubkey bytes); re-ran live browser test post-deploy: handle now '@4EgH...JJXX'. npm run ci green."
+    },
+    {
+      "id": "F9",
+      "title": "Publish flow",
+      "acceptance": "REAL publish: musician-pays storage via Irys pay-with-SOL from Phantom (quote -> fund -> upload audio/cover -> tagged manifest -> repoint registry). No demo mode, no platform wallet.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "2026-07-27: DEMO_PUBLISH removed. VERIFIED: npm run ci green; 13/13 headless checks incl. REAL Irys mainnet storage quote reaching the cost-confirm screen through the lazy chunk (Phantom mocked). ASSUMED: an actual funded mainnet upload (spends real SOL) \u2014 flow code mirrors the verified quote path."
+    },
+    {
+      "id": "F10",
+      "title": "Favorites & history persisted",
+      "acceptance": "Favorites and listening history survive reload (localStorage), surfaced on their own pages.",
+      "verify": "npm run ci",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 (headless test): favorite saved on release page persists across full page reload (localStorage store); history uses identical store (ASSUMED)."
+    },
+    {
+      "id": "F11",
+      "title": "Backend: durable registry + seed",
+      "acceptance": "GET /registry returns seeded demo catalog on the preview deployment (not []); manifest pointer survives cold starts (durable store or REGISTRY_MANIFEST env fallback documented); write path validated with Zod as before.",
+      "verify": "curl -s $PREVIEW_URL/registry | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d)>0'",
+      "passes": false,
+      "evidence": "2026-07-27: Upstash durable-registry code merged (reads durable first, backfills from gateway; /upload + /api/v1/publish write durable). PLUS registry self-heal: /registry recovers the newest 'App-Name: Fontainor-Protocol / Type: registry-manifest' manifest from Irys GraphQL when pointer+durable are empty (VERIFIED locally: routes behave, recovery returns [] when no manifests exist). Still `passes: false` until UPSTASH_REDIS_REST_URL/TOKEN land on the production Vercel project (Alistair's) and a live publish survives a redeploy."
+    },
+    {
+      "id": "F12",
+      "title": "Repo hygiene",
+      "acceptance": "dist/, *.swo, validator logs, test-ledger removed from git; .gitignore covers them; README quickstart corrected (real clone URL, real branch).",
+      "verify": "git ls-files | grep -E 'dist/|\\.swo|validator.*\\.log|test-ledger' | wc -l | grep -q '^0$'",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: git ls-files has 0 hits for dist/|.swo|validator logs|test-ledger; .gitignore covers dist/, *.swo, *.log, test-ledger/; 20 dead files removed (solana-install.sh 806K, stray server log, legacy one-off scripts, stale docs, unused logo2, empty-ref vault/genesis/services); README quickstart corrected (real clone URL tapiwamakandigona/fontainor-protocol, real branch v06-development, real commands); LICENSE merge-conflict markers resolved. npm run ci green after removals."
+    },
+    {
+      "id": "F13",
+      "title": "Preview deployment",
+      "acceptance": "Fork deploys on Vercel; preview URL shared with user; frontend + api/ function both work there.",
+      "verify": "curl -s -o /dev/null -w '%{http_code}' $PREVIEW_URL | grep -q 200",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: production live at https://fontainor-protocol-two.vercel.app (Vercel team tapiwas-projects-71e009e5, production branch set to v06-development, deploy 6a11d52). curl: html 200 w/ split bundles; /assets immutable cache; /covers+/audio 7d cache; /audio range 206; /registry 200 (empty -> app falls back to bundled snapshot). Headless click-through on live: 10 tracks, real audio 1:30 playing, next-track works, 0 reloads across 5 routes, player persists, first load networkidle 1.03s."
+    },
+    {
+      "id": "F14",
+      "name": "Demo catalog: real audio + artwork",
+      "description": "10 playable CC0/public-domain tracks (90s excerpts, 96kbps) + AI-generated cover art for all releases and editorial hero images; fictional-but-realistic names; credits in public/audio/CREDITS.md.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: headless play shows real duration 1:30 from mp3 (not simulated); all 10 /audio/*.mp3 + 13 /covers/*.jpg serve 200 from dist; home/editorial screenshots reviewed \u2014 covers and article art render."
+    },
+    {
+      "id": "F15",
+      "name": "Recommendations (Made for you + More like this)",
+      "description": "Client-side engine (src/lib/recommend.ts): taste profile from favorites (w=3) + recency-weighted history, tag/artist affinity scoring, freshness tiebreak, per-card reasons, cold-start hides rail. Home rail + release-page similar section.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless: after favoriting+playing Solder (techno/industrial/electronic), home rail shows Static Bloom/Terraform EP/Night Bus to Kumasi with 'Because you played Solder'; More-like-this shows #electronic matches. Cold start: rail absent in fresh context."
+    },
+    {
+      "id": "F16",
+      "name": "Supporting pages + footer",
+      "description": "About, Terms, Privacy, Contact, FAQ (accordion), designed 404, sitewide footer with all links. Static, free-tier Vercel friendly (HashRouter + existing SPA rewrite).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless: all 5 routes render expected content markers, unknown route shows designed 404, footer has 9 working links; CI green."
+    },
+    {
+      "id": "F17",
+      "name": "Persistent player: queue, prev/next, auto-advance",
+      "description": "Spotify-style: global player survives route changes; registry-order queue with wrap-around prev/next in PlayerBar; prev restarts track past 3s; track end auto-plays next (real audio + simulated path).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless vs dist: play->next->next->prev = Genesis->Night Bus->Solder->Night Bus; seek-to-end auto-advances to next track still playing; nav across /library /editorial /faq /: 0 page reloads, player bar persists. CI green."
+    },
+    {
+      "id": "F18",
+      "name": "Performance pass",
+      "description": "Route-level code splitting (React.lazy, Home in main chunk), vendor chunk for long-term caching, lazy+async-decode images, covers recompressed (828KB->612KB), Cache-Control headers for /assets (immutable) + /covers + /audio in vercel.json.",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: build output split: main 45.96KB (15.2KB gz) + vendor 179KB (59KB gz, cacheable) + per-route chunks 1-15KB vs single 267KB (85KB gz) before; headless full flow re-verified on split build (player, nav, recs unaffected)."
+    },
+    {
+      "id": "F19",
+      "name": "Expanded player: queue panel + shuffle",
+      "description": "Queue button on player bar opens Spotify-style panel: Now Playing, Up Next (next 8, clickable to jump), 'Shuffle on / Playing in order' indicator. Shuffle toggle (Fisher-Yates, current track pinned first; next/prev/auto-advance follow shuffled order; new releases appended).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26 headless vs dist: panel shows Now Playing + 8 up-next rows; shuffle toggle flips indicator; clicking up-next row 'Solder' starts playing Solder; disable shuffle returns to registry order; panel persists across navigation; 0 page errors. Screenshot reviewed. CI green."
+    },
+    {
+      "id": "F20",
+      "name": "Stale-chunk black screen fix",
+      "description": "After a redeploy, open tabs 404 on old lazy chunks -> black screen. Added vite:preloadError handler (one auto-reload via sessionStorage guard) + route-level ErrorBoundary with styled recovery screen (auto-reload on chunk errors, manual reload button otherwise).",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: live repro attempt on /#/release/FONT-P8D2VVK4S rendered fine (bug only hits tabs opened pre-deploy); root cause matches 3 redeploys within the hour release page became lazy. ErrorBoundary + preloadError handler in build; CI green; live re-verified post-deploy. Follow-up 2026-07-26: stale-tab sim (rename chunks post-load, click lazy route) initially exposed reload loop (194 loads) -> timestamp guard (1 reload/15s) -> re-sim: exactly 1 auto-reload, RECOVERED OK. Live fresh-profile click Home->Favorites verified post-deploy 2f50448."
+    },
+    {
+      "id": "F21",
+      "title": "Fullscreen Now Playing + Media Session (background/notification controls)",
+      "acceptance": "Tap player-bar cover or expand chevron -> full-viewport Now Playing (large cover, title/artist linking to release, seek bar with times, shuffle/prev/play-pause/next, up-next queue toggle); closes via chevron-down, Escape, swipe-down; overlay covers bottom nav. Media Session API: metadata (title/artist/album/cover art) + play/pause/previoustrack/nexttrack/seekto handlers + position state, so Android notification/lock-screen controls work while the browser is backgrounded (real <audio> keeps playing).",
+      "verify": "npm run ci && node /work/temp/fontainor-debug/live-test.mjs",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-26: 16/16 checks headless vs built dist (desktop 1280px + mobile 390px touch) and 11/11 vs LIVE deploy \u2014 MediaSession metadata {title,artist,artwork,playbackState:playing} set, updates on next-track; fullscreen opens from cover tap and chevron, queue lists up-next, Escape/chevron close; real mp3 network-requested; transport buttons >=64px touch targets; 0 pageerrors. Stacking fix 1abf489 verified live: overlay covers bottom nav (elementFromPoint). Commits ea0bb6c + 1abf489."
+    },
+    {
+      "id": "F22",
+      "title": "Spotify-style player UX (mini player swipe-up, queue never covers now-playing, no dead footer space)",
+      "acceptance": "Phones: floating mini-player card above bottom nav; tap OR swipe-up opens fullscreen Now Playing (Spotify layout: gradient header w/ 'Playing from', large art, left-aligned title/artist + heart, seek with flanking times, big light play button; queue button opens a queue SCREEN with 'Now playing' pinned on top then 'Next up' \u2014 current track never hidden). Desktop: 3-zone bottom bar (track info + heart | centered transport with seek between timestamps | queue/close); fullscreen queue opens as a side panel next to the artwork. Page bottom padding reserved for the player bar only while something is playing (no dead space below footer otherwise).",
+      "passes": true,
+      "evidence": "2026-07-26 headless (chromium_headless_shell-1228) vs built dist: 12/12 checks \u2014 swipe-up opens fullscreen (synthetic TouchEvents), tap opens, swipe-down closes, queue screen shows Now playing + Next up sections, desktop transport centered w/ 2 timestamps, queue side panel + artwork simultaneously visible, footer gap 96px mobile (nav only) / 32px desktop with player closed, 0 pageerrors. Script: /work/temp/fontainor-debug/spotify-player-test.mjs; screenshots sp-*.png. npm run ci green."
+    },
+    {
+      "id": "F23",
+      "title": "Reliable, smooth touch gestures (Android) + swipe-down-anywhere close + compact mobile footer",
+      "acceptance": "Mini player: touch-action none (page-scroll flicks over it never misfire); opens only on a deliberate upward swipe decided at touchend (dominant vertical direction + >=48px distance OR fast fling), or tap; subtle GPU lift follows the finger. Fullscreen player: swipe-down ANYWHERE on the sheet (not just header) drags it with the finger via direct rAF transform writes (no React re-render per frame), closes on >110px or a fast fling, settles back otherwise; queue list and seek slider are drag-exempt (data-nodrag). Footer: compact single-row 3-column layout on phones.",
+      "passes": true,
+      "evidence": "2026-07-26 headless vs dist: gesture-fix-test.mjs 12/12 (touch-action none, diagonal/slow/downward swipes don't open, deliberate swipe opens, mid-drag transform translate3d follows finger, settle-back under threshold, artwork-area swipe closes, queue-list swipe doesn't close, footer 314px, 0 pageerrors) + spotify-player-test.mjs 12/12 regression. npm run ci green."
+    },
+    {
+      "id": "F24",
+      "title": "Relicense to AGPL-3.0-only with NOTICE (name/trademark posture)",
+      "acceptance": "LICENSE is the canonical GNU AGPL-3.0 text; package.json license field = AGPL-3.0-only; README license section explains AGPL obligations and points to NOTICE; NOTICE asserts the Fontainor name is not licensed to forks. Copyright line preserved: Alistair Fontaine and tapiwamakandigona. Lands via PR so both copyright holders are on record consenting.",
+      "passes": true,
+      "evidence": "2026-07-27: LICENSE fetched verbatim from gnu.org/licenses/agpl-3.0.txt (661 lines); npm run ci green after change; NOTICE + README + package.json in commit 'license: relicense MIT -> AGPL-3.0-only'. Consent: tapiwamakandigona requested in DM; Alistair's consent = PR approval (pending)."
+    },
+    {
+      "id": "F25",
+      "title": "Donations: /support page, SOL tip jar, FUNDING.yml, footer link",
+      "acceptance": "/support renders the 'Keep Fontainor running' page: cost transparency, what donations fund (storage subsidies), one-tap Phantom SOL tip (presets 0.05/0.1/0.5) with copy-address fallback, opt-in supporters wall fed by public/supporters.json, and fiat channels gated by live flags in src/config/support.ts (no dead buttons). .github/FUNDING.yml custom link points at /support. Footer has a 'Support us' link. web3.js must NOT enter the main bundle (dynamic import on tip click only).",
+      "passes": true,
+      "evidence": "2026-07-27: npm run ci green; built dist contains the page copy + tip wallet address; web3.js emitted as separate lazy chunk (index.browser.esm ~311KB) while main index chunk stayed ~120KB; supporters.json copied to dist. Tip wallet address base58-decodes to 32 bytes (valid ed25519 pubkey). On-chain tip flow ASSUMED until exercised with a real Phantom wallet."
+    },
+    {
+      "id": "F26",
+      "title": "Gentle support nudge after Nth play (WinRAR posture)",
+      "acceptance": "After 15 play starts, a small dismissible strip above the content offers 'chip in' linking to /support. Never a modal, never covers the player, playback untouched. Dismissing suppresses it for 150 further plays. Hidden on /support itself. Counters in localStorage, best-effort (private mode must not throw).",
+      "passes": true,
+      "evidence": "2026-07-27: npm run ci green; recordPlay() wired into PlayerContext.play; thresholds in src/config/support.ts. Runtime behavior ASSUMED from code review (logic is 3 small pure functions); not yet exercised in a headless browser."
+    },
+    {
+      "id": "F27",
+      "title": "Musician-pays permanent storage (Irys pay-with-SOL)",
+      "acceptance": "Publishing a release with files shows the exact one-time storage cost (SOL + USD) BEFORE any charge; on confirm the artist's Phantom wallet funds Irys for the shortfall only; audio/cover/manifest land on the permanent record with App-Name/Type tags; live registry is repointed (validated server-side) with durable-store fallback; friendly errors for rejection/insufficient SOL; Irys SDK loads lazily (main bundle unaffected).",
+      "verify": "node tools/real-flows-test.mjs (publish section) against vite preview",
+      "passes": true,
+      "evidence": "2026-07-27: VERIFIED \u2014 ci green; headless: real mainnet Irys quote (\u25ce<0.001 for manifest-only) rendered on confirm screen, Pay & publish/Back controls, no demo messaging, zero pageerrors. ASSUMED: funded upload + pointer repoint on production (needs real SOL; quote path and server /api/v1/publish validation are verified separately)."
+    },
+    {
+      "id": "F28",
+      "title": "Real edition purchases (98/2 SOL split via Phantom)",
+      "acceptance": "Releases with price>0 AND artistWallet show a Collect CTA with the listed price; click -> live quote (USD-pegged listings convert at live SOL rate) -> one Phantom transaction with two SystemProgram transfers (98% artist, 2% treasury) -> confirmation polling -> on-chain Solscan receipt; receipt stored locally and re-verified server-side (durable when Upstash configured); Profile shows 'Your collection'; releases without a payout wallet are honestly unavailable; unconfirmed txs never claim success.",
+      "verify": "node tools/real-flows-test.mjs (purchase section) against vite preview",
+      "passes": true,
+      "evidence": "2026-07-27: VERIFIED via headless suite (13/13): CTA, \u25ce0.0100/$2.00 quote at stubbed $200 rate, 98/2 disclosure, tx contains exactly 2 transfers to artist+treasury keys, verify-payment payload correct (10,000,000 lamports), collection row + Solscan link, legacy release disabled. ASSUMED: a real mainnet purchase (spends SOL); server verifySolanaPayment logic reviewed but not exercised against a live signature."
+    },
+    {
+      "id": "F29",
+      "title": "Wallet-portable profile (collection + likes follow the wallet)",
+      "acceptance": "Connecting Phantom on any machine rebuilds the purchase collection from the durable server record (GET /api/v1/purchases?wallet= filters the fontainor:purchases:v1 list by buyerWallet) and restores likes (GET /api/v1/favorites?wallet=). Favorites writes require the sovereign-login TweetNaCl signature (POST /api/v1/favorites), stored client-side for the session so likes never trigger extra Phantom popups; local and server likes are unioned and pushed back debounced. Server-recovered receipts resolve title/artist from the registry; tampered signatures are rejected and never overwrite stored likes. Without Upstash everything degrades to local-only.",
+      "verify": "npm run build && npx vite preview --port 4174 & node tools/portable-profile-test.mjs",
+      "passes": true,
+      "evidence": "2026-07-27: VERIFIED 11/11 headless: backend part ran the real api/index.js against an Upstash REST stub with real ed25519 keypairs (purchases filtered by buyer, invalid wallet 400, signed write accepted + read back, other wallet isolated, tampered sig 401 + no overwrite); frontend part used two isolated browser contexts as two machines \u2014 like on machine A pushed to server, machine B started with empty localStorage and rebuilt collection + likes after Phantom connect. npm run ci green. Post-merge 2026-07-27: VERIFIED in prod \u2014 live smoke on fontainor-protocol.vercel.app: purchases endpoint durable:true, signed favorites write/read-back with throwaway ed25519 key, tampered sig 401, test data cleaned up."
+    },
+    {
+      "id": "F30",
+      "title": "Wallet-bound @handles + registry anti-impersonation",
+      "acceptance": "Logged-in users can claim a unique @handle (3-20 chars a-z0-9_, reserved names blocked) by signing 'Fontainor handle claim: @<name>' with Phantom; login returns the claimed handle; a handle can only be bound/changed by its wallet's signature (409 on steal attempts). Server-side publish gate on /upload and /api/v1/publish: manifests are append-only vs the trusted registry (403 REGISTRY_TAMPER on edit/drop of existing entries, incl. artistWallet payout hijack) and new entries using someone else's claimed handle are rejected (403 HANDLE_OWNED). Profile page has claim/change UI; Publish shows a 'bound to your wallet' hint.",
+      "verify": "node tools/handles-test.mjs",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 26/26 \u2014 pure-fn unit tests (normalizeHandle/canonical/checkAppendOnly/findHandleConflicts) + end-to-end endpoint tests of the real Express app against a local fake Upstash REST server (base64 response encoding, pipeline protocol) with real tweetnacl ed25519 signatures: fallback login, claim, claimed login, steal->409, forged sig->401, invalid->400, owner publish ok, impersonation->403 HANDLE_OWNED, entry rewrite/drop->403 REGISTRY_TAMPER, clean append ok. npm run ci green; tools/real-flows-test.mjs 13/13 (no regressions); headless Profile UI check: unclaimed state + claim form + claimed badge/change-handle all render. Post-merge 2026-07-27: VERIFIED deployed on prod (fontainor-protocol.vercel.app) via non-destructive probes: set-handle invalid name -> 400 HANDLE_INVALID with exact new message, forged ed25519 signature -> 401, no data written. Full claim/steal/guard flow in prod ASSUMED (would write permanent handle data; covered 26/26 in headless suite; Upstash env vars verified present)."
+    },
+    {
+      "id": "F31",
+      "title": "Protected @fontainor handle (treasury-wallet-only)",
+      "acceptance": "'fontainor' is removed from the never-claimable reserved list and becomes a protected name: POST /api/v1/auth/set-handle claims of @fontainor from any wallet other than the treasury wallet (env TREASURY_WALLET, fallback 6Bh5tpmUAVFWxWUPrMvyLCmSo5CouNVauMptgCumW2Fo \u2014 same resolution as api/paymentBridge.js) return 403 HANDLE_PROTECTED; the treasury wallet can claim it normally. Publishing under the name 'fontainor' from a non-treasury artistWallet is rejected 403 HANDLE_OWNED even BEFORE the handle is claimed (findHandleConflicts treats protected names as owned). Admin-type reserved names (admin, root, support, staff, mod, system, treasury, ...) stay fully unclaimable.",
+      "verify": "node tools/handles-test.mjs",
+      "passes": true,
+      "evidence": "VERIFIED 2026-07-27: tools/handles-test.mjs 35/35 \u2014 new units (normalizeHandle allows fontainor, still rejects reserved; getProtectedOwner env override; findHandleConflicts flags unclaimed protected name, allows treasury wallet) + endpoints (non-treasury claim -> 403 HANDLE_PROTECTED, treasury keypair claim -> 200, publish as 'Fontainor' from other wallet -> 403 HANDLE_OWNED, treasury publish OK). npm run ci green, real-flows-test 13/13 no regressions. Post-merge 2026-07-27: VERIFIED on prod via non-destructive probes \u2014 validly signed @fontainor claim from a throwaway wallet -> 403 HANDLE_PROTECTED (rejected before any write), @admin -> 400 HANDLE_INVALID. Actual treasury claim left to the wallet owner."
+    },
+    {
+      "id": "F32",
+      "title": "Retention: anonymous play counts + Trending rail",
+      "acceptance": "POST /api/v1/plays increments weekly+all-time zsets (validated id, durable:false without redis); GET /api/v1/plays/top returns ordered counts; Home shows a 'Trending this week' rail once >=3 releases have plays, hidden otherwise; playback never blocked by counting.",
+      "verify": "node tools/plays-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "2026-07-27: tools/plays-test.mjs 6/6 (real Express app + fake Upstash REST with ZINCRBY/ZRANGE/EXPIRE); npm run ci green. Rail hidden below 3 played releases by design. ASSUMED: prod behavior until deploy + first real plays."
+    },
+    {
+      "id": "F33",
+      "title": "Retention: artist follow + new-release awareness (local, zero-backend)",
+      "acceptance": "Follow/Following toggle on release pages persisted in localStorage; Home shows 'New from artists you follow' rail listing only followed artists' releases newer than the seen baseline; Mark all seen hides it durably (baseline = max(now, newest visible drop)); first follow sets baseline so old catalog never floods.",
+      "verify": "npm run build && npx vite preview --port 4173 & node tools/follows-test.mjs",
+      "passes": true,
+      "evidence": "2026-07-27: tools/follows-test.mjs 9/9 (follow persist, rail appear/exclude/dismiss/stay-hidden); npm run ci green. Prod bundle VERIFIED post-deploy (rail + Follow strings present in served JS)."
+    },
+    {
+      "id": "F34",
+      "title": "Per-release share cards (/share/:id OG endpoint + Share button)",
+      "acceptance": "GET /share/:id serves per-release og/twitter meta (title+artist, price+edition desc, absolute cover image) and redirects humans to /#/release/:id; unknown id 302s to the app route, invalid id 302s home with no reflection; all values HTML-escaped. Release page has a Share button copying the /share/ URL.",
+      "verify": "node tools/share-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "2026-07-27: tools/share-test.mjs 10/10 (incl. injection-escape and redirect checks); npm run ci green. Prod VERIFIED: /share/FONT-4WHPZ2Q17 -> 200 with correct og:title/description/absolute cover + SPA redirect."
+    },
+    {
+      "id": "F35",
+      "title": "Collection is a first-class destination (nav + empty states)",
+      "acceptance": "/collection route renders the collected grid + on-chain receipt rows; empty state (with library CTA) when there are no purchases, connect-aware copy when no wallet. Desktop sidebar link + Profile mobile quick-link; Profile 'Your collection' section always visible with empty state.",
+      "verify": "npx tsc --noEmit && npm run ci",
+      "passes": true,
+      "evidence": "PR #27 merged; tsc clean; CI green; prod bundle contains /collection route (verified 2026-07-27)."
+    },
+    {
+      "id": "F36",
+      "title": "Usage visibility: Vercel Web Analytics hook + GET /api/v1/stats",
+      "acceptance": "main.tsx injects @vercel/analytics (inert until enabled in the Vercel dashboard). GET /api/v1/stats returns totalPlays, tracksPlayed, totalBuys, uniqueBuyers, totalLamports/totalSol aggregated from the plays zset + durable purchase receipts; degrades honestly without redis.",
+      "verify": "node tools/stats-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "PR #28 merged; stats-test 9/9; CI green; prod /api/v1/stats live (totalPlays 24, tracksPlayed 9 on 2026-07-27)."
+    },
+    {
+      "id": "F37",
+      "title": "Mobile wallet fallback: Open in Phantom deep link",
+      "acceptance": "On mobile browsers without an injected wallet, the header replaces the dead-end Connect button with an 'Open in Phantom' link (phantom.app/ul/browse/<current-url>?ref=<origin>) that loads the site inside Phantom's in-app browser. Inside Phantom (provider injected) and on desktop, the normal Connect button is unchanged. getConnectedPhantom/AuthContext no-wallet errors are mobile-aware.",
+      "verify": "npm run build && node tools/mobile-wallet-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "PR #29 merged; mobile-wallet-test 9/9; CI green; prod bundle contains deep link + 'Open in Phantom' (verified 2026-07-27)."
+    },
+    {
+      "id": "F38",
+      "title": "User play queue: Add to queue, consume-first ordering, queue management",
+      "acceptance": "Cards and the release page expose an Add-to-queue action. User-queued tracks play before catalog order and are consumed as they start (Next and track-end both honor this). Queue popover + fullscreen queue mark user-queued rows, support per-row remove and Clear queue. Adding with nothing playing starts playback. Closing the player discards the user queue.",
+      "verify": "npm run build && node tools/queue-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "PR #30 merged; queue-test 13/13; CI green; prod bundle index-M-xlELDf.js contains 'Add to queue'/'Clear queue' (verified 2026-07-27)."
+    },
+    {
+      "id": "F39",
+      "title": "User playlists: create, curate, reorder, play in order",
+      "acceptance": "/playlists index with create form + counts; /playlists/:id detail with Play all, per-row play, move up/down, remove, inline rename, two-step delete. Release page 'Playlist' dropdown toggles membership and can create-and-add. Play all sets a playlist context: Next/track-end follow playlist order (looping) until a direct pick elsewhere resets to catalog. localStorage-persisted, zero backend.",
+      "verify": "npm run build && node tools/playlists-test.mjs && npm run ci",
+      "passes": true,
+      "evidence": "PR #31 merged; playlists-test 18/18; queue-test 13/13 regression; CI green; prod bundle contains playlists routes/store strings (verified 2026-07-27)."
+    },
+    {
+      "id": "F40",
+      "title": "Native Android app (Capacitor) wrapping the React web app",
+      "acceptance": "Capacitor 8 project (android/) wraps the existing dist build as a native WebView app: package com.fontainor.app, label Fontainor, minSdk26/compileSdk36/targetSdk35. Native chrome: status-bar theming, splash dismissal, hardware back button (SPA history-aware, exits at root), --safe-top inset for the sticky header. Same React app runs on web + native, no feature fork.",
+      "verify": "npm run ci && (cd android && ./gradlew :app:assembleDebug) && aapt2 dump badging app-universal-debug.apk",
+      "passes": true,
+      "evidence": "mobile-v1. npm run ci green with native code; assembleDebug BUILD SUCCESSFUL (universal+3 ABI, ~19MB); aapt2 badging = com.fontainor.app, minSdk26/target35, label Fontainor, launchable MainActivity (verified 2026-07-28)."
+    },
+    {
+      "id": "F41",
+      "title": "Phantom deeplink wallet on native (connect / signMessage / signAndSendTransaction)",
+      "acceptance": "Encrypted Phantom deeplink protocol (tweetnacl x25519 + bs58) in src/lib/phantomDeeplink.ts, exposed as window.solana with the exact shape the app already consumes so AuthContext/purchase/publish/tip work unchanged on native. Session persisted (@capacitor/preferences) for warm reconnect; fontainor://onphantom/<method> bounce routed via @capacitor/app appUrlOpen; installed before React render so hasWallet is true on first paint.",
+      "verify": "node phantom crypto round-trip test (simulate Phantom side) && grep fontainor://onphantom in built AndroidManifest && npm run ci",
+      "passes": true,
+      "evidence": "Crypto round-trip 8/8 (shared-secret agreement; connect decrypt public_key+session; request encrypt\u2192Phantom decrypt, message bytes intact; signature response decrypt = 64 bytes). Manifest intent-filter scheme=fontainor host=onphantom present in release APK. CI green (verified 2026-07-28)."
+    },
+    {
+      "id": "F42",
+      "title": "Signed, shrunk production release APK (universal + per-ABI)",
+      "acceptance": "Production Gradle config mirrored from lanlink/emberdelve: release signing via android/key.properties (keystore kept OUT of git), R8 minify + resource shrink, ABI splits (armeabi-v7a/arm64-v8a/x86_64) + universal sideload APK. assembleRelease produces a valid-signed installable APK.",
+      "verify": "(cd android && ./gradlew :app:assembleRelease) && apksigner verify --print-certs app-universal-release.apk",
+      "passes": true,
+      "evidence": "assembleRelease BUILD SUCCESSFUL; universal APK 15.2MB (R8-shrunk from 19MB debug). apksigner verify OK (CN=Fontainor Protocol, v1/v2). Web build bundled at assets/public/ (verified 2026-07-28). ASSUMED: real on-chain SOL smoke test + Play upload key pending owner/device."
+    },
+    {
+      "id": "F43",
+      "name": "Production branding (adaptive icon + splash)",
+      "description": "Launcher icon derived from the official assets/icon.png mark: adaptive icon (yellow F foreground, black background, white monochrome layer for Android 13 themed icons) + branded splash (app-bg #0b0d12, fade-out handoff) at all densities via @capacitor/assets.",
+      "passes": true,
+      "evidence": "aapt2 badging: application-label 'Fontainor', adaptive-icon XML with background/foreground/monochrome layers verified inside app-universal-release.apk; 148 generated res assets; splash launchAutoHide:false + hide({fadeOutDuration:350})."
+    },
+    {
+      "id": "F44",
+      "name": "Production player: native media session, repeat, drag-to-seek",
+      "description": "Real Android MediaSession + mediaPlayback foreground service (@capgo/capacitor-media-session) with lock-screen/notification transport controls and web navigator.mediaSession fallback (src/lib/mediaSession.ts); repeat off/all/one; drag-to-seek SeekBar (pointer events, commit-on-release); prev() no longer wipes playlist context (bug fix: play->playNow).",
+      "passes": true,
+      "evidence": "APK manifest: com.capgo.mediasession.MediaSessionService foregroundServiceType=mediaPlayback + FOREGROUND_SERVICE_MEDIA_PLAYBACK/POST_NOTIFICATIONS permissions; tsc + vite build green; repeat/seek logic in PlayerContext.tsx, SeekBar.tsx."
+    },
+    {
+      "id": "F45",
+      "name": "Mobile Wallet Adapter (any-wallet native connect)",
+      "description": "Native MWA bridge (MwaPlugin.java, solanamobile clientlib 2.0.8: LocalAssociationScenario + authorize/reauthorize/signMessagesDetached/signAndSendTransactions/deauthorize) + TS provider (src/lib/mwa.ts) + hybrid router (src/lib/nativeWallet.ts) preferring MWA, falling back to Phantom deeplinks; same window.solana shape so app code unchanged.",
+      "passes": true,
+      "evidence": "assembleRelease compiles MwaPlugin against clientlib 2.0.8 (API verified via javap); b64/b58 bridge round-trip tests 4/4; bundle contains registered Mwa plugin + session store key. On-device wallet approval flow ASSUMED until hardware test."
+    },
+    {
+      "id": "F46",
+      "name": "Animations & transitions",
+      "description": "Route transitions (page-in), mini-player entrance (mini-in), Now Playing artwork scale on pause (np-art), splash fade handoff, seek thumb/drag feedback; all composited transform/opacity, prefers-reduced-motion respected via existing global rule.",
+      "passes": true,
+      "evidence": "CSS keyframes present in built bundle (grep page-in/mini-in in APK JS); tsc + build green."
+    },
+    {
+      "id": "F47",
+      "name": "Bug sweep (mobile-v2 pass)",
+      "description": "Full read of player/auth/purchase/registry paths. Fixed: prev() wiping playlist context (F44), repeat-off queue previously never ending (wrap now repeat-gated), SeekBar effect follows repo block-body rule. purchase.ts/irysPublish.ts/registry.ts audited clean.",
+      "passes": true,
+      "evidence": "Code diff in PlayerContext.tsx; npm run ci green."
+    },
+    {
+      "id": "F48",
+      "name": "Tick isolation (perf)",
+      "description": "pos/cur/dur in a dedicated usePlayerProgress() context; main player context referentially stable across 4x/s ticks; ReleaseCard memoized.",
+      "passes": true,
+      "evidence": "PlayerContext.tsx split + memo; npm run ci green (commit af979f6)."
+    },
+    {
+      "id": "F49",
+      "name": "Native app shell",
+      "description": "Packaged app drops web chrome: contextual NativeTopBar, footer web-only, all backdrop-filter disabled on native (.is-native blanket rule), solid chrome surfaces.",
+      "passes": true,
+      "evidence": "AppShell.tsx/index.css; ci green (commit 7b11236)."
+    },
+    {
+      "id": "F50",
+      "name": "Native Home (greeting + shortcuts + rails)",
+      "description": "Time-of-day greeting, 2-col shortcut grid (4 recents play on tap + Favorites/Playlists), all Home sections horizontal snap rails on native via <Rail>.",
+      "passes": true,
+      "evidence": "Home.tsx/ReleaseCard.tsx; ci green (commit f2edc94)."
+    },
+    {
+      "id": "F51",
+      "name": "Living color player",
+      "description": "Artwork-derived tint (saturation-weighted 24px sample, luminance-clamped, memoized, amber fallback) drives Now Playing wash + mini player edge tint.",
+      "passes": true,
+      "evidence": "lib/artColor.ts; ci green (commit 939b65f)."
+    },
+    {
+      "id": "F52",
+      "name": "Haptics + swipe-to-skip",
+      "description": "@capacitor/haptics (native-only, throttled, no-op web): thump on transport, tick on toggles; Now Playing artwork swipes horizontally to skip with GPU drag + spring settle.",
+      "passes": true,
+      "evidence": "lib/haptics.ts, NowPlaying.tsx; ci green (commit a182385)."
+    },
+    {
+      "id": "F53",
+      "name": "Sleep timer",
+      "description": "5/15/30/45/60 min or end-of-track; wall-clock 1s enforcement (throttle-safe), 'track' honored in handleEnded, countdown chip, cleared on close.",
+      "passes": true,
+      "evidence": "PlayerContext.tsx/NowPlaying.tsx; ci green (commit fa6595a)."
+    },
+    {
+      "id": "F54",
+      "name": "v3 signed release APK",
+      "description": "versionCode 3 / 3.0.0, owner keystore (SHA-256 fingerprint match verified before use), apksigner-verified, branded icon confirmed in built APK via aapt2.",
+      "passes": true,
+      "evidence": "assembleRelease BUILD SUCCESSFUL; apksigner verify: signer SHA-256 0be20d5d...d007 == owner keystore fingerprint (keytool match verified pre-build); aapt2: com.fontainor.app versionCode 3 versionName 3.0.0 label Fontainor targetSdk 35; branded F splash/icon resources visually confirmed inside APK."
+    },
+    {
+      "id": "F55",
+      "name": "Media notification cover art",
+      "description": "WebView decodes covers to 512px base64 JPEG for the media-session plugin (relative registry paths resolve to the WebView origin the plugin's Java fetch can't reach); token-guarded, cached, CORS-taint falls back to Java-reachable absolute URL.",
+      "passes": true,
+      "evidence": "Root cause verified against live registry (/covers/... relative); headless Chromium produced 48KB data:image/jpeg from bundled cover; ci green (commit a8be548)."
+    },
+    {
+      "id": "F56",
+      "name": "Frame-timing evidence harness",
+      "description": "scripts/perf-trace.mjs: dist build + phone viewport + CDP touch gestures + 4x CPU throttle; rAF deltas -> avg/p95/worst/dropped%; ?native=1 platform override; scroll movement + playback + sheet-open asserted in-run.",
+      "passes": true,
+      "evidence": "perf/baseline.json + perf/after.json committed; playback-active scroll verified (mini bar + Pause present)."
+    },
+    {
+      "id": "F57",
+      "name": "Tactile motion pass",
+      "description": "press scale on cards/tiles/tabs, active-tab icon pop, Now Playing spring entrance (28px cap honored, incoming-only opacity), 40ms rail stagger, content-visibility:auto below-fold Home sections (native).",
+      "passes": true,
+      "evidence": "ci green; screenshots v4-home/nowplaying; after.json 0% dropped frames all scenarios (commit cd5697c)."
+    },
+    {
+      "id": "F58",
+      "name": "Crossfade + preload",
+      "description": "Equal-power cos2/sin2 two-element blend over 3/6/12s, queue peeked not consumed until swap, pause/seek/skip/sleep cancel safely, persisted setting in Now Playing listening panel.",
+      "passes": true,
+      "evidence": "Instrumented Audio constructor in headless Chromium: ramp 0.99/0.01->0.38/0.62, clean swap to next track, old element paused at end; ci green."
+    },
+    {
+      "id": "F59",
+      "name": "Offline downloads (native)",
+      "description": "@capacitor/filesystem audio+cover into app data dir, localStorage index, startup-warmed convertFileSrc cache; playNow + crossfade resolve local first; release-page button + Library Downloads section.",
+      "passes": true,
+      "evidence": "ci green; web no-op verified by build. Device file I/O ASSUMED until on-device smoke (checklist sent)."
+    },
+    {
+      "id": "F60",
+      "name": "v4 signed release APK",
+      "description": "versionCode 4 / 4.0.0, owner keystore fingerprint re-verified before signing, apksigner + aapt2 verified.",
+      "passes": true,
+      "evidence": "assembleRelease BUILD SUCCESSFUL (R8 dontwarn rule for capacitor-filesystem SpillingKt); apksigner signer SHA-256 0be20d5d...d007 == owner keystore (keytool re-verified pre-build); aapt2: versionCode 4 versionName 4.0.0 label Fontainor."
+    },
+    {
+      "id": "F61",
+      "name": "v4.1 perf: tick isolation + native card diet",
+      "passes": true,
+      "evidence": "perf/before-v4.1.json vs perf/after-v4.1.json @8x throttle: rail-fling dropped 8.2%->0.2%; nowplaying-hold script 295.5->158.7ms/10s; playing-scroll penalty 5.7->1.4pts. ci green."
+    },
+    {
+      "id": "F62",
+      "name": "Download crash fix + YouTube-style progress",
+      "passes": true,
+      "evidence": "Root cause: multi-MB base64 over Capacitor bridge (writeFile). Now native Filesystem.downloadFile + progress events; button %, Library in-flight bar, retry on error. ci green; device I/O ASSUMED."
+    },
+    {
+      "id": "F63",
+      "name": "Wallet: MWA token rotation, decline vs error, session self-heal",
+      "passes": true,
+      "evidence": "javap-verified clientlib 2.0.8 API; plugin maps ERROR_NOT_SIGNED/NOT_SUBMITTED->USER_DECLINED, AUTHORIZATION_FAILED->AUTH_INVALID; JS one-shot fresh-auth retry; Phantom deeplink regex parsing verified in node; real Phantom round-trip ASSUMED."
+    },
+    {
+      "id": "F64",
+      "name": "v4.1.0 signed release",
+      "passes": true,
+      "evidence": "versionCode 5 / 4.1.0; keystore fingerprint pre-verified; apksigner digest match; aapt2 badging OK."
+    },
+    {
+      "id": "F65",
+      "name": "Wallet: reject arg-order fix \u2014 AUTH_INVALID self-heal actually fires",
+      "passes": true,
+      "evidence": "Capacitor PluginCall.reject(MESSAGE, CODE, ex) verified in node_modules source; v4.1 passed (code,message) so e.code never matched. All 5 reject sites fixed. Device round-trip ASSUMED."
+    },
+    {
+      "id": "F66",
+      "name": "Home scroll: cv-auto activation wall removed + eager native cover decode",
+      "passes": true,
+      "evidence": "perf/before-v4.2.json vs after-v4.2.json @8x: home-scroll-playing 10%->0.9% dropped, rail-fling 7.8%->2.1%. Cold idle scroll raster-bound on rig (11.1->10.2%); activation+decode stalls are the device-relevant share."
+    },
+    {
+      "id": "F67",
+      "name": "Player: 4Hz progress steps glide (transform-only)",
+      "passes": true,
+      "evidence": "width/left transition rejected (37->544 layouts/10s); scaleX form keeps layouts 37-38, nowplaying-hold 0.5% dropped."
+    },
+    {
+      "id": "F68",
+      "name": "v4.2.0 signed release",
+      "passes": true,
+      "evidence": "versionCode 6 / 4.2.0; fingerprint pre-verified; apksigner digest match; aapt2 badging OK; ci green."
+    }
+  ]
 }

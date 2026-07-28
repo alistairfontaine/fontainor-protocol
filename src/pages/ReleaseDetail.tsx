@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconDownload, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
+import { hapticTick } from '../lib/haptics'
+import { IS_NATIVE } from '../lib/platform'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
@@ -128,6 +131,7 @@ export default function ReleaseDetail() {
               {fav ? 'Saved' : 'Save'}
             </Button>
             <QueueButton rel={rel} />
+            {IS_NATIVE && <DownloadButton rel={rel} />}
             <PlaylistButton rel={rel} />
             <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
@@ -407,5 +411,48 @@ function MoreLikeThis({ rel, all }: { rel: Release; all: Release[] }) {
         ))}
       </div>
     </section>
+  )
+}
+
+
+// ── offline download (F59, native only) ───────────────────────────────────
+
+function DownloadButton({ rel }: { rel: Release }) {
+  const { ids, progress } = useDownloads()
+  const has = ids.has(rel.id)
+  const prog = progress[rel.id]
+  const downloading = prog?.state === 'downloading'
+  const failed = prog?.state === 'error'
+  if (!rel.audio) return null
+
+  const onClick = async () => {
+    hapticTick()
+    if (downloading) return
+    if (failed) clearDownloadError(rel.id)
+    if (has) {
+      await removeDownload(rel.id)
+      return
+    }
+    await downloadRelease(rel) // never throws; failures land in progress state
+  }
+
+  return (
+    <Button
+      size="lg"
+      onClick={() => void onClick()}
+      aria-pressed={has}
+      aria-label={has ? `Remove ${rel.title} from downloads` : `Download ${rel.title}`}
+    >
+      {downloading ? <IconSpinner size={18} /> : has ? <IconCheck size={18} className="text-accent" /> : <IconDownload size={18} />}
+      {downloading
+        ? prog.pct != null
+          ? `Downloading ${prog.pct}%`
+          : 'Downloading…'
+        : has
+          ? 'Downloaded'
+          : failed
+            ? 'Retry download'
+            : 'Download'}
+    </Button>
   )
 }

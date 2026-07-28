@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import React, { useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -26,6 +26,16 @@ import { RegistryProvider } from './state/RegistryContext'
 // a single route grows genuinely heavy (>150 KB), and if you re-split,
 // the failure mode below must be re-solved.
 
+/** Remounts (and thus re-animates) its children on every route change. */
+function PageTransition({ children }: { children: React.ReactNode }) {
+  const { pathname } = useLocation()
+  return (
+    <div key={pathname} className="page-in">
+      {children}
+    </div>
+  )
+}
+
 function ScrollToTop() {
   const { pathname } = useLocation()
   // Body MUST be a block, never `() => window.scrollTo(...)`: an implicit
@@ -48,6 +58,7 @@ export default function App() {
           <ScrollToTop />
           <AppShell walletSlot={<WalletButton />}>
             <ErrorBoundary>
+              <PageTransition>
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/library" element={<Library />} />
@@ -69,6 +80,7 @@ export default function App() {
                 <Route path="/faq" element={<Faq />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
+              </PageTransition>
             </ErrorBoundary>
           </AppShell>
         </PlayerProvider>

@@ -15,6 +15,15 @@
     "start": "node api-server.js"
   },
   "dependencies": {
+    "@capacitor/app": "^8.1.1",
+    "@capacitor/browser": "^8.0.4",
+    "@capacitor/core": "^8.4.2",
+    "@capacitor/filesystem": "^8.1.2",
+    "@capacitor/haptics": "^8.0.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/splash-screen": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
+    "@capgo/capacitor-media-session": "^8.0.29",
     "@irys/web-upload": "^0.0.15",
     "@irys/web-upload-solana": "^0.1.8",
     "@solana/spl-token": "^0.4.15",
@@ -40,6 +49,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.4.2",
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^8.4.2",
     "@types/node": "^25.9.1",
     "@vitejs/plugin-react": "^4.3.1",
     "arlocal": "^1.1.66",

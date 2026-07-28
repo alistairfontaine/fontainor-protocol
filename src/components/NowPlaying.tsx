@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useArtTint } from '../lib/artColor'
+import { hapticThump, hapticTick } from '../lib/haptics'
 import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
-import { usePlayer } from '../state/PlayerContext'
+import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
 import { Cover } from './Cover'
-import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { LiveSeekBar, TickCur, TickDur, TickTime } from './PlayerTicks'
+import { IconChevronDown, IconClose, IconHeart, IconMoon, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
  * Fullscreen "Now Playing" view — Spotify-style layout (FSP-01..06, FSP-07).
@@ -24,11 +27,11 @@ import { IconChevronDown, IconClose, IconHeart, IconNext, IconPause, IconPlay, I
  * forbidden here (see App.tsx ScrollToTop incident).
  */
 export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { current, playing, pos, cur, dur, hasQueue, shuffle, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, seek } =
-    usePlayer()
+  const { current, playing, hasQueue, shuffle, repeat, toggleRepeat, upNext, queuedCount, toggleShuffle, play, playQueued, removeQueued, toggle, next, prev, sleepUntil, setSleepTimer, crossfade, setCrossfade } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
+  const tint = useArtTint(current)
   const [queueOpen, setQueueOpen] = useState(false)
-  const seekRef = useRef<HTMLDivElement>(null)
+  const [sleepOpen, setSleepOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
   const drag = useRef<{ y: number; t: number; lastDy: number } | null>(null)
   const dragRaf = useRef(0)
@@ -65,6 +68,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (!open) {
       setQueueOpen(false)
+      setSleepOpen(false)
       drag.current = null
       const el = rootRef.current
       if (el) {
@@ -78,16 +82,6 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
   useEffect(() => {
     if (open && !current) onClose()
   }, [open, current, onClose])
-
-  const onSeekAt = useCallback(
-    (clientX: number) => {
-      const el = seekRef.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      seek((clientX - rect.left) / rect.width)
-    },
-    [seek],
-  )
 
   // Swipe-down to close — attached to the whole sheet, Spotify-style.
   // The drag writes transform directly to the DOM inside rAF (GPU-composited,
@@ -132,6 +126,55 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
     else settleBack()
   }
 
+  // ── swipe the ARTWORK horizontally to change track (Spotify gesture) ──
+  // data-nodrag on the artwork opts it out of the sheet's vertical drag;
+  // the horizontal drag writes GPU transforms directly (no re-renders) and
+  // commits on release distance/velocity, exactly like the sheet gesture.
+  const artRef = useRef<HTMLDivElement>(null)
+  const artDrag = useRef<{ x: number; t: number; lastDx: number } | null>(null)
+  const artRaf = useRef(0)
+  const applyArtDrag = (dx: number) => {
+    cancelAnimationFrame(artRaf.current)
+    artRaf.current = requestAnimationFrame(() => {
+      const el = artRef.current
+      if (!el) return
+      el.style.transition = 'none'
+      el.style.transform = `translate3d(${dx * 0.85}px, 0, 0) rotate(${dx / 60}deg)`
+    })
+  }
+  const settleArt = () => {
+    cancelAnimationFrame(artRaf.current)
+    const el = artRef.current
+    if (!el) return
+    el.style.transition = 'transform 220ms cubic-bezier(0.2, 0, 0, 1)'
+    el.style.transform = 'translate3d(0, 0, 0)'
+  }
+  const onArtTouchStart = (e: React.TouchEvent) => {
+    artDrag.current = { x: e.touches[0].clientX, t: performance.now(), lastDx: 0 }
+  }
+  const onArtTouchMove = (e: React.TouchEvent) => {
+    const g = artDrag.current
+    if (!g) return
+    g.lastDx = e.touches[0].clientX - g.x
+    applyArtDrag(g.lastDx)
+  }
+  const onArtTouchEnd = () => {
+    const g = artDrag.current
+    artDrag.current = null
+    if (!g) return
+    const dt = Math.max(performance.now() - g.t, 1)
+    const vx = g.lastDx / dt // px/ms
+    const commit = Math.abs(g.lastDx) > 70 || (Math.abs(g.lastDx) > 24 && Math.abs(vx) > 0.5)
+    if (commit && hasQueue) {
+      hapticThump()
+      settleArt()
+      if (g.lastDx < 0) next()
+      else prev()
+    } else {
+      settleArt()
+    }
+  }
+
   if (!open || !current) return null
 
   const isFav = favIds.includes(current.id)
@@ -151,11 +194,16 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
       onTouchMove={onTouchMove}
       onTouchEnd={onTouchEnd}
     >
-      {/* Spotify-style color wash: strong at the top, fading into the page bg */}
+      {/* Living color: the wash is derived from the ACTUAL cover art
+          (saturation-weighted average, luminance-clamped — lib/artColor),
+          falling back to brand amber. Same trick Spotify uses to make every
+          track feel like its own place. */}
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 transition-opacity duration-500"
         aria-hidden="true"
-        style={{ background: 'linear-gradient(to bottom, rgba(247,183,51,0.16), rgba(247,183,51,0.05) 38%, transparent 72%)' }}
+        style={{
+          background: `linear-gradient(to bottom, rgba(${tint[0]},${tint[1]},${tint[2]},0.30), rgba(${tint[0]},${tint[1]},${tint[2]},0.10) 38%, transparent 72%)`,
+        }}
       />
 
       {/* header */}
@@ -176,8 +224,90 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           </div>
           <div className="truncate text-[12px] font-semibold text-ink">{queueOpen ? 'Up next' : current.artist}</div>
         </div>
-        <span className="grid h-11 w-11" aria-hidden="true" />
+        <button
+          onClick={() => setSleepOpen((v) => !v)}
+          className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+            sleepUntil != null || sleepOpen ? 'text-accent' : 'text-body hover:text-ink'
+          }`}
+          aria-label="Sleep timer"
+          aria-pressed={sleepUntil != null}
+        >
+          <IconMoon size={19} />
+        </button>
+        <button
+          onClick={() => setQueueOpen((q) => !q)}
+          disabled={!hasQueue}
+          className={`grid h-11 w-11 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+            queueOpen ? 'text-accent' : 'text-body hover:text-ink'
+          } disabled:cursor-default disabled:opacity-40`}
+          aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
+          aria-pressed={queueOpen}
+        >
+          <IconQueue size={20} />
+        </button>
       </div>
+
+      {/* sleep timer panel */}
+      {sleepOpen && (
+        <div data-nodrag className="absolute right-3 top-16 z-10 w-56 overflow-hidden rounded-card border border-line bg-surface shadow-pop sm:right-6">
+          <div className="border-b border-line px-4 py-2.5 text-[11px] font-semibold uppercase tracking-[0.12em] text-faint">Sleep timer</div>
+          <ul className="py-1">
+            {([5, 15, 30, 45, 60] as const).map((m) => (
+              <li key={m}>
+                <button
+                  onClick={() => {
+                    hapticTick()
+                    setSleepTimer(m)
+                    setSleepOpen(false)
+                  }}
+                  className="w-full cursor-pointer px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+                >
+                  {m} minutes
+                </button>
+              </li>
+            ))}
+            <li>
+              <button
+                onClick={() => {
+                  hapticTick()
+                  setSleepTimer('track')
+                  setSleepOpen(false)
+                }}
+                className="w-full cursor-pointer px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+              >
+                End of this track
+              </button>
+            </li>
+            {sleepUntil != null && (
+              <li className="border-t border-line">
+                <button
+                  onClick={() => {
+                    hapticTick()
+                    setSleepTimer(null)
+                    setSleepOpen(false)
+                  }}
+                  className="w-full cursor-pointer px-4 py-2.5 text-left text-sm font-medium text-accent transition-colors hover:bg-raised"
+                >
+                  Turn off timer
+                </button>
+              </li>
+            )}
+            <li className="border-t border-line">
+              <button
+                onClick={() => {
+                  hapticTick()
+                  // cycle Off → 3s → 6s → 12s → Off
+                  setCrossfade(crossfade === 0 ? 3 : crossfade === 3 ? 6 : crossfade === 6 ? 12 : 0)
+                }}
+                className="flex w-full cursor-pointer items-center justify-between px-4 py-2.5 text-left text-sm text-body transition-colors hover:bg-raised hover:text-ink"
+              >
+                <span>Crossfade</span>
+                <span className={crossfade ? 'font-medium text-accent' : 'text-faint'}>{crossfade ? `${crossfade}s` : 'Off'}</span>
+              </button>
+            </li>
+          </ul>
+        </div>
+      )}
 
       {/* body: main column + (desktop) queue side panel */}
       <div className="relative flex min-h-0 flex-1 items-stretch justify-center gap-6 px-4 pb-4 sm:px-8 sm:pb-6">
@@ -187,8 +317,17 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           <div
             className={`min-h-0 flex-1 flex-col items-center justify-center ${queueOpen ? 'hidden lg:flex' : 'flex'}`}
           >
-            <div className="w-full max-w-[min(85vw,44vh)] overflow-hidden rounded-card border border-line shadow-card lg:max-w-[min(40vw,46vh)]">
-              <div className="aspect-square">
+            <div
+              ref={artRef}
+              data-nodrag
+              onTouchStart={onArtTouchStart}
+              onTouchMove={onArtTouchMove}
+              onTouchEnd={onArtTouchEnd}
+              className={`np-art w-full max-w-[min(85vw,44vh)] touch-pan-y overflow-hidden rounded-card border border-line shadow-card will-change-transform lg:max-w-[min(40vw,46vh)] ${
+                playing ? '' : 'is-paused'
+              }`}
+            >
+              <div key={current.id} className="fade-up aspect-square">
                 <Cover rel={current} />
               </div>
             </div>
@@ -197,7 +336,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           {/* phone queue screen — Spotify-style: Now playing pinned on top, then Up next */}
           {queueOpen && (
             <div className="flex min-h-0 flex-1 flex-col py-1 lg:hidden">
-              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} />
             </div>
           )}
 
@@ -214,7 +353,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <p className="truncate text-left text-[15px] text-muted">{current.artist}</p>
             </div>
             <button
-              onClick={() => toggleFav(current.id)}
+              onClick={() => {
+                hapticTick()
+                toggleFav(current.id)
+              }}
               className={`grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
                 isFav ? 'text-accent' : 'text-faint hover:text-body'
               }`}
@@ -227,39 +369,21 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
 
           {/* seek */}
           <div className="w-full shrink-0 pt-3">
-            <div
-              ref={seekRef}
-              onClick={(e) => onSeekAt(e.clientX)}
-              className="group relative h-1.5 w-full cursor-pointer rounded-full bg-raised"
-              data-nodrag
-              role="slider"
-              aria-valuemin={0}
-              aria-valuemax={100}
-              aria-valuenow={Math.round(pos * 100)}
-              aria-label="Seek"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowRight') seek(pos + 0.05)
-                if (e.key === 'ArrowLeft') seek(pos - 0.05)
-              }}
-            >
-              <div className="h-full rounded-full bg-ink group-hover:bg-accent" style={{ width: `${pos * 100}%` }} />
-              <div
-                className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
-                style={{ left: `calc(${pos * 100}% - 6px)` }}
-                aria-hidden="true"
-              />
-            </div>
+            <LiveSeekBar />
             <div className="mt-1.5 flex justify-between text-[12px] tabular-nums text-faint">
-              <span>{fmtTime(cur)}</span>
-              <span>{fmtTime(dur)}</span>
+              <TickCur />
+              {sleepUntil != null && <SleepChip sleepUntil={sleepUntil} />}
+              <TickDur />
             </div>
           </div>
 
           {/* transport — shuffle · prev · big light play · next · queue */}
           <div className="flex shrink-0 items-center justify-between pb-2 pt-1 sm:justify-center sm:gap-6">
             <button
-              onClick={toggleShuffle}
+              onClick={() => {
+                hapticTick()
+                toggleShuffle()
+              }}
               disabled={!hasQueue}
               className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
                 shuffle ? 'text-accent' : 'text-faint hover:text-body'
@@ -270,7 +394,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconShuffle size={22} />
             </button>
             <button
-              onClick={prev}
+              onClick={() => {
+                hapticThump()
+                prev()
+              }}
               disabled={!hasQueue}
               className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
               aria-label="Previous track"
@@ -278,14 +405,20 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconPrev size={30} />
             </button>
             <button
-              onClick={toggle}
+              onClick={() => {
+                hapticThump()
+                toggle()
+              }}
               className="grid h-16 w-16 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-card transition-transform hover:scale-105 active:scale-95"
               aria-label={playing ? 'Pause' : 'Play'}
             >
               {playing ? <IconPause size={28} /> : <IconPlay size={28} />}
             </button>
             <button
-              onClick={next}
+              onClick={() => {
+                hapticThump()
+                next()
+              }}
               disabled={!hasQueue}
               className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
               aria-label="Next track"
@@ -293,15 +426,17 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconNext size={30} />
             </button>
             <button
-              onClick={() => setQueueOpen((q) => !q)}
-              disabled={!hasQueue}
+              onClick={() => {
+                hapticTick()
+                toggleRepeat()
+              }}
               className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
-                queueOpen ? 'text-accent' : 'text-faint hover:text-body'
-              } disabled:cursor-default disabled:opacity-40`}
-              aria-label={queueOpen ? 'Hide queue' : 'Show queue'}
-              aria-pressed={queueOpen}
+                repeat !== 'off' ? 'text-accent' : 'text-faint hover:text-body'
+              }`}
+              aria-label={repeat === 'off' ? 'Enable repeat' : repeat === 'all' ? 'Enable repeat one' : 'Disable repeat'}
+              aria-pressed={repeat !== 'off'}
             >
-              <IconQueue size={21} />
+              {repeat === 'one' ? <IconRepeatOne size={22} /> : <IconRepeat size={22} />}
             </button>
           </div>
         </div>
@@ -316,7 +451,7 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               </span>
             </div>
             <div className="flex min-h-0 flex-1 flex-col px-1 py-2">
-              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} cur={cur} dur={dur} />
+              <QueueList current={current} upNext={upNext} queuedCount={queuedCount} shuffle={shuffle} play={play} playQueued={playQueued} removeQueued={removeQueued} />
             </div>
           </aside>
         )}
@@ -334,8 +469,6 @@ function QueueList({
   play,
   playQueued,
   removeQueued,
-  cur,
-  dur,
 }: {
   current: Release
   upNext: Release[]
@@ -344,8 +477,6 @@ function QueueList({
   play: (rel: Release, opts?: { keepContext?: boolean }) => void
   playQueued: (index: number) => void
   removeQueued: (index: number) => void
-  cur: number
-  dur: number
 }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -358,9 +489,7 @@ function QueueList({
           <span className="block truncate text-sm font-semibold text-accent">{current.title}</span>
           <span className="block truncate text-[12px] text-muted">{current.artist}</span>
         </div>
-        <span className="shrink-0 text-[11px] tabular-nums text-faint">
-          {fmtTime(cur)} / {fmtTime(dur)}
-        </span>
+        <TickTime className="shrink-0 text-[11px] tabular-nums text-faint" />
       </div>
 
       <div className="flex shrink-0 items-baseline justify-between px-3 pb-1 pt-3">
@@ -405,5 +534,16 @@ function QueueList({
         ))}
       </ul>
     </div>
+  )
+}
+
+/** Sleep-timer countdown chip — subscribes to ticks so the remaining time
+ *  counts down (the parent no longer re-renders per tick, on purpose). */
+function SleepChip({ sleepUntil }: { sleepUntil: number | 'track' }) {
+  usePlayerProgress() // tick subscription = periodic refresh while playing
+  return (
+    <span className="rounded-chip bg-accent/10 px-2 font-medium text-accent">
+      {sleepUntil === 'track' ? 'Sleeps after this track' : `Sleep · ${fmtTime(Math.max(0, Math.round((sleepUntil - Date.now()) / 1000)))}`}
+    </span>
   )
 }

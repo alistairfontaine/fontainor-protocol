@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { fmtTime } from '../lib/registry'
+import { useArtTint } from '../lib/artColor'
+import { hapticThump, hapticTick } from '../lib/haptics'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { NowPlaying } from './NowPlaying'
-import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconShuffle } from './icons'
+import { LiveSeekBar, TickCur, TickDur, TickHairlineFill, TickTime } from './PlayerTicks'
+import { IconClose, IconHeart, IconNext, IconPause, IconPlay, IconPrev, IconQueue, IconRepeat, IconRepeatOne, IconShuffle } from './icons'
 
 /**
  * Player bar — Spotify-style on both breakpoints.
@@ -20,11 +22,10 @@ export function PlayerBar() {
   const {
     current,
     playing,
-    pos,
-    cur,
-    dur,
     hasQueue,
     shuffle,
+    repeat,
+    toggleRepeat,
     upNext,
     queuedCount,
     toggleShuffle,
@@ -35,11 +36,10 @@ export function PlayerBar() {
     toggle,
     next,
     prev,
-    seek,
     close,
   } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
-  const seekRef = useRef<HTMLDivElement>(null)
+  const tint = useArtTint(current)
   const [open, setOpen] = useState(false) // desktop queue popover
   const [expanded, setExpanded] = useState(false) // fullscreen Now Playing
 
@@ -89,16 +89,6 @@ export function PlayerBar() {
     if (vertical && (dy <= -48 || (dy <= -20 && vy <= -0.45))) setExpanded(true)
   }
 
-  const onSeek = useCallback(
-    (e: React.MouseEvent<HTMLDivElement>) => {
-      const el = seekRef.current
-      if (!el) return
-      const rect = el.getBoundingClientRect()
-      seek((e.clientX - rect.left) / rect.width)
-    },
-    [seek],
-  )
-
   // close the queue popover + fullscreen view when playback is closed
   useEffect(() => {
     if (!current) {
@@ -143,7 +133,7 @@ export function PlayerBar() {
                 <span className="block truncate text-[12px] text-muted">{current.artist}</span>
               </div>
               <span className="text-[11px] tabular-nums text-faint">
-                {fmtTime(cur)} / {fmtTime(dur)}
+                <TickTime />
               </span>
             </div>
 
@@ -201,7 +191,7 @@ export function PlayerBar() {
       <div className="px-2 pb-1.5 sm:hidden">
         <div
           ref={miniRef}
-          className="relative touch-none overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur will-change-transform"
+          className="mini-in relative touch-none overflow-hidden rounded-card border border-line bg-raised/97 shadow-card backdrop-blur will-change-transform"
           onClick={() => setExpanded(true)}
           onTouchStart={onMiniTouchStart}
           onTouchMove={onMiniTouchMove}
@@ -213,7 +203,13 @@ export function PlayerBar() {
             if (e.key === 'Enter' || e.key === ' ') setExpanded(true)
           }}
         >
-          <div className="flex items-center gap-3 py-2 pl-2 pr-1">
+          {/* living-color tint bleeding from the cover, Spotify-style */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            aria-hidden="true"
+            style={{ background: `linear-gradient(90deg, rgba(${tint[0]},${tint[1]},${tint[2]},0.22), rgba(${tint[0]},${tint[1]},${tint[2]},0.06) 55%, transparent 85%)` }}
+          />
+          <div className="relative flex items-center gap-3 py-2 pl-2 pr-1">
             <div className="h-10 w-10 shrink-0 overflow-hidden rounded-chip">
               <Cover rel={current} />
             </div>
@@ -224,6 +220,7 @@ export function PlayerBar() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                hapticTick()
                 toggleFav(current.id)
               }}
               className={`grid h-11 w-10 shrink-0 cursor-pointer place-items-center ${isFav ? 'text-accent' : 'text-faint'}`}
@@ -235,6 +232,7 @@ export function PlayerBar() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                hapticThump()
                 toggle()
               }}
               className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center text-ink"
@@ -255,7 +253,7 @@ export function PlayerBar() {
           </div>
           {/* hairline progress, Spotify-style */}
           <div className="absolute inset-x-2 bottom-0 h-[2px] rounded-full bg-line" aria-hidden="true">
-            <div className="h-full rounded-full bg-ink" style={{ width: `${pos * 100}%` }} />
+            <TickHairlineFill />
           </div>
         </div>
       </div>
@@ -332,36 +330,21 @@ export function PlayerBar() {
               >
                 <IconNext size={19} />
               </button>
-              <span className="grid h-9 w-9" aria-hidden="true" />
+              <button
+                onClick={toggleRepeat}
+                className={`grid h-9 w-9 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
+                  repeat !== 'off' ? 'text-accent' : 'text-faint hover:text-body'
+                }`}
+                aria-label={repeat === 'off' ? 'Enable repeat' : repeat === 'all' ? 'Enable repeat one' : 'Disable repeat'}
+                title={repeat === 'off' ? 'Repeat off' : repeat === 'all' ? 'Repeat all' : 'Repeat one'}
+              >
+                {repeat === 'one' ? <IconRepeatOne size={17} /> : <IconRepeat size={17} />}
+              </button>
             </div>
             <div className="flex w-full items-center gap-2">
-              <span className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint">{fmtTime(cur)}</span>
-              <div
-                ref={seekRef}
-                onClick={onSeek}
-                className="group relative h-1 flex-1 cursor-pointer rounded-full bg-raised"
-                role="slider"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(pos * 100)}
-                aria-label="Seek"
-                tabIndex={0}
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowRight') seek(pos + 0.05)
-                  if (e.key === 'ArrowLeft') seek(pos - 0.05)
-                }}
-              >
-                <div
-                  className="h-full rounded-full bg-ink transition-[width] duration-150 group-hover:bg-accent"
-                  style={{ width: `${pos * 100}%` }}
-                />
-                <div
-                  className="absolute top-1/2 h-3 w-3 -translate-y-1/2 rounded-full bg-ink opacity-0 shadow transition-opacity group-hover:opacity-100"
-                  style={{ left: `calc(${pos * 100}% - 6px)` }}
-                  aria-hidden="true"
-                />
-              </div>
-              <span className="w-10 shrink-0 text-[11px] tabular-nums text-faint">{fmtTime(dur)}</span>
+              <TickCur className="w-10 shrink-0 text-right text-[11px] tabular-nums text-faint" />
+              <LiveSeekBar size="sm" className="flex-1" />
+              <TickDur className="w-10 shrink-0 text-[11px] tabular-nums text-faint" />
             </div>
           </div>
 

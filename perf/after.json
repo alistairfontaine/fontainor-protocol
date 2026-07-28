@@ -1,0 +1,41 @@
+{
+  "label": "after",
+  "cpu_throttle": 4,
+  "budget_ms": 17.2,
+  "scenarios": {
+    "home-scroll-idle": {
+      "frames": 503,
+      "avg_ms": 16.8,
+      "p50_ms": 16.7,
+      "p95_ms": 16.8,
+      "worst_ms": 33.4,
+      "dropped_pct": 0.8
+    },
+    "home-scroll-playing": {
+      "frames": 523,
+      "avg_ms": 16.67,
+      "p50_ms": 16.7,
+      "p95_ms": 16.8,
+      "worst_ms": 16.8,
+      "dropped_pct": 0
+    },
+    "rail-fling": {
+      "frames": 855,
+      "avg_ms": 16.65,
+      "p50_ms": 16.7,
+      "p95_ms": 16.7,
+      "worst_ms": 16.8,
+      "dropped_pct": 0
+    },
+    "nowplaying-open-close": {
+      "frames": 926,
+      "avg_ms": 16.68,
+      "p50_ms": 16.7,
+      "p95_ms": 16.7,
+      "worst_ms": 33.3,
+      "dropped_pct": 0.1
+    }
+  },
+  "scroll_moved_px": 1069,
+  "playing": true
+}

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { NavLink, useLocation, useNavigate } from 'react-router-dom'
+import { IS_NATIVE } from '../lib/platform'
 import { usePlayer } from '../state/PlayerContext'
 import { Footer } from './Footer'
 import { IconClose, IconDisc, IconEditorial, IconHeart, IconHistory, IconHome, IconLibrary, IconProfile, IconPublish, IconQueue, IconSearch } from './icons'
@@ -203,7 +204,7 @@ function BottomNav() {
       <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around">
         {tabs.map((t) =>
           t.cta ? (
-            <NavLink key={t.to} to={t.to} className="flex min-w-[64px] flex-col items-center justify-center" aria-label={t.label}>
+            <NavLink key={t.to} to={t.to} className="press flex min-w-[64px] flex-col items-center justify-center" aria-label={t.label}>
               <span className="grid h-11 w-11 -translate-y-3 place-items-center rounded-full bg-accent text-accent-ink shadow-glow">
                 <t.icon size={24} />
               </span>
@@ -215,14 +216,16 @@ function BottomNav() {
               to={t.to}
               end={t.end}
               className={({ isActive }) =>
-                `flex min-w-[64px] flex-col items-center justify-center gap-1 ${
+                `press flex min-w-[64px] flex-col items-center justify-center gap-1 ${
                   isActive ? 'text-accent' : 'text-muted opacity-90'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <t.icon size={24} filled={isActive} />
+                  <span className={isActive ? 'tab-pop grid place-items-center' : 'grid place-items-center'}>
+                    <t.icon size={24} filled={isActive} />
+                  </span>
                   <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-normal'}`}>{t.label}</span>
                 </>
               )}
@@ -231,6 +234,58 @@ function BottomNav() {
         )}
       </div>
     </nav>
+  )
+}
+
+// ── native top bar ──────────────────────────────────────────
+// The packaged app gets an app-style contextual header instead of the
+// website's logo+search banner: screen title (wordmark only on Home),
+// search shortcut, wallet. Solid background — NO backdrop blur (see
+// index.css .is-native rules; blur is the #1 WebView compositor cost).
+
+const NATIVE_TITLES: Array<[RegExp, string]> = [
+  [/^\/library/, 'Library'],
+  [/^\/release\//, 'Release'],
+  [/^\/editorial\/.+/, 'Editorial'],
+  [/^\/editorial/, 'Editorial'],
+  [/^\/publish/, 'Publish'],
+  [/^\/profile/, 'Profile'],
+  [/^\/collection/, 'Collection'],
+  [/^\/favorites/, 'Favorites'],
+  [/^\/playlists/, 'Playlists'],
+  [/^\/history/, 'History'],
+  [/^\/support/, 'Support'],
+  [/^\/about/, 'About'],
+  [/^\/contact/, 'Contact'],
+  [/^\/faq/, 'FAQ'],
+  [/^\/terms/, 'Terms'],
+  [/^\/privacy/, 'Privacy'],
+]
+
+function NativeTopBar({ walletSlot }: { walletSlot?: ReactNode }) {
+  const { pathname } = useLocation()
+  const navigate = useNavigate()
+  const title = NATIVE_TITLES.find(([re]) => re.test(pathname))?.[1]
+  return (
+    <header className="sticky top-0 z-40 border-b border-line bg-bg">
+      <div className="flex h-14 items-center gap-3 px-4">
+        {title ? (
+          <h1 className="font-display min-w-0 flex-1 truncate text-[19px] font-bold tracking-tight text-ink">{title}</h1>
+        ) : (
+          <NavLink to="/" className="font-display min-w-0 flex-1 truncate text-[20px] font-bold tracking-tight text-ink">
+            fontainor<span className="text-accent">.</span>
+          </NavLink>
+        )}
+        <button
+          onClick={() => navigate('/library')}
+          className="grid h-10 w-10 shrink-0 cursor-pointer place-items-center rounded-btn text-body active:bg-raised"
+          aria-label="Search"
+        >
+          <IconSearch size={20} />
+        </button>
+        {walletSlot}
+      </div>
+    </header>
   )
 }
 
@@ -243,25 +298,30 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
   const { current } = usePlayer()
   return (
     <div className="min-h-screen">
-      <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-[1360px] items-center gap-6 px-4 sm:px-6">
-          <NavLink to="/" className="font-display text-[22px] font-bold tracking-tight text-ink">
-            fontainor<span className="text-accent">.</span>
-          </NavLink>
-          <SearchBox />
-          <div className="ml-auto flex items-center gap-2">
-            <MobileSearch />
-            {walletSlot}
+      {IS_NATIVE ? (
+        <NativeTopBar walletSlot={walletSlot} />
+      ) : (
+        <header className="sticky top-0 z-40 border-b border-line bg-bg/90 backdrop-blur">
+          <div className="mx-auto flex h-16 max-w-[1360px] items-center gap-6 px-4 sm:px-6">
+            <NavLink to="/" className="font-display text-[22px] font-bold tracking-tight text-ink">
+              fontainor<span className="text-accent">.</span>
+            </NavLink>
+            <SearchBox />
+            <div className="ml-auto flex items-center gap-2">
+              <MobileSearch />
+              {walletSlot}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <div className="mx-auto flex max-w-[1360px] gap-6 px-4 sm:px-6">
         <Sidebar />
-        <main className={`min-w-0 flex-1 py-7 ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}>
+        <main className={`min-w-0 flex-1 ${IS_NATIVE ? 'py-5' : 'py-7'} ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}>
           <SupportNudge />
           {children}
-          <Footer />
+          {/* footers are a website pattern — the app ends at its content */}
+          {!IS_NATIVE && <Footer />}
         </main>
       </div>
 

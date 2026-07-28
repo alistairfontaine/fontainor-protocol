@@ -266,3 +266,61 @@ VERIFIED: tools/playlists-test.mjs 18/18 incl. "Next follows playlist order not 
 ## 2026-07-27 — Post-deploy verification F38/F39
 prod-VERIFIED: served bundle index-M-xlELDf.js contains "Add to queue", "Clear queue", "Play all", "Confirm delete", "to playlist", fontainor_playlists_v1; / returns 200. F38+F39 flipped to passing. features.json now 38/39 — only F11 (real publish) red.
 Also VERIFIED same day: phantom.app/ul/browse/<url> 301s to phantom.com and serves a real web page — mobile users WITHOUT Phantom who tap "Open in Phantom" land on Phantom's install page, not a dead end (curl-verified).
+
+## 2026-07-28 — Iteration: F40 native Android app (Capacitor) + F41 Phantom deeplink wallet + F42 production APK build (user request: full production-ready mobile app + APK, Phantom must work perfectly)
+Branch `mobile-v1`. Decision (documented in MOBILE_TODO.md): wrap the existing React/Vite app with **Capacitor 8** rather than rewrite in Flutter. Rationale: fontainor is a mature ~7k-line React dApp with JS-only Irys/Arweave/Solana SDKs; a Flutter rewrite (to match lanlink/emberdelve, which are Flutter) would throw the whole app away and has no Dart equivalents for Irys musician-pays publishing → half-baked. lanlink/emberdelve instead used as references for the production Gradle setup (ABI splits, R8+resource shrink, keystore signing via key.properties, minSdk26/compileSdk36/targetSdk35, universal sideload APK). uxpeak-codex informs the already-mobile-first UI (bottom nav, 44px taps, safe areas) — no redesign needed.
+
+F41 (the hard part): in a WebView there is no injected window.solana (that only exists in Phantom's in-app browser / desktop ext). Implemented Phantom's **encrypted deeplink protocol** in src/lib/phantomDeeplink.ts (x25519 via tweetnacl + bs58, both already deps): connect / signMessage / signAndSendTransaction / disconnect, session persisted via @capacitor/preferences (warm reconnect, no repeat approval), fontainor://onphantom/<method> bounce-back routed through @capacitor/app appUrlOpen, opened via @capacitor/browser. Exposed behind the SAME provider shape the app already reads (window.solana with isPhantom/publicKey{toString,toBytes}/connect/signMessage/signAndSendTransaction) → AuthContext login, purchase.ts, irysPublish.ts and the Support tip jar all work UNCHANGED on native. Installed in main.tsx BEFORE React render so hasWallet is true on first paint (WalletButton shows Connect, not the web "Open in Phantom" fallback). src/lib/native.ts adds status bar theming, splash dismissal, hardware back button, --safe-top inset.
+
+F42: Android project generated (android/, gitignored key.properties + *.jks). Signed release keystore stored OUTSIDE the repo. Build toolchain (JDK 21, Android SDK 36, build-tools 36) provisioned in-sandbox.
+
+VERIFIED:
+- npm run ci green (typecheck + prod build) with native code included.
+- Phantom crypto round-trip test (simulating Phantom's side): 8/8 — shared-secret agreement, connect payload decrypt (public_key+session), request encrypt→Phantom-decrypt (session+message bytes intact), signature response decrypt (64-byte sig). 
+- ./gradlew :app:assembleDebug → BUILD SUCCESSFUL (universal + 3 ABI debug APKs, ~19MB).
+- ./gradlew :app:assembleRelease → BUILD SUCCESSFUL, signed + R8-shrunk (universal APK 15.2MB).
+- apksigner verify: valid v1/v2 signature (CN=Fontainor Protocol). aapt2 badging: package com.fontainor.app, minSdk26/targetSdk35, label Fontainor. Manifest contains the fontainor://onphantom intent-filter. Web build bundled at assets/public/.
+
+ASSUMED / cannot do here (no physical device, no funded wallet in sandbox):
+- Real on-chain SOL smoke test (one connect + one purchase/tip) must be run on the phone.
+- Play Store *upload* key: current keystore is a sideload/dev key; a real Play upload key needs the owner's decision (or Play App Signing).
+
+## 2026-07-28 — mobile v2: production rebuild (branding, player, MWA, animations)
+- Branding: adaptive launcher icon from official assets/icon.png (fg/bg/monochrome layers, Android 13 themed icon), branded splash (#0b0d12) with fade handoff (launchAutoHide:false + hide({fadeOutDuration:350})). 148 res assets via @capacitor/assets. VERIFIED in APK (aapt2).
+- Player: native Android MediaSession + mediaPlayback foreground service via @capgo/capacitor-media-session (lock-screen/notification controls, playback survives screen-off); adapter src/lib/mediaSession.ts keeps web behavior identical. Repeat off/all/one (auto-advance honors repeat; manual next always steps). Drag-to-seek SeekBar (pointer capture, commit on release, 44px hit target). VERIFIED: service + permissions in APK manifest, ci green.
+- BUG FIX: prev() called public play() which cleared playlist context — now playNow(). Also: with repeat off the catalog no longer wraps forever (wrap is repeat-gated).
+- Wallets: MWA (Mobile Wallet Adapter) native bridge MwaPlugin.java (clientlib 2.0.8, API shapes verified with javap: LocalAssociationScenario/authorize/reauthorize/signMessagesDetached/signAndSendTransactions/deauthorize) + src/lib/mwa.ts + hybrid router src/lib/nativeWallet.ts (prefers MWA = one-tap any wallet; Phantom deeplink fallback; same window.solana shape). Base64/base58 bridge conversions round-trip 4/4. ASSUMED (needs hardware): actual wallet approval UI flow.
+- Animations: page-in route transitions, mini-player entrance, Now Playing artwork pause-scale, splash fade; transform/opacity only; reduced-motion rule already global.
+- Android 13/14 compliance: POST_NOTIFICATIONS runtime request in MainActivity, FOREGROUND_SERVICE_MEDIA_PLAYBACK permission.
+- versionCode 2 / versionName 2.0.0. assembleRelease green; apksigner verify OK; universal APK 15.3MB.
+- NOT DONE (needs device): on-device MWA/Phantom approval smoke test, real SOL purchase test, lock-screen controls visual check.
+
+## 2026-07-28 — mobile v3: "its own app" pass (user directive: APK must stop looking like the website, be silky smooth, Spotify-grade, branded)
+Plan of record: docs/design/MOBILE_V3_PLAN.md (research: habit psychology, Spotify conventions, WebView perf). Diagnosis: user's APK is a stale v1 (branded icon already at HEAD — visually verified); real jank sources were backdrop-filter on 4 always-on surfaces + every usePlayer() consumer re-rendering 4x/s.
+- F48 perf: pos/cur/dur → usePlayerProgress() context; toggle/prev read cur/playing via refs; main ctx value tick-stable; memo(ReleaseCard). VERIFIED ci green.
+- F49 native shell: NativeTopBar (title/wordmark + search + wallet, solid bg), footer web-only, `.is-native` blanket backdrop-filter:none. VERIFIED ci green.
+- F50 native Home: greeting, 2-col shortcut grid (recents play on tap + Favorites/Playlists), all sections snap rails via <Rail> (web keeps grids). VERIFIED ci green.
+- F51 living color: lib/artColor (saturation-weighted 24px sample, luminance clamp 0.35–0.62, per-release memo, CORS-taint → amber). Now Playing wash + mini bar tint. VERIFIED ci green.
+- F52 haptics + gesture: lib/haptics (native-only import, 40ms throttle, swallow-all); artwork swipe-to-skip (GPU drag, ±70px or velocity commit, data-nodrag vs sheet dismiss). VERIFIED ci green.
+- F53 sleep timer: deadline in ctx ('track' via sleepRef in handleEnded; 1s wall-clock interval — throttling fires late never early); moon button + panel + countdown chip. VERIFIED ci green.
+- F54 release: keystore from owner stored outside repo; keytool SHA-256 == provided fingerprint (exact match, VERIFIED) BEFORE use; key.properties confirmed gitignored; versionCode 3 / versionName 3.0.0.
+ASSUMED (no device in sandbox): on-device smoke (haptics feel, swipe thresholds, sleep through screen-off, MWA/Phantom approval). Checklist sent to owner with the APK.
+
+## 2026-07-28 — mobile v4: evidence-first pass (user: "actually test everything", notification cover missing, still laggy, more features)
+Note: user asked for Flutter — app is Capacitor (told him; a Flutter port is committed as a follow-on project on its own branch; this v4 is also its spec).
+- F55 notification art: VERIFIED root cause — registry covers are relative (/covers/...); plugin's Java HttpURLConnection can't reach the WebView origin. Fix: WebView-side 512px base64 JPEG (cached, token-guarded) handed to the plugin; taint fallback to absolute URL.
+- F56 harness: scripts/perf-trace.mjs (Playwright/CDP, 390x844 touch, 4x CPU throttle, rAF deltas). Gotchas hit + fixed: static server needs HTTP Range for media seeking; `new Audio()` is not in the DOM (detect playback via mini bar + Pause button); default 30s tap timeouts poison scenario timings (set 4s).
+- F57 motion: press/tab-pop/spring sheet/stagger/content-visibility. Kept repo invariants: 28px sheet offset cap, transform-only fade-up, reduced-motion zeroing.
+- F58 crossfade: VERIFIED equal-power blend + adoption swap via instrumented Audio constructor (volumes sampled per second).
+- F59 downloads: local-first resolution is sync via startup-warmed uri cache; crossfade path also resolves local. Device I/O ASSUMED.
+- Measurements (after.json, 4x throttle): home-scroll idle AND playing, rail fling, sheet open/close — all 0.0-0.1% frames over 17.2ms budget, worst 33ms single frame. Screenshots: home / now playing / listening panel.
+
+## 2026-07-28 — v4.1: four device bug reports (jank x2, download crash, wallet)
+- Player/rail jank: usePlayerProgress() at top of NowPlaying+PlayerBar re-rendered whole trees 4x/s (tick leaves now in PlayerTicks.tsx — NEVER subscribe to progress above a leaf). Native cards: killed invisible 32px shadows + hover-scale; rails snap-proximity. Evidence at 8x throttle (4x was too soft to reproduce device jank — use 8x).
+- Download crash: NEVER push file payloads across the Capacitor bridge (multi-MB base64 kills the renderer). Filesystem.downloadFile streams natively + progress events.
+- Wallet: MWA reauthorize ROTATES the auth token — must persist the new one. Map protocol codes: user decline != protocol failure. Phantom custom-scheme redirects: parse with regex, not new URL().
+
+## 2026-07-28 — v4.2: retest fixes (auth-invalid, music-scroll, player steps)
+- Capacitor PluginCall.reject is (MESSAGE, CODE, ex) — NOT (code, message). v4.1 swapped them; JS saw code=<detail>, AUTH_INVALID self-heal never fired, user saw raw "AUTH_INVALID" text. Always verify reject overloads in node_modules source.
+- content-visibility:auto is banned on scroll paths: offscreen music rails paid a synchronous activation wall mid-fling (editorial's 3 links = free), the exact reported asymmetry. Registry is small — render up front. Covers now decode eagerly on native (lazy decode landed mid-fling).
+- Progress glide MUST be transform-only scaleX: transitioning width/left forced layout per animation frame (37->544 layouts/10s hold, rail-fling regressed 2x before correction).

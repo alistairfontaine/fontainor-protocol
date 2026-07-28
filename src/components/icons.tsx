@@ -106,6 +106,25 @@ export const IconShuffle = (p: IconProps) => (
   </Svg>
 )
 
+export const IconRepeat = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M17 3.5 20 6.5l-3 3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 6.5H8.5A4.5 4.5 0 0 0 4 11v1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M7 20.5 4 17.5l3-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 17.5h11.5A4.5 4.5 0 0 0 20 13v-1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+  </Svg>
+)
+
+export const IconRepeatOne = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M17 3.5 20 6.5l-3 3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M20 6.5H8.5A4.5 4.5 0 0 0 4 11v1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M7 20.5 4 17.5l3-3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    <path d="M4 17.5h11.5A4.5 4.5 0 0 0 20 13v-1" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    <path d="M11.2 10.4l1.6-1v5.2" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+  </Svg>
+)
+
 export const IconQueue = (p: IconProps) => (
   <Svg {...p}>
     <path d="M4 6.5h16M4 12h16M4 17.5h9" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
@@ -140,6 +159,12 @@ export const IconDisc = ({ filled, ...p }: IconProps) => (
 export const IconPlus = (p: IconProps) => (
   <Svg {...p}>
     <path d="M12 5.5v13M5.5 12h13" />
+  </Svg>
+)
+
+export const IconMoon = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M20 14.5A8.5 8.5 0 1 1 9.5 4 7 7 0 0 0 20 14.5Z" />
   </Svg>
 )
 
@@ -195,6 +220,12 @@ export const IconTag = (p: IconProps) => (
   <Svg {...p}>
     <path d="M3.8 11.2V5.5A1.7 1.7 0 0 1 5.5 3.8h5.7a2 2 0 0 1 1.4.6l7 7a2 2 0 0 1 0 2.8l-5.4 5.4a2 2 0 0 1-2.8 0l-7-7a2 2 0 0 1-.6-1.4Z" />
     <circle cx="8.2" cy="8.2" r="1.2" fill="currentColor" stroke="none" />
+  </Svg>
+)
+
+export const IconDownload = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 4v10m0 0 4.5-4.5M12 14l-4.5-4.5M5 19h14" />
   </Svg>
 )
 
