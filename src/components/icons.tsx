@@ -223,6 +223,12 @@ export const IconTag = (p: IconProps) => (
   </Svg>
 )
 
+export const IconDownload = (p: IconProps) => (
+  <Svg {...p}>
+    <path d="M12 4v10m0 0 4.5-4.5M12 14l-4.5-4.5M5 19h14" />
+  </Svg>
+)
+
 export const IconCheck = (p: IconProps) => (
   <Svg {...p}>
     <path d="m5 12.5 4.5 4.5L19 7.5" />

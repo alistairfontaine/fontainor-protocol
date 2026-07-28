@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
+import { playableSrc } from '../lib/downloads'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
@@ -338,7 +339,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (remaining > w) return
     const nxt = peekNext()
     if (!nxt?.audio) return
-    const b = new Audio(nxt.audio)
+    const b = new Audio(playableSrc(nxt) ?? nxt.audio)
     b.preload = 'auto'
     b.volume = 0
     const timer = setInterval(() => {
@@ -373,7 +374,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setMediaMetadata(rel)
 
       if (rel.audio) {
-        const a = new Audio(rel.audio)
+        // downloaded releases play from local disk (offline-safe)
+        const a = new Audio(playableSrc(rel) ?? rel.audio)
         audioRef.current = a
         wireAudio(a)
         void a.play().catch(() => {

@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { FixedSizeGrid } from 'react-window'
+import { Cover } from '../components/Cover'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
-import { IconLibrary, IconSearch } from '../components/icons'
+import { IconClose, IconLibrary, IconSearch } from '../components/icons'
+import { removeDownload, useDownloads } from '../lib/downloads'
+import { hapticThump, hapticTick } from '../lib/haptics'
+import { IS_NATIVE } from '../lib/platform'
+import { usePlayer } from '../state/PlayerContext'
 import { Chip, EmptyState, GridSkeleton, PageHead } from '../components/ui'
 import type { Release } from '../lib/registry'
 import { useRegistry } from '../state/RegistryContext'
@@ -83,6 +88,56 @@ function VirtualGrid({ items }: { items: Release[] }) {
   )
 }
 
+function DownloadsSection() {
+  const { entries } = useDownloads()
+  const { music } = useRegistry()
+  const { play } = usePlayer()
+  if (!IS_NATIVE || entries.length === 0) return null
+  const byId = new Map(music.map((r) => [r.id, r]))
+  const items = entries.map((e) => byId.get(e.id)).filter((r): r is NonNullable<typeof r> => !!r)
+  if (!items.length) return null
+  return (
+    <section className="mb-10" aria-label="Downloads">
+      <div className="mb-4 flex items-baseline justify-between">
+        <h2 className="text-lg font-semibold text-ink">Downloads</h2>
+        <span className="text-[12px] text-faint">available offline</span>
+      </div>
+      <ul className="divide-y divide-line rounded-card border border-line bg-surface">
+        {items.map((rel) => (
+          <li key={rel.id} className="flex items-center gap-3 px-3 py-2.5">
+            <button
+              onClick={() => {
+                hapticThump()
+                play(rel)
+              }}
+              className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+              aria-label={`Play ${rel.title} (downloaded)`}
+            >
+              <span className="h-11 w-11 shrink-0 overflow-hidden rounded-btn">
+                <Cover rel={rel} />
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
+                <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
+              </span>
+            </button>
+            <button
+              onClick={() => {
+                hapticTick()
+                void removeDownload(rel.id)
+              }}
+              className="grid h-9 w-9 shrink-0 cursor-pointer place-items-center rounded-btn text-faint transition-colors hover:bg-raised hover:text-ink"
+              aria-label={`Remove ${rel.title} from downloads`}
+            >
+              <IconClose size={16} />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 export default function Library() {
   const { releases, loading } = useRegistry()
   const [params, setParams] = useSearchParams()
@@ -142,6 +197,8 @@ export default function Library() {
           <option value="price">Price low–high</option>
         </select>
       </div>
+
+      <DownloadsSection />
 
       {q && (
         <p className="mb-5 text-sm text-muted">

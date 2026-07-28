@@ -2,7 +2,10 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconDownload, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
+import { hapticTick } from '../lib/haptics'
+import { IS_NATIVE } from '../lib/platform'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
@@ -128,6 +131,7 @@ export default function ReleaseDetail() {
               {fav ? 'Saved' : 'Save'}
             </Button>
             <QueueButton rel={rel} />
+            {IS_NATIVE && <DownloadButton rel={rel} />}
             <PlaylistButton rel={rel} />
             <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
@@ -407,5 +411,45 @@ function MoreLikeThis({ rel, all }: { rel: Release; all: Release[] }) {
         ))}
       </div>
     </section>
+  )
+}
+
+
+// ── offline download (F59, native only) ───────────────────────────────────
+
+function DownloadButton({ rel }: { rel: Release }) {
+  const { ids } = useDownloads()
+  const [busy, setBusy] = useState(false)
+  const [failed, setFailed] = useState(false)
+  const has = ids.has(rel.id)
+  if (!rel.audio) return null
+
+  const onClick = async () => {
+    hapticTick()
+    setFailed(false)
+    if (has) {
+      await removeDownload(rel.id)
+      return
+    }
+    setBusy(true)
+    try {
+      await downloadRelease(rel)
+    } catch {
+      setFailed(true)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button
+      size="lg"
+      onClick={() => void onClick()}
+      aria-pressed={has}
+      aria-label={has ? `Remove ${rel.title} from downloads` : `Download ${rel.title}`}
+    >
+      {busy ? <IconSpinner size={18} /> : has ? <IconCheck size={18} className="text-accent" /> : <IconDownload size={18} />}
+      {busy ? 'Downloading…' : has ? 'Downloaded' : failed ? 'Retry download' : 'Download'}
+    </Button>
   )
 }
