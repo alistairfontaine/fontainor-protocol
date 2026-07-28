@@ -359,6 +359,55 @@
       "description": "Full read of player/auth/purchase/registry paths. Fixed: prev() wiping playlist context (F44), repeat-off queue previously never ending (wrap now repeat-gated), SeekBar effect follows repo block-body rule. purchase.ts/irysPublish.ts/registry.ts audited clean.",
       "passes": true,
       "evidence": "Code diff in PlayerContext.tsx; npm run ci green."
+    },
+    {
+      "id": "F48",
+      "name": "Tick isolation (perf)",
+      "description": "pos/cur/dur in a dedicated usePlayerProgress() context; main player context referentially stable across 4x/s ticks; ReleaseCard memoized.",
+      "passes": true,
+      "evidence": "PlayerContext.tsx split + memo; npm run ci green (commit af979f6)."
+    },
+    {
+      "id": "F49",
+      "name": "Native app shell",
+      "description": "Packaged app drops web chrome: contextual NativeTopBar, footer web-only, all backdrop-filter disabled on native (.is-native blanket rule), solid chrome surfaces.",
+      "passes": true,
+      "evidence": "AppShell.tsx/index.css; ci green (commit 7b11236)."
+    },
+    {
+      "id": "F50",
+      "name": "Native Home (greeting + shortcuts + rails)",
+      "description": "Time-of-day greeting, 2-col shortcut grid (4 recents play on tap + Favorites/Playlists), all Home sections horizontal snap rails on native via <Rail>.",
+      "passes": true,
+      "evidence": "Home.tsx/ReleaseCard.tsx; ci green (commit f2edc94)."
+    },
+    {
+      "id": "F51",
+      "name": "Living color player",
+      "description": "Artwork-derived tint (saturation-weighted 24px sample, luminance-clamped, memoized, amber fallback) drives Now Playing wash + mini player edge tint.",
+      "passes": true,
+      "evidence": "lib/artColor.ts; ci green (commit 939b65f)."
+    },
+    {
+      "id": "F52",
+      "name": "Haptics + swipe-to-skip",
+      "description": "@capacitor/haptics (native-only, throttled, no-op web): thump on transport, tick on toggles; Now Playing artwork swipes horizontally to skip with GPU drag + spring settle.",
+      "passes": true,
+      "evidence": "lib/haptics.ts, NowPlaying.tsx; ci green (commit a182385)."
+    },
+    {
+      "id": "F53",
+      "name": "Sleep timer",
+      "description": "5/15/30/45/60 min or end-of-track; wall-clock 1s enforcement (throttle-safe), 'track' honored in handleEnded, countdown chip, cleared on close.",
+      "passes": true,
+      "evidence": "PlayerContext.tsx/NowPlaying.tsx; ci green (commit fa6595a)."
+    },
+    {
+      "id": "F54",
+      "name": "v3 signed release APK",
+      "description": "versionCode 3 / 3.0.0, owner keystore (SHA-256 fingerprint match verified before use), apksigner-verified, branded icon confirmed in built APK via aapt2.",
+      "passes": false,
+      "evidence": "Pending: assembleRelease + apksigner + aapt2 badging this session."
     }
   ]
 }

@@ -294,3 +294,14 @@ ASSUMED / cannot do here (no physical device, no funded wallet in sandbox):
 - Android 13/14 compliance: POST_NOTIFICATIONS runtime request in MainActivity, FOREGROUND_SERVICE_MEDIA_PLAYBACK permission.
 - versionCode 2 / versionName 2.0.0. assembleRelease green; apksigner verify OK; universal APK 15.3MB.
 - NOT DONE (needs device): on-device MWA/Phantom approval smoke test, real SOL purchase test, lock-screen controls visual check.
+
+## 2026-07-28 — mobile v3: "its own app" pass (user directive: APK must stop looking like the website, be silky smooth, Spotify-grade, branded)
+Plan of record: docs/design/MOBILE_V3_PLAN.md (research: habit psychology, Spotify conventions, WebView perf). Diagnosis: user's APK is a stale v1 (branded icon already at HEAD — visually verified); real jank sources were backdrop-filter on 4 always-on surfaces + every usePlayer() consumer re-rendering 4x/s.
+- F48 perf: pos/cur/dur → usePlayerProgress() context; toggle/prev read cur/playing via refs; main ctx value tick-stable; memo(ReleaseCard). VERIFIED ci green.
+- F49 native shell: NativeTopBar (title/wordmark + search + wallet, solid bg), footer web-only, `.is-native` blanket backdrop-filter:none. VERIFIED ci green.
+- F50 native Home: greeting, 2-col shortcut grid (recents play on tap + Favorites/Playlists), all sections snap rails via <Rail> (web keeps grids). VERIFIED ci green.
+- F51 living color: lib/artColor (saturation-weighted 24px sample, luminance clamp 0.35–0.62, per-release memo, CORS-taint → amber). Now Playing wash + mini bar tint. VERIFIED ci green.
+- F52 haptics + gesture: lib/haptics (native-only import, 40ms throttle, swallow-all); artwork swipe-to-skip (GPU drag, ±70px or velocity commit, data-nodrag vs sheet dismiss). VERIFIED ci green.
+- F53 sleep timer: deadline in ctx ('track' via sleepRef in handleEnded; 1s wall-clock interval — throttling fires late never early); moon button + panel + countdown chip. VERIFIED ci green.
+- F54 release: keystore from owner stored outside repo; keytool SHA-256 == provided fingerprint (exact match, VERIFIED) BEFORE use; key.properties confirmed gitignored; versionCode 3 / versionName 3.0.0.
+ASSUMED (no device in sandbox): on-device smoke (haptics feel, swipe thresholds, sleep through screen-off, MWA/Phantom approval). Checklist sent to owner with the APK.
