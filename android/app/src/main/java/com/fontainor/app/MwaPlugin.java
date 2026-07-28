@@ -213,7 +213,7 @@ public class MwaPlugin extends Plugin {
         try {
             activity.startActivityForResult(intent, REQUEST_LOCAL_ASSOCIATION);
         } catch (ActivityNotFoundException e) {
-            call.reject("NO_WALLET", "No MWA-compatible wallet app installed", e);
+            call.reject("No MWA-compatible wallet app installed", "NO_WALLET", e);
             return;
         }
         executor.execute(() -> {
@@ -224,6 +224,11 @@ public class MwaPlugin extends Plugin {
                 T ret = op.run(client);
                 call.resolve(ret);
             } catch (Exception e) {
+                // Capacitor's signature is reject(MESSAGE, CODE, ex) — v4.1.0
+                // passed (code, message): the JS layer then saw code=<detail>,
+                // the AUTH_INVALID self-heal never fired, and the user was
+                // shown the literal string "AUTH_INVALID" ("auth invalid try
+                // again" device report). Message first, code second.
                 // Map protocol errors to stable codes the JS layer can act on:
                 //  USER_DECLINED    -> user rejected in the wallet (no retry)
                 //  AUTH_INVALID     -> stale/revoked token (JS clears + reconnects)
@@ -233,14 +238,14 @@ public class MwaPlugin extends Plugin {
                 if (rpc != null) {
                     String detail = rpc.getMessage() != null ? rpc.getMessage() : ("wallet error " + rpc.code);
                     if (rpc.code == ProtocolContract.ERROR_NOT_SIGNED || rpc.code == ProtocolContract.ERROR_NOT_SUBMITTED) {
-                        call.reject("USER_DECLINED", detail, e);
+                        call.reject(detail, "USER_DECLINED", e);
                     } else if (rpc.code == ProtocolContract.ERROR_AUTHORIZATION_FAILED) {
-                        call.reject("AUTH_INVALID", detail, e);
+                        call.reject(detail, "AUTH_INVALID", e);
                     } else {
-                        call.reject("WALLET_ERROR", detail, e);
+                        call.reject(detail, "WALLET_ERROR", e);
                     }
                 } else {
-                    call.reject("WALLET_ERROR", msg, e);
+                    call.reject(msg, "WALLET_ERROR", e);
                 }
             } finally {
                 try {
