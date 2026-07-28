@@ -81,6 +81,12 @@ export function SeekBar({
 
   const shown = dragFrac ?? pos
   const pct = `${shown * 100}%`
+  // Playback position arrives in 4 Hz steps; a linear glide between ticks
+  // makes the fill move continuously (the visible 250ms stutter read as
+  // "player is buggy" on device). MUST be transform-only: transitioning
+  // width/left forces a layout every animation frame (measured: 37 -> 544
+  // layout passes over a 10s hold). Finger drags stay 1:1 — no easing.
+  const glide = dragFrac == null ? 'transform 260ms linear' : undefined
   const trackH = size === 'sm' ? 'h-1' : 'h-1.5'
 
   return (
@@ -104,8 +110,8 @@ export function SeekBar({
     >
       <div ref={trackRef} className={`relative w-full overflow-visible rounded-full bg-raised ${trackH}`}>
         <div
-          className={`${trackH} rounded-full ${dragFrac != null ? 'bg-accent' : 'bg-ink group-hover:bg-accent'}`}
-          style={{ width: pct }}
+          className={`${trackH} w-full origin-left rounded-full ${dragFrac != null ? 'bg-accent' : 'bg-ink group-hover:bg-accent'}`}
+          style={{ transform: `scaleX(${shown})`, transition: glide }}
         />
         <div
           className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full bg-ink shadow transition-[opacity,transform] duration-150 ${

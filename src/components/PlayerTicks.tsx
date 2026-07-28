@@ -44,5 +44,6 @@ export function LiveSeekBar({ size = 'md', className = '' }: { size?: 'sm' | 'md
 /** Hairline progress fill (parent renders the track). */
 export function TickHairlineFill() {
   const { pos } = usePlayerProgress()
-  return <div className="h-full rounded-full bg-ink" style={{ width: `${pos * 100}%` }} />
+  // Same 4 Hz→continuous glide as SeekBar (see there); transform-only.
+  return <div className="h-full w-full origin-left rounded-full bg-ink" style={{ transform: `scaleX(${pos})`, transition: 'transform 260ms linear' }} />
 }
