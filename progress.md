@@ -305,3 +305,12 @@ Plan of record: docs/design/MOBILE_V3_PLAN.md (research: habit psychology, Spoti
 - F53 sleep timer: deadline in ctx ('track' via sleepRef in handleEnded; 1s wall-clock interval — throttling fires late never early); moon button + panel + countdown chip. VERIFIED ci green.
 - F54 release: keystore from owner stored outside repo; keytool SHA-256 == provided fingerprint (exact match, VERIFIED) BEFORE use; key.properties confirmed gitignored; versionCode 3 / versionName 3.0.0.
 ASSUMED (no device in sandbox): on-device smoke (haptics feel, swipe thresholds, sleep through screen-off, MWA/Phantom approval). Checklist sent to owner with the APK.
+
+## 2026-07-28 — mobile v4: evidence-first pass (user: "actually test everything", notification cover missing, still laggy, more features)
+Note: user asked for Flutter — app is Capacitor (told him; a Flutter port is committed as a follow-on project on its own branch; this v4 is also its spec).
+- F55 notification art: VERIFIED root cause — registry covers are relative (/covers/...); plugin's Java HttpURLConnection can't reach the WebView origin. Fix: WebView-side 512px base64 JPEG (cached, token-guarded) handed to the plugin; taint fallback to absolute URL.
+- F56 harness: scripts/perf-trace.mjs (Playwright/CDP, 390x844 touch, 4x CPU throttle, rAF deltas). Gotchas hit + fixed: static server needs HTTP Range for media seeking; `new Audio()` is not in the DOM (detect playback via mini bar + Pause button); default 30s tap timeouts poison scenario timings (set 4s).
+- F57 motion: press/tab-pop/spring sheet/stagger/content-visibility. Kept repo invariants: 28px sheet offset cap, transform-only fade-up, reduced-motion zeroing.
+- F58 crossfade: VERIFIED equal-power blend + adoption swap via instrumented Audio constructor (volumes sampled per second).
+- F59 downloads: local-first resolution is sync via startup-warmed uri cache; crossfade path also resolves local. Device I/O ASSUMED.
+- Measurements (after.json, 4x throttle): home-scroll idle AND playing, rail fling, sheet open/close — all 0.0-0.1% frames over 17.2ms budget, worst 33ms single frame. Screenshots: home / now playing / listening panel.

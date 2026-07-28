@@ -408,6 +408,48 @@
       "description": "versionCode 3 / 3.0.0, owner keystore (SHA-256 fingerprint match verified before use), apksigner-verified, branded icon confirmed in built APK via aapt2.",
       "passes": true,
       "evidence": "assembleRelease BUILD SUCCESSFUL; apksigner verify: signer SHA-256 0be20d5d...d007 == owner keystore fingerprint (keytool match verified pre-build); aapt2: com.fontainor.app versionCode 3 versionName 3.0.0 label Fontainor targetSdk 35; branded F splash/icon resources visually confirmed inside APK."
+    },
+    {
+      "id": "F55",
+      "name": "Media notification cover art",
+      "description": "WebView decodes covers to 512px base64 JPEG for the media-session plugin (relative registry paths resolve to the WebView origin the plugin's Java fetch can't reach); token-guarded, cached, CORS-taint falls back to Java-reachable absolute URL.",
+      "passes": true,
+      "evidence": "Root cause verified against live registry (/covers/... relative); headless Chromium produced 48KB data:image/jpeg from bundled cover; ci green (commit a8be548)."
+    },
+    {
+      "id": "F56",
+      "name": "Frame-timing evidence harness",
+      "description": "scripts/perf-trace.mjs: dist build + phone viewport + CDP touch gestures + 4x CPU throttle; rAF deltas -> avg/p95/worst/dropped%; ?native=1 platform override; scroll movement + playback + sheet-open asserted in-run.",
+      "passes": true,
+      "evidence": "perf/baseline.json + perf/after.json committed; playback-active scroll verified (mini bar + Pause present)."
+    },
+    {
+      "id": "F57",
+      "name": "Tactile motion pass",
+      "description": "press scale on cards/tiles/tabs, active-tab icon pop, Now Playing spring entrance (28px cap honored, incoming-only opacity), 40ms rail stagger, content-visibility:auto below-fold Home sections (native).",
+      "passes": true,
+      "evidence": "ci green; screenshots v4-home/nowplaying; after.json 0% dropped frames all scenarios (commit cd5697c)."
+    },
+    {
+      "id": "F58",
+      "name": "Crossfade + preload",
+      "description": "Equal-power cos2/sin2 two-element blend over 3/6/12s, queue peeked not consumed until swap, pause/seek/skip/sleep cancel safely, persisted setting in Now Playing listening panel.",
+      "passes": true,
+      "evidence": "Instrumented Audio constructor in headless Chromium: ramp 0.99/0.01->0.38/0.62, clean swap to next track, old element paused at end; ci green."
+    },
+    {
+      "id": "F59",
+      "name": "Offline downloads (native)",
+      "description": "@capacitor/filesystem audio+cover into app data dir, localStorage index, startup-warmed convertFileSrc cache; playNow + crossfade resolve local first; release-page button + Library Downloads section.",
+      "passes": true,
+      "evidence": "ci green; web no-op verified by build. Device file I/O ASSUMED until on-device smoke (checklist sent)."
+    },
+    {
+      "id": "F60",
+      "name": "v4 signed release APK",
+      "description": "versionCode 4 / 4.0.0, owner keystore fingerprint re-verified before signing, apksigner + aapt2 verified.",
+      "passes": false,
+      "evidence": "Pending this session's build."
     }
   ]
 }
