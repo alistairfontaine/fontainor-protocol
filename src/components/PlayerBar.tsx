@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useArtTint } from '../lib/artColor'
+import { hapticThump, hapticTick } from '../lib/haptics'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer, usePlayerProgress } from '../state/PlayerContext'
@@ -222,6 +223,7 @@ export function PlayerBar() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                hapticTick()
                 toggleFav(current.id)
               }}
               className={`grid h-11 w-10 shrink-0 cursor-pointer place-items-center ${isFav ? 'text-accent' : 'text-faint'}`}
@@ -233,6 +235,7 @@ export function PlayerBar() {
             <button
               onClick={(e) => {
                 e.stopPropagation()
+                hapticThump()
                 toggle()
               }}
               className="grid h-11 w-11 shrink-0 cursor-pointer place-items-center text-ink"

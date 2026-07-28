@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useArtTint } from '../lib/artColor'
+import { hapticThump, hapticTick } from '../lib/haptics'
 import type { Release } from '../lib/registry'
 import { fmtTime } from '../lib/registry'
 import { useFavorites } from '../state/collections'
@@ -124,6 +125,55 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
     else settleBack()
   }
 
+  // ── swipe the ARTWORK horizontally to change track (Spotify gesture) ──
+  // data-nodrag on the artwork opts it out of the sheet's vertical drag;
+  // the horizontal drag writes GPU transforms directly (no re-renders) and
+  // commits on release distance/velocity, exactly like the sheet gesture.
+  const artRef = useRef<HTMLDivElement>(null)
+  const artDrag = useRef<{ x: number; t: number; lastDx: number } | null>(null)
+  const artRaf = useRef(0)
+  const applyArtDrag = (dx: number) => {
+    cancelAnimationFrame(artRaf.current)
+    artRaf.current = requestAnimationFrame(() => {
+      const el = artRef.current
+      if (!el) return
+      el.style.transition = 'none'
+      el.style.transform = `translate3d(${dx * 0.85}px, 0, 0) rotate(${dx / 60}deg)`
+    })
+  }
+  const settleArt = () => {
+    cancelAnimationFrame(artRaf.current)
+    const el = artRef.current
+    if (!el) return
+    el.style.transition = 'transform 220ms cubic-bezier(0.2, 0, 0, 1)'
+    el.style.transform = 'translate3d(0, 0, 0)'
+  }
+  const onArtTouchStart = (e: React.TouchEvent) => {
+    artDrag.current = { x: e.touches[0].clientX, t: performance.now(), lastDx: 0 }
+  }
+  const onArtTouchMove = (e: React.TouchEvent) => {
+    const g = artDrag.current
+    if (!g) return
+    g.lastDx = e.touches[0].clientX - g.x
+    applyArtDrag(g.lastDx)
+  }
+  const onArtTouchEnd = () => {
+    const g = artDrag.current
+    artDrag.current = null
+    if (!g) return
+    const dt = Math.max(performance.now() - g.t, 1)
+    const vx = g.lastDx / dt // px/ms
+    const commit = Math.abs(g.lastDx) > 70 || (Math.abs(g.lastDx) > 24 && Math.abs(vx) > 0.5)
+    if (commit && hasQueue) {
+      hapticThump()
+      settleArt()
+      if (g.lastDx < 0) next()
+      else prev()
+    } else {
+      settleArt()
+    }
+  }
+
   if (!open || !current) return null
 
   const isFav = favIds.includes(current.id)
@@ -195,11 +245,16 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
             className={`min-h-0 flex-1 flex-col items-center justify-center ${queueOpen ? 'hidden lg:flex' : 'flex'}`}
           >
             <div
-              className={`np-art w-full max-w-[min(85vw,44vh)] overflow-hidden rounded-card border border-line shadow-card lg:max-w-[min(40vw,46vh)] ${
+              ref={artRef}
+              data-nodrag
+              onTouchStart={onArtTouchStart}
+              onTouchMove={onArtTouchMove}
+              onTouchEnd={onArtTouchEnd}
+              className={`np-art w-full max-w-[min(85vw,44vh)] touch-pan-y overflow-hidden rounded-card border border-line shadow-card will-change-transform lg:max-w-[min(40vw,46vh)] ${
                 playing ? '' : 'is-paused'
               }`}
             >
-              <div className="aspect-square">
+              <div key={current.id} className="fade-up aspect-square">
                 <Cover rel={current} />
               </div>
             </div>
@@ -225,7 +280,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <p className="truncate text-left text-[15px] text-muted">{current.artist}</p>
             </div>
             <button
-              onClick={() => toggleFav(current.id)}
+              onClick={() => {
+                hapticTick()
+                toggleFav(current.id)
+              }}
               className={`grid h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
                 isFav ? 'text-accent' : 'text-faint hover:text-body'
               }`}
@@ -248,7 +306,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
           {/* transport — shuffle · prev · big light play · next · queue */}
           <div className="flex shrink-0 items-center justify-between pb-2 pt-1 sm:justify-center sm:gap-6">
             <button
-              onClick={toggleShuffle}
+              onClick={() => {
+                hapticTick()
+                toggleShuffle()
+              }}
               disabled={!hasQueue}
               className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
                 shuffle ? 'text-accent' : 'text-faint hover:text-body'
@@ -259,7 +320,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconShuffle size={22} />
             </button>
             <button
-              onClick={prev}
+              onClick={() => {
+                hapticThump()
+                prev()
+              }}
               disabled={!hasQueue}
               className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
               aria-label="Previous track"
@@ -267,14 +331,20 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconPrev size={30} />
             </button>
             <button
-              onClick={toggle}
+              onClick={() => {
+                hapticThump()
+                toggle()
+              }}
               className="grid h-16 w-16 cursor-pointer place-items-center rounded-full bg-ink text-bg shadow-card transition-transform hover:scale-105 active:scale-95"
               aria-label={playing ? 'Pause' : 'Play'}
             >
               {playing ? <IconPause size={28} /> : <IconPlay size={28} />}
             </button>
             <button
-              onClick={next}
+              onClick={() => {
+                hapticThump()
+                next()
+              }}
               disabled={!hasQueue}
               className="grid h-13 w-13 cursor-pointer place-items-center rounded-btn text-ink transition-colors hover:bg-raised disabled:cursor-default disabled:opacity-40"
               aria-label="Next track"
@@ -282,7 +352,10 @@ export function NowPlaying({ open, onClose }: { open: boolean; onClose: () => vo
               <IconNext size={30} />
             </button>
             <button
-              onClick={toggleRepeat}
+              onClick={() => {
+                hapticTick()
+                toggleRepeat()
+              }}
               className={`grid h-12 w-12 cursor-pointer place-items-center rounded-btn transition-colors hover:bg-raised ${
                 repeat !== 'off' ? 'text-accent' : 'text-faint hover:text-body'
               }`}

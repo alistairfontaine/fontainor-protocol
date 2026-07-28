@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState, Children, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { edLabel, isSold, priceLabel, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
@@ -36,6 +37,7 @@ export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Relea
           <button
             onClick={(e) => {
               e.preventDefault()
+              hapticThump()
               play(rel)
             }}
             className="absolute bottom-3 left-3 grid h-11 w-11 cursor-pointer place-items-center rounded-full bg-accent text-accent-ink opacity-0 shadow-glow transition-all duration-200 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-accent-hi max-lg:opacity-100"
@@ -48,6 +50,7 @@ export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Relea
         <button
           onClick={(e) => {
             e.preventDefault()
+            hapticTick()
             toggle(rel.id)
           }}
           className={`absolute right-3 top-3 grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-bg/70 backdrop-blur transition-all duration-200 ${
@@ -63,6 +66,7 @@ export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Relea
           <button
             onClick={(e) => {
               e.preventDefault()
+              hapticTick()
               addToQueue(rel)
               setJustQueued(true)
               if (queuedTimer.current) clearTimeout(queuedTimer.current)
