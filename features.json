@@ -474,6 +474,30 @@
       "name": "v4.1.0 signed release",
       "passes": true,
       "evidence": "versionCode 5 / 4.1.0; keystore fingerprint pre-verified; apksigner digest match; aapt2 badging OK."
+    },
+    {
+      "id": "F65",
+      "name": "Wallet: reject arg-order fix \u2014 AUTH_INVALID self-heal actually fires",
+      "passes": true,
+      "evidence": "Capacitor PluginCall.reject(MESSAGE, CODE, ex) verified in node_modules source; v4.1 passed (code,message) so e.code never matched. All 5 reject sites fixed. Device round-trip ASSUMED."
+    },
+    {
+      "id": "F66",
+      "name": "Home scroll: cv-auto activation wall removed + eager native cover decode",
+      "passes": true,
+      "evidence": "perf/before-v4.2.json vs after-v4.2.json @8x: home-scroll-playing 10%->0.9% dropped, rail-fling 7.8%->2.1%. Cold idle scroll raster-bound on rig (11.1->10.2%); activation+decode stalls are the device-relevant share."
+    },
+    {
+      "id": "F67",
+      "name": "Player: 4Hz progress steps glide (transform-only)",
+      "passes": true,
+      "evidence": "width/left transition rejected (37->544 layouts/10s); scaleX form keeps layouts 37-38, nowplaying-hold 0.5% dropped."
+    },
+    {
+      "id": "F68",
+      "name": "v4.2.0 signed release",
+      "passes": true,
+      "evidence": "versionCode 6 / 4.2.0; fingerprint pre-verified; apksigner digest match; aapt2 badging OK; ci green."
     }
   ]
 }

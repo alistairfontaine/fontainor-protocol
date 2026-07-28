@@ -319,3 +319,8 @@ Note: user asked for Flutter — app is Capacitor (told him; a Flutter port is c
 - Player/rail jank: usePlayerProgress() at top of NowPlaying+PlayerBar re-rendered whole trees 4x/s (tick leaves now in PlayerTicks.tsx — NEVER subscribe to progress above a leaf). Native cards: killed invisible 32px shadows + hover-scale; rails snap-proximity. Evidence at 8x throttle (4x was too soft to reproduce device jank — use 8x).
 - Download crash: NEVER push file payloads across the Capacitor bridge (multi-MB base64 kills the renderer). Filesystem.downloadFile streams natively + progress events.
 - Wallet: MWA reauthorize ROTATES the auth token — must persist the new one. Map protocol codes: user decline != protocol failure. Phantom custom-scheme redirects: parse with regex, not new URL().
+
+## 2026-07-28 — v4.2: retest fixes (auth-invalid, music-scroll, player steps)
+- Capacitor PluginCall.reject is (MESSAGE, CODE, ex) — NOT (code, message). v4.1 swapped them; JS saw code=<detail>, AUTH_INVALID self-heal never fired, user saw raw "AUTH_INVALID" text. Always verify reject overloads in node_modules source.
+- content-visibility:auto is banned on scroll paths: offscreen music rails paid a synchronous activation wall mid-fling (editorial's 3 links = free), the exact reported asymmetry. Registry is small — render up front. Covers now decode eagerly on native (lazy decode landed mid-fling).
+- Progress glide MUST be transform-only scaleX: transitioning width/left forced layout per animation frame (37->544 layouts/10s hold, rail-fling regressed 2x before correction).
