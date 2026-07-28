@@ -13,6 +13,7 @@ const COLS: Array<{ head: string; links: Array<{ to: string; label: string }> }>
     head: 'Company',
     links: [
       { to: '/about', label: 'About' },
+      { to: '/android', label: 'Android app' },
       { to: '/support', label: 'Support us' },
       { to: '/faq', label: 'FAQ' },
       { to: '/contact', label: 'Contact' },
