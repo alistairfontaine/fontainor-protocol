@@ -161,12 +161,40 @@ h1, h2, h3, h4 {
 
 /* Marquee for long titles in the player bar: only scrolls when the text
    actually overflows (the .overflowing class is set from JS measurement). */
+/* Opacity here follows the page-in precedent: incoming view only, so a
+   stalled animation worst-cases to a visible sheet 28px low, never lost
+   content. Offset stays capped at 28px (see note above). */
 @keyframes rise-in {
-  from { transform: translateY(28px); }
-  to { transform: translateY(0); }
+  from { opacity: 0.001; transform: translateY(28px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.rise-in { animation: rise-in 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+.rise-in { animation: rise-in 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+
+/* Tactile press feedback (native feel): composited scale only. Applied to
+   cards, shortcut tiles and nav tabs. Fast in, springy out. */
+.press { transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1); }
+.press:active { transform: scale(0.96); }
+
+/* Bottom-nav tab: icon pops when it becomes the active tab. */
+@keyframes tab-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.tab-pop { animation: tab-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Below-fold Home sections skip layout/paint until scrolled near (native
+   only — the observable win is on WebView compositors). The placeholder
+   size keeps the scrollbar stable. */
+.is-native .cv-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 300px;
+}
+
+/* Rail entrance stagger: each card rises a beat after the previous one.
+   Transform-only (see fade-up note); delay is set inline per item. */
+.stagger > * { animation: fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: var(--stagger, 0ms); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

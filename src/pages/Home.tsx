@@ -37,7 +37,7 @@ function Trending() {
   }, [top, releases])
   if (rows.length < 3) return null
   return (
-    <section className="mt-12" aria-label="Trending this week">
+    <section className="cv-auto mt-12" aria-label="Trending this week">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">Trending this week</h2>
         <span className="text-[13px] text-faint">Most played across the registry</span>
@@ -58,7 +58,7 @@ function NewFromFollowed() {
   const { fresh, markSeen } = useNewFromFollowed(releases)
   if (fresh.length === 0) return null
   return (
-    <section className="mt-12" aria-label="New from artists you follow">
+    <section className="cv-auto mt-12" aria-label="New from artists you follow">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">
           New from artists you follow
@@ -87,7 +87,7 @@ function MadeForYou() {
   const recs = useMemo(() => recommendFor(releases, favIds, histIds, 5), [releases, favIds, histIds])
   if (recs.length === 0) return null
   return (
-    <section className="mt-12" aria-label="Made for you">
+    <section className="cv-auto mt-12" aria-label="Made for you">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">Made for you</h2>
         <span className="text-[13px] text-faint">From your plays &amp; favorites — kept on this device</span>
@@ -113,7 +113,7 @@ function SourceBanner() {
 function EditorialStrip({ articles }: { articles: Release[] }) {
   if (articles.length === 0) return null
   return (
-    <section className="mt-12">
+    <section className="cv-auto mt-12">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-xl font-semibold">Latest writing</h2>
         <Link to="/editorial" className="text-[13px] text-muted hover:text-accent">

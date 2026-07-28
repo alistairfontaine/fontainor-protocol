@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, Children, type ReactNode } from 'react'
+import { memo, useEffect, useRef, useState, Children, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
@@ -27,7 +27,7 @@ export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Relea
   const href = rel.type === 'editorial' ? `/editorial/${encodeURIComponent(rel.id)}` : `/release/${encodeURIComponent(rel.id)}`
 
   return (
-    <article className="group fade-up">
+    <article className="press group fade-up">
       <div className="relative aspect-square overflow-hidden rounded-card bg-raised shadow-card">
         <Link to={href} aria-label={rel.title}>
           <Cover rel={rel} className="transition-transform duration-300 group-hover:scale-[1.03]" />
@@ -138,9 +138,11 @@ export function Rail({ children }: { children: ReactNode }) {
     return <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{children}</div>
   }
   return (
-    <div className="-mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-      {Children.map(children, (c) => (
-        <div className="w-[42vw] max-w-[190px] shrink-0 snap-start">{c}</div>
+    <div className="stagger -mx-4 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {Children.map(children, (c, i) => (
+        <div className="w-[42vw] max-w-[190px] shrink-0 snap-start" style={{ '--stagger': `${Math.min(i, 5) * 40}ms` } as CSSProperties}>
+          {c}
+        </div>
       ))}
     </div>
   )

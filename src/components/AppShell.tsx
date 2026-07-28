@@ -204,7 +204,7 @@ function BottomNav() {
       <div className="mx-auto flex h-16 max-w-lg items-stretch justify-around">
         {tabs.map((t) =>
           t.cta ? (
-            <NavLink key={t.to} to={t.to} className="flex min-w-[64px] flex-col items-center justify-center" aria-label={t.label}>
+            <NavLink key={t.to} to={t.to} className="press flex min-w-[64px] flex-col items-center justify-center" aria-label={t.label}>
               <span className="grid h-11 w-11 -translate-y-3 place-items-center rounded-full bg-accent text-accent-ink shadow-glow">
                 <t.icon size={24} />
               </span>
@@ -216,14 +216,16 @@ function BottomNav() {
               to={t.to}
               end={t.end}
               className={({ isActive }) =>
-                `flex min-w-[64px] flex-col items-center justify-center gap-1 ${
+                `press flex min-w-[64px] flex-col items-center justify-center gap-1 ${
                   isActive ? 'text-accent' : 'text-muted opacity-90'
                 }`
               }
             >
               {({ isActive }) => (
                 <>
-                  <t.icon size={24} filled={isActive} />
+                  <span className={isActive ? 'tab-pop grid place-items-center' : 'grid place-items-center'}>
+                    <t.icon size={24} filled={isActive} />
+                  </span>
                   <span className={`text-[11px] ${isActive ? 'font-semibold' : 'font-normal'}`}>{t.label}</span>
                 </>
               )}
