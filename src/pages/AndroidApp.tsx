@@ -150,7 +150,7 @@ export function AndroidApp() {
           <li>
             Trouble installing? Ask on{' '}
             <a
-              href="https://discord.gg/uc4SJbRBH"
+              href="https://discord.gg/ARezqHYS23"
               target="_blank"
               rel="noopener noreferrer"
               className="text-accent hover:underline"
