@@ -266,3 +266,16 @@ VERIFIED: tools/playlists-test.mjs 18/18 incl. "Next follows playlist order not 
 ## 2026-07-27 — Post-deploy verification F38/F39
 prod-VERIFIED: served bundle index-M-xlELDf.js contains "Add to queue", "Clear queue", "Play all", "Confirm delete", "to playlist", fontainor_playlists_v1; / returns 200. F38+F39 flipped to passing. features.json now 38/39 — only F11 (real publish) red.
 Also VERIFIED same day: phantom.app/ul/browse/<url> 301s to phantom.com and serves a real web page — mobile users WITHOUT Phantom who tap "Open in Phantom" land on Phantom's install page, not a dead end (curl-verified).
+
+## 2026-07-29 — Iteration: permanent Discord invite + business email + solo.to hub (user directive)
+User (DM): swap the Discord invite for the non-expiring one Alistair made, add prodbizonly123@gmail.com alongside the silentics address, and evaluate adding solo.to/fontainor.
+Changes: discord.gg/uc4SJbRBH -> discord.gg/ARezqHYS23 in src/components/Footer.tsx (community row) and src/pages/AndroidApp.tsx (install-help link); Contact page (src/pages/Static.tsx) gained a second mailto card — "Business — partnerships, press, investors" prodbizonly123@gmail.com — and the support card label narrowed to "Support, artists, rights"; solo.to/fontainor added as an "All links" entry in the footer community row and the Contact socials row.
+VERIFIED: `npm run ci` green; built bundle dist/assets/index-DJQxWTjO.js contains ARezqHYS23 (x2), prodbizonly123@gmail.com, solo.to/fontainor (x3) and no occurrence of uc4SJbRBH anywhere in dist/. Discord API invite lookup for ARezqHYS23 returns guild "Fontainor Protocol" with expires_at: null (never expires). solo.to/fontainor loads as "Fontainor Protocol (/fontainor) · solo.to" and links the same Discord invite, plus Bluesky (fontainor.bsky.social) and LinkedIn (company/135664019) which the site footer does not yet carry — flagged to the user as a possible follow-up, not added in this iteration.
+ASSUMED: prod until post-deploy check.
+
+## 2026-07-29 — Iteration: footer socials + support-page contact block (user directive, same PR)
+User (DM 14:37): "add the footer thing and the email to the support page besides silentics.org@gmail.com".
+Changes: footer COMMUNITY row gained Bluesky (bsky.app/profile/fontainor.bsky.social) and LinkedIn (linkedin.com/company/135664019) — both taken from the official solo.to hub, both previously missing from the site; /support page gained a "Talk to us" section listing silentics.org@gmail.com (support/artists/rights) and prodbizonly123@gmail.com (business/partnerships/press). The Contact page already carries both addresses from the previous iteration; "support page" was read as covering both surfaces so neither reading is left unserved.
+Stacked onto the same branch/PR as the previous iteration (PR #33 still open and unmerged — a second branch off main would have conflicted on the same footer array).
+VERIFIED: `npm run ci` green; built bundle dist/assets/index-ClReBhNJ.js contains fontainor.bsky.social, linkedin.com/company/135664019 and prodbizonly123@gmail.com.
+ASSUMED: prod until post-deploy check.
