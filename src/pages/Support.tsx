@@ -239,6 +239,24 @@ export function Support() {
 
         <SupportersWall />
 
+        <section>
+          <h2 className="mb-2.5 font-display text-[19px] font-semibold text-ink">Talk to us</h2>
+          <ul className="space-y-1.5">
+            <li>
+              <strong className="text-ink">Support, artists, rights</strong> —{' '}
+              <a className="underline underline-offset-2 hover:text-ink" href="mailto:silentics.org@gmail.com">
+                silentics.org@gmail.com
+              </a>
+            </li>
+            <li>
+              <strong className="text-ink">Business, partnerships, press</strong> —{' '}
+              <a className="underline underline-offset-2 hover:text-ink" href="mailto:prodbizonly123@gmail.com">
+                prodbizonly123@gmail.com
+              </a>
+            </li>
+          </ul>
+        </section>
+
         <section className="border-t border-line pt-8 text-sm text-muted">
           <p>
             Fontainor is AGPL-3.0 open source. No feature here is ever gated behind a donation — if it's useful,

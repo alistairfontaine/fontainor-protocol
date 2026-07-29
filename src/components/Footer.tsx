@@ -34,6 +34,8 @@ const COMMUNITY: Array<{ href: string; label: string }> = [
   { href: 'https://github.com/alistairfontaine/fontainor-protocol', label: 'GitHub' },
   { href: 'https://instagram.com/fontainor', label: 'Instagram' },
   { href: 'https://x.com/fontainor', label: 'X' },
+  { href: 'https://bsky.app/profile/fontainor.bsky.social', label: 'Bluesky' },
+  { href: 'https://www.linkedin.com/company/135664019', label: 'LinkedIn' },
   { href: 'https://solo.to/fontainor', label: 'All links' },
 ]
 
