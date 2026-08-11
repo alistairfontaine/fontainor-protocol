@@ -18,12 +18,18 @@ export const PROTOCOL_FEE_RATE = 0.02;
  * Confirms the transaction exists, did not fail, and that the artist and
  * treasury balances increased by at least their share of the expected amount.
  *
+ * When `buyerWalletStr` is provided, additionally confirms that wallet is a
+ * payer in the transaction (its balance decreased by at least the price), so
+ * a third party cannot claim someone else's on-chain purchase as their own.
+ *
  * @param {string} signature - Transaction signature from the buyer's wallet.
  * @param {string} artistWalletStr - Artist's public key (base58).
  * @param {number} expectedAmountLamports - Total price in lamports.
+ * @param {string} [currency]
+ * @param {string|null} [buyerWalletStr] - Claimed buyer wallet (base58), verified as payer when given.
  * @returns {Promise<boolean>}
  */
-export async function verifySolanaPayment(signature, artistWalletStr, expectedAmountLamports, currency = 'SOL') {
+export async function verifySolanaPayment(signature, artistWalletStr, expectedAmountLamports, currency = 'SOL', buyerWalletStr = null) {
     try {
         if (!signature || !artistWalletStr || !(expectedAmountLamports > 0)) return false;
         if (currency !== 'SOL') return false; // v1: native SOL transfers only
@@ -62,7 +68,18 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
         const expectedArtist = expectedAmountLamports - expectedTreasury;
 
         // Small tolerance: client rounds the split with integer lamports.
-        return artistReceived >= expectedArtist - 10 && treasuryReceived >= expectedTreasury - 10;
+        if (!(artistReceived >= expectedArtist - 10 && treasuryReceived >= expectedTreasury - 10)) return false;
+
+        if (buyerWalletStr) {
+            const buyerPubKey = new PublicKey(buyerWalletStr);
+            const buyerIdx = accountKeys.findIndex((key) => key.equals(buyerPubKey));
+            if (buyerIdx === -1) return false;
+            const buyerPaid = txInfo.meta.preBalances[buyerIdx] - txInfo.meta.postBalances[buyerIdx];
+            // The claimed buyer must have paid at least the price (fees make it more).
+            if (buyerPaid < expectedAmountLamports - 10) return false;
+        }
+
+        return true;
     } catch (err) {
         console.error('Payment verification crashed:', err.message);
         return false;

@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bs58 from 'bs58';
-import { checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from './registryGuard.js';
+import { canonical, checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from './registryGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,13 +25,25 @@ try {
 const app = express();
 // Middleware configuration: accept raw binary streams up to 100MB to accommodate compiled files safely
 const rawBodyParser = express.raw({ type: 'application/octet-stream', limit: '100mb' });
-// In-memory store for chunking
-const uploadBuffer = new Map();
+// In-memory store for chunking, bounded so abandoned sessions can't OOM the
+// process: capped session count, capped bytes per session, stale-session sweep.
+const uploadBuffer = new Map(); // uploadId -> { chunks, totalChunks, bytes, createdAt }
+const MAX_UPLOAD_SESSIONS = 32;
+const MAX_SESSION_BYTES = 120 * 1024 * 1024;
+const MAX_TOTAL_CHUNKS = 4096;
+const SESSION_TTL_MS = 15 * 60 * 1000;
 
+function sweepStaleUploadSessions() {
+    const now = Date.now();
+    for (const [id, s] of uploadBuffer) {
+        if (now - s.createdAt > SESSION_TTL_MS) uploadBuffer.delete(id);
+    }
+}
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(__dirname));
+// NOTE: no express.static here on purpose — __dirname is the api/ source
+// directory; serving it exposed index.js/pointer.json on non-Vercel deploys.
 
 // --- Arweave Setup ---
 const arweave = initArweave({
@@ -59,6 +71,7 @@ const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 // (Arweave manifest pointer + ephemeral filesystem).
 const REGISTRY_KEY = 'fontainor:registry:v1';
 const PURCHASES_KEY = 'fontainor:purchases:v1';
+const PURCHASE_SIGS_KEY = 'fontainor:purchases:sigs:v1'; // replay guard: signatures already receipted
 const favoritesKey = (wallet) => `fontainor:favorites:v1:${wallet}`;
 let redis = null;
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -91,6 +104,31 @@ async function writeDurableRegistry(manifestArray) {
         console.error('Redis write error:', e.message);
         return false;
     }
+}
+
+/**
+ * Merge-on-write for publish paths. The guard validates `incoming` against a
+ * registry snapshot read earlier; writing `incoming` verbatim would drop any
+ * entry another publisher appended in between (lost update). Re-reading at
+ * write time and unioning by id narrows that race to milliseconds. (A full
+ * fix needs an atomic compare-and-set, which Upstash REST doesn't offer.)
+ * Existing durable entries always win over incoming duplicates.
+ */
+async function mergeWriteDurableRegistry(incoming) {
+    const latest = await readDurableRegistry();
+    if (!latest || latest.length === 0) {
+        return { merged: incoming, durable: await writeDurableRegistry(incoming) };
+    }
+    const haveIds = new Set(latest.map((e) => (e && typeof e.id === 'string' ? e.id : null)).filter(Boolean));
+    const haveCanon = new Set(latest.map((e) => canonical(e)));
+    const merged = [
+        ...latest,
+        ...incoming.filter((e) => {
+            const id = e && typeof e.id === 'string' ? e.id : null;
+            return id ? !haveIds.has(id) : !haveCanon.has(canonical(e));
+        }),
+    ];
+    return { merged, durable: await writeDurableRegistry(merged) };
 }
 
 // --- Wallet-bound handles (claimed usernames) ---
@@ -287,8 +325,7 @@ app.get('/registry', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, content-type, Authorization, X-Upload-Id, X-Chunk-Index, X-Total-Chunks');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    // (no Allow-Credentials: it is invalid combined with the * origin)
 
     try {
         // durable store first — survives redeploys, no gateway round-trip
@@ -338,7 +375,8 @@ app.post('/upload', validateUpload, async (req, res) => {
         const hasWallet = wallet && Object.keys(wallet).length > 0;
         let txId = null;
         if (hasWallet) {
-            const up = await uploadManifest(JSON.stringify(req.body), { arweave, wallet });
+            // Always etch the normalized ARRAY (req.body may be a bare object).
+            const up = await uploadManifest(JSON.stringify(manifestArray), { arweave, wallet });
             if (up.success) {
                 writeManifestPointer(up.txId);
                 txId = up.txId;
@@ -348,8 +386,9 @@ app.post('/upload', validateUpload, async (req, res) => {
             }
         }
 
-        // Durable registry write (works with or without Arweave).
-        const durableOk = await writeDurableRegistry(manifestArray);
+        // Durable registry write (works with or without Arweave). Merge-on-write
+        // so a concurrent publish that landed since the guard check isn't dropped.
+        const { durable: durableOk } = await mergeWriteDurableRegistry(manifestArray);
         if (!txId && !durableOk) {
             return res.status(502).json({
                 success: false,
@@ -366,23 +405,50 @@ app.post('/upload', validateUpload, async (req, res) => {
 // 3. Audio Chunk Upload
 app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
     try {
-        const uploadId = req.headers['x-upload-id'];
-        const chunkIndex = parseInt(req.headers['x-chunk-index']);
-        const totalChunks = parseInt(req.headers['x-total-chunks']);
+        sweepStaleUploadSessions();
 
-        if (!uploadId || isNaN(chunkIndex) || !req.body) {
+        const uploadId = String(req.headers['x-upload-id'] || '');
+        const chunkIndex = parseInt(req.headers['x-chunk-index'], 10);
+        const totalChunks = parseInt(req.headers['x-total-chunks'], 10);
+
+        // Strict header validation: a NaN totalChunks used to throw on
+        // `new Array(NaN)`, and unbounded indexes let sessions grow forever.
+        if (!uploadId || uploadId.length > 128 || !Buffer.isBuffer(req.body) || req.body.length === 0) {
             return res.status(400).json({ success: false, message: "Missing headers or binary body" });
+        }
+        if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_TOTAL_CHUNKS) {
+            return res.status(400).json({ success: false, message: `X-Total-Chunks must be an integer between 1 and ${MAX_TOTAL_CHUNKS}.` });
+        }
+        if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= totalChunks) {
+            return res.status(400).json({ success: false, message: "X-Chunk-Index out of range for X-Total-Chunks." });
         }
 
         if (!uploadBuffer.has(uploadId)) {
-            uploadBuffer.set(uploadId, new Array(totalChunks).fill(null));
+            if (uploadBuffer.size >= MAX_UPLOAD_SESSIONS) {
+                return res.status(429).json({ success: false, message: "Too many concurrent upload sessions — retry shortly." });
+            }
+            uploadBuffer.set(uploadId, { chunks: new Array(totalChunks).fill(null), totalChunks, bytes: 0, createdAt: Date.now() });
         }
 
         const session = uploadBuffer.get(uploadId);
-        session[chunkIndex] = req.body; // Buffer stored here
+        if (session.totalChunks !== totalChunks) {
+            uploadBuffer.delete(uploadId);
+            return res.status(400).json({ success: false, message: "X-Total-Chunks changed mid-session." });
+        }
+        if (session.chunks[chunkIndex] == null) session.bytes += req.body.length;
+        if (session.bytes > MAX_SESSION_BYTES) {
+            uploadBuffer.delete(uploadId);
+            return res.status(413).json({ success: false, message: "Upload session exceeds the size limit." });
+        }
+        session.chunks[chunkIndex] = req.body; // Buffer stored here
 
-                if (chunkIndex === totalChunks - 1) {
-            const fullFileBuffer = Buffer.concat(session);
+        if (chunkIndex === totalChunks - 1) {
+            const missing = session.chunks.findIndex((c) => c == null);
+            if (missing !== -1) {
+                uploadBuffer.delete(uploadId);
+                return res.status(400).json({ success: false, error: "CHUNKS_MISSING", message: `Chunk ${missing} never arrived — restart the upload.` });
+            }
+            const fullFileBuffer = Buffer.concat(session.chunks);
             console.log(`📦 Final chunk received. Concatenating bitstream (${fullFileBuffer.length} bytes)...`);
 
             /* 🔥 NATIVE BARE-METAL ARWEAVE TRANSACTION ENGINE 🔥 */
@@ -464,9 +530,12 @@ app.post('/api/v1/verify-payment', async (req, res) => {
             return res.status(400).json({ success: false, message: 'Missing signature, artistWallet, trackId or amountLamports.' });
         }
 
-        // Verify the 98/2 split actually happened on the Solana ledger.
+        // Verify the 98/2 split actually happened on the Solana ledger, and —
+        // when a buyer is claimed — that the claimed buyer actually paid in
+        // that transaction (otherwise anyone who sees a signature on-chain
+        // could attach someone else's purchase to their own wallet).
         const { verifySolanaPayment } = await import('./paymentBridge.js');
-        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL');
+        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL', buyerWallet || null);
         if (!isVerified) {
             return res.status(400).json({ success: false, message: 'On-chain payment verification failed.' });
         }
@@ -475,6 +544,11 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         let receiptStored = false;
         if (redis) {
             try {
+                // Replay guard: one on-chain signature = at most one receipt.
+                const firstSeen = await redis.sadd(PURCHASE_SIGS_KEY, signature);
+                if (!firstSeen) {
+                    return res.json({ success: true, verified: true, receiptStored: false, duplicate: true, signature });
+                }
                 await redis.lpush(PURCHASES_KEY, JSON.stringify({
                     trackId,
                     signature,
@@ -599,7 +673,16 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
         }
 
         const previous = await getHandleForWallet(wallet);
-        await redis.hset(HANDLES_BY_NAME, { [bare]: wallet });
+        // Atomic claim: HSETNX loses cleanly when two wallets race for the
+        // same name (the old check-then-HSET let the second claimer overwrite
+        // the first). A falsy result with a different owner = taken.
+        const claimedNow = await redis.hsetnx(HANDLES_BY_NAME, bare, wallet);
+        if (!claimedNow) {
+            const owner = await getWalletForHandle(bare);
+            if (owner && owner !== wallet) {
+                return res.status(409).json({ success: false, code: 'HANDLE_TAKEN', message: `@${bare} is already claimed.` });
+            }
+        }
         await redis.hset(HANDLES_BY_WALLET, { [wallet]: bare });
         if (previous && previous !== bare) {
             try { await redis.hdel(HANDLES_BY_NAME, previous); }
@@ -829,7 +912,9 @@ app.post('/api/v1/publish', async (req, res) => {
         const guardFail = await guardIncomingManifest(manifest);
         if (guardFail) return res.status(guardFail.status).json(guardFail.body);
         writeManifestPointer(txId);
-        const durable = await writeDurableRegistry(manifest);
+        // Merge-on-write: don't drop a release another artist published
+        // between the guard read and this write.
+        const { durable } = await mergeWriteDurableRegistry(manifest);
         return res.json({ success: true, txId, durable });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });
