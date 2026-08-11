@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
 import { dropBrokenDownload, localAudioSrc } from '../lib/downloads'
+import { markGatewayDown, markGatewayUp, mediaCandidates } from '../lib/gateways'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
@@ -42,6 +43,10 @@ interface PlayerState {
   /** crossfade window in seconds; 0 = off */
   crossfade: number
   setCrossfade: (sec: number) => void
+  /** set when every source for the current release failed — never a silent lie */
+  stalled: boolean
+  /** re-attempt the current release from the top of its source list */
+  retry: () => void
 }
 
 /**
@@ -88,6 +93,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [pos, setPos] = useState(0)
   const [cur, setCur] = useState(0)
   const [dur, setDur] = useState(0)
+  const [stalled, setStalled] = useState(false)
+  // Source list for the release being played: local download first (if any),
+  // then every gateway that can serve the same permanent content.
+  const attemptsRef = useRef<{ id: string; list: string[]; idx: number } | null>(null)
   // Fresh cur for callbacks (toggle/prev) so THEY don't have to depend on the
   // 4×/s cur state — keeping the main context value referentially stable
   // across ticks is the whole point of the Progress context split.
@@ -276,6 +285,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     a.addEventListener('loadedmetadata', () => {
       setDur(a.duration || 0)
       setMediaPosition(a.duration || 0, 0)
+      // This source answered: clear any stall and un-demote its gateway.
+      if (audioRef.current === a) {
+        setStalled(false)
+        markGatewayUp(a.src)
+      }
     })
     a.addEventListener('timeupdate', () => {
       if (audioRef.current !== a) return // stale element after a swap
@@ -295,26 +309,48 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
     a.addEventListener('error', () => {
       if (audioRef.current !== a) return
+      const rel = currentRef.current
       // A local downloaded file that no longer decodes must not silently turn
       // into the demo progress bar (a moving playhead with no sound). Forget
-      // the download and stream the release instead — once.
-      const rel = currentRef.current
-      if (rel?.audio && a.dataset.localDownload === rel.id) {
-        void dropBrokenDownload(rel.id)
-        const b = new Audio(rel.audio)
-        audioRef.current = b
-        wireAudio(b)
-        void b.play().catch(() => {
-          audioRef.current = null
-          setDur(DEMO_DURATION)
-          startSim(0)
-        })
+      // the download; the remaining sources are gateways.
+      if (rel && a.dataset.localDownload === rel.id) void dropBrokenDownload(rel.id)
+      else markGatewayDown(a.src)
+      if (rel && attemptsRef.current?.id === rel.id && attachNextSource()) return
+      // Out of sources. A release that HAS audio must say so instead of
+      // pretending to play: the demo simulator is for entries with no audio.
+      audioRef.current = null
+      stopSim()
+      if (rel?.audio) {
+        setStalled(true)
+        setPlaying(false)
+        setMediaPlaybackState(false)
         return
       }
-      audioRef.current = null
       setDur(DEMO_DURATION)
       startSim(0)
     })
+  }
+
+  /**
+   * Advance to the next source for the current release, if there is one.
+   * Returns false when the list is exhausted.
+   */
+  const attachNextSource = (): boolean => {
+    const at = attemptsRef.current
+    const rel = currentRef.current
+    if (!at || !rel || at.id !== rel.id) return false
+    const next = at.idx + 1
+    if (next >= at.list.length) return false
+    at.idx = next
+    const url = at.list[next]
+    const b = new Audio(url)
+    if (url === localAudioSrc(rel.id)) b.dataset.localDownload = rel.id
+    audioRef.current = b
+    wireAudio(b)
+    void b.play().catch(() => {
+      /* the 'error' listener drives the next step */
+    })
+    return true
   }
 
   /** Complete a crossfade: consume the queue like handleEnded would, adopt the incoming element. */
@@ -356,7 +392,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nxt = peekNext()
     if (!nxt?.audio) return
     const nextLocal = localAudioSrc(nxt.id)
-    const b = new Audio(nextLocal ?? nxt.audio)
+    const b = new Audio(nextLocal ?? mediaCandidates(nxt.audio)[0] ?? nxt.audio)
     if (nextLocal) b.dataset.localDownload = nxt.id
     b.preload = 'auto'
     b.volume = 0
@@ -391,19 +427,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       setMediaMetadata(rel)
 
+      setStalled(false)
       if (rel.audio) {
-        // downloaded releases play from local disk (offline-safe)
+        // Source list, best first: the downloaded copy (offline-safe), then
+        // every gateway that serves the same permanent content. One unreachable
+        // gateway must not make a permanent release unplayable.
         const local = localAudioSrc(rel.id)
-        const a = new Audio(local ?? rel.audio)
+        const list = [...(local ? [local] : []), ...mediaCandidates(rel.audio)]
+        attemptsRef.current = { id: rel.id, list, idx: 0 }
+        const a = new Audio(list[0])
         if (local) a.dataset.localDownload = rel.id
         audioRef.current = a
         wireAudio(a)
         void a.play().catch(() => {
-          audioRef.current = null
-          setDur(DEMO_DURATION)
-          startSim(0)
+          /* the 'error' listener walks the source list */
         })
       } else {
+        attemptsRef.current = null
         setDur(DEMO_DURATION)
         startSim(0)
       }
@@ -416,6 +456,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [playNow])
 
   /** Public play: a direct pick outside a playlist clears the playlist context. */
+  /** Try the current release again from the top of a freshly ordered source list. */
+  const retry = useCallback(() => {
+    const rel = currentRef.current
+    if (!rel) return
+    setStalled(false)
+    playRef.current(rel)
+  }, [])
+
   const play = useCallback(
     (rel: Release, opts?: { keepContext?: boolean }) => {
       if (!opts?.keepContext) setContext(null)
@@ -680,8 +728,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       setSleepTimer,
       crossfade,
       setCrossfade,
+      stalled,
+      retry,
     }),
-    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close, sleepUntil, setSleepTimer, crossfade, setCrossfade],
+    [current, playing, queue.length, manual.length, shuffle, repeat, toggleRepeat, upNext, toggleShuffle, play, playList, addToQueue, playQueued, removeQueued, clearQueue, toggle, next, prev, seek, close, sleepUntil, setSleepTimer, crossfade, setCrossfade, stalled, retry],
   )
 
   const progress = useMemo<PlayerProgress>(() => ({ pos, cur, dur }), [pos, cur, dur])

@@ -37,6 +37,8 @@ export function PlayerBar() {
     next,
     prev,
     close,
+    stalled,
+    retry,
   } = usePlayer()
   const { ids: favIds, toggle: toggleFav } = useFavorites()
   const tint = useArtTint(current)
@@ -215,7 +217,22 @@ export function PlayerBar() {
             </div>
             <div className="min-w-0 flex-1">
               <span className="block truncate text-[13.5px] font-semibold text-ink">{current.title}</span>
-              <span className="block truncate text-[12px] text-muted">{current.artist}</span>
+              {stalled ? (
+                <span className="flex items-center gap-2 text-[12px] text-warn">
+                  <span className="truncate">Can’t reach the audio</span>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      retry()
+                    }}
+                    className="shrink-0 cursor-pointer font-semibold text-accent underline decoration-dotted"
+                  >
+                    Retry
+                  </button>
+                </span>
+              ) : (
+                <span className="block truncate text-[12px] text-muted">{current.artist}</span>
+              )}
             </div>
             <button
               onClick={(e) => {
@@ -278,7 +295,16 @@ export function PlayerBar() {
               >
                 {current.title}
               </Link>
-              <span className="block truncate text-[13px] text-muted">{current.artist}</span>
+              {stalled ? (
+                <span className="flex items-center gap-2 text-[13px] text-warn">
+                  <span className="truncate">Can’t reach the audio</span>
+                  <button onClick={retry} className="shrink-0 cursor-pointer font-semibold text-accent underline decoration-dotted">
+                    Retry
+                  </button>
+                </span>
+              ) : (
+                <span className="block truncate text-[13px] text-muted">{current.artist}</span>
+              )}
             </div>
             <button
               onClick={() => toggleFav(current.id)}

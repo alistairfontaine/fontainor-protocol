@@ -17,6 +17,7 @@ import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { useSyncExternalStore } from 'react'
 import { nativeFetchableUrl } from './api'
+import { markGatewayDown, markGatewayUp, mediaCandidates } from './gateways'
 import { IS_NATIVE } from './platform'
 import type { Release } from './registry'
 
@@ -209,31 +210,64 @@ export async function downloadRelease(rel: Release): Promise<void> {
   if (!IS_NATIVE || !rel.audio || isDownloaded(rel.id)) return
   if (progressMap[rel.id]?.state === 'downloading') return // already in flight
   armProgressListener()
-  const url = remoteUrl(rel.audio)
   const audioPath = `downloads/${rel.id}.mp3`
-  inflightByUrl.set(url, rel.id)
+  // One gateway being unreachable must not mean "this release cannot be saved":
+  // the same permanent bytes are served by every gateway that knows the id.
+  const urls = mediaCandidates(rel.audio).map(remoteUrl)
   setProgress(rel.id, { state: 'downloading', pct: 0 })
-  try {
-    // Native-side streaming download — nothing crosses the JS bridge.
-    await Filesystem.downloadFile({ url, directory: DIR, path: audioPath, progress: true, recursive: true })
-    let bytes = 0
+
+  /** Download + verify from ONE url. Throws (and leaves no audio file) on failure. */
+  const attempt = async (url: string): Promise<{ bytes: number; localSrc: string }> => {
+    inflightByUrl.set(url, rel.id)
     try {
-      bytes = (await Filesystem.stat({ directory: DIR, path: audioPath })).size
-    } catch {
-      /* size is cosmetic */
+      // Native-side streaming download — nothing crosses the JS bridge.
+      await Filesystem.downloadFile({ url, directory: DIR, path: audioPath, progress: true, recursive: true })
+      let bytes = 0
+      try {
+        bytes = (await Filesystem.stat({ directory: DIR, path: audioPath })).size
+      } catch {
+        /* size is cosmetic */
+      }
+      // Resolve the local URI first: it is needed both to verify the file and
+      // to play it back.
+      const localSrc = Capacitor.convertFileSrc((await Filesystem.getUri({ directory: DIR, path: audioPath })).uri)
+      if (!(await verifyPlayable(localSrc))) {
+        throw new Error('The server did not return playable audio for this release.')
+      }
+      markGatewayUp(url)
+      return { bytes, localSrc }
+    } catch (err) {
+      markGatewayDown(url)
+      try {
+        await Filesystem.deleteFile({ directory: DIR, path: audioPath })
+      } catch {
+        /* nothing written */
+      }
+      throw err
+    } finally {
+      inflightByUrl.delete(url)
     }
-    // Resolve the local URI first: it is needed both to verify the file and
-    // to play it back.
-    const localSrc = Capacitor.convertFileSrc((await Filesystem.getUri({ directory: DIR, path: audioPath })).uri)
-    if (!(await verifyPlayable(localSrc))) {
-      throw new Error('The server did not return playable audio for this release.')
+  }
+
+  try {
+    let saved: { bytes: number; localSrc: string } | null = null
+    let lastErr: unknown = new Error('No source available for this release.')
+    for (const url of urls) {
+      try {
+        saved = await attempt(url)
+        break
+      } catch (err) {
+        lastErr = err
+      }
     }
+    if (!saved) throw lastErr
+    const { bytes, localSrc } = saved
 
     let coverPath: string | null = null
     if (rel.coverUrl) {
       try {
         coverPath = `downloads/${rel.id}.jpg`
-        await Filesystem.downloadFile({ url: remoteUrl(rel.coverUrl), directory: DIR, path: coverPath, recursive: true })
+        await Filesystem.downloadFile({ url: remoteUrl(mediaCandidates(rel.coverUrl)[0] ?? rel.coverUrl), directory: DIR, path: coverPath, recursive: true })
       } catch {
         coverPath = null // cover is cosmetic; audio is the download
       }
@@ -274,8 +308,6 @@ export async function downloadRelease(rel: Release): Promise<void> {
       }
     }
     setProgress(rel.id, { state: 'error', message: e instanceof Error ? e.message : String(e) })
-  } finally {
-    inflightByUrl.delete(url)
   }
 }
 
