@@ -13,6 +13,8 @@ import { Playlists, PlaylistDetail } from './pages/Playlists'
 import { Collection, Favorites, History } from './pages/Collections'
 import { About, Terms, Privacy, Contact, Faq, NotFound } from './pages/Static'
 import { Support } from './pages/Support'
+import { AndroidApp } from './pages/AndroidApp'
+import { AndroidBanner } from './components/AndroidBanner'
 import { AuthProvider } from './state/AuthContext'
 import { PlayerProvider } from './state/PlayerContext'
 import { RegistryProvider } from './state/RegistryContext'
@@ -58,6 +60,10 @@ export default function App() {
           <ScrollToTop />
           <AppShell walletSlot={<WalletButton />}>
             <ErrorBoundary>
+              {/* Promo banner sits OUTSIDE PageTransition so it doesn't
+                  re-animate on every navigation (and it self-hides inside the
+                  native app via the Capacitor check in androidApp.ts). */}
+              <AndroidBanner />
               <PageTransition>
               <Routes>
                 <Route path="/" element={<Home />} />
@@ -78,6 +84,7 @@ export default function App() {
                 <Route path="/privacy" element={<Privacy />} />
                 <Route path="/contact" element={<Contact />} />
                 <Route path="/faq" element={<Faq />} />
+                <Route path="/android" element={<AndroidApp />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>
               </PageTransition>

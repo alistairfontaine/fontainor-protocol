@@ -13,6 +13,7 @@ const COLS: Array<{ head: string; links: Array<{ to: string; label: string }> }>
     head: 'Company',
     links: [
       { to: '/about', label: 'About' },
+      { to: '/android', label: 'Android app' },
       { to: '/support', label: 'Support us' },
       { to: '/faq', label: 'FAQ' },
       { to: '/contact', label: 'Contact' },
@@ -28,11 +29,14 @@ const COLS: Array<{ head: string; links: Array<{ to: string; label: string }> }>
 ]
 
 const COMMUNITY: Array<{ href: string; label: string }> = [
-  { href: 'https://discord.gg/uc4SJbRBH', label: 'Discord' },
+  { href: 'https://discord.gg/ARezqHYS23', label: 'Discord' },
   { href: 'https://www.reddit.com/r/fontainorprotocol/', label: 'Reddit' },
   { href: 'https://github.com/alistairfontaine/fontainor-protocol', label: 'GitHub' },
   { href: 'https://instagram.com/fontainor', label: 'Instagram' },
   { href: 'https://x.com/fontainor', label: 'X' },
+  { href: 'https://bsky.app/profile/fontainor.bsky.social', label: 'Bluesky' },
+  { href: 'https://www.linkedin.com/company/135664019', label: 'LinkedIn' },
+  { href: 'https://solo.to/fontainor', label: 'All links' },
 ]
 
 /**

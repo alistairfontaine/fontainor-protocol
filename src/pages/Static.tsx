@@ -156,14 +156,20 @@ export function Privacy() {
 export function Contact() {
   const rows = [
     {
-      label: 'Everything — support, artists, rights',
+      label: 'Support, artists, rights',
       value: 'silentics.org@gmail.com',
       note: 'Bugs, publishing help, catalog migrations, editorial pitches, rights and takedown requests (include the registry ID and proof of ownership). One inbox, read by a human.',
+    },
+    {
+      label: 'Business — partnerships, press, investors',
+      value: 'prodbizonly123@gmail.com',
+      note: 'Partnerships, label and distributor enquiries, press and investor conversations. For anything artist- or catalog-related, use the support address above — it gets a faster answer.',
     },
   ]
   const socials = [
     { label: 'Instagram', value: '@fontainor', href: 'https://instagram.com/fontainor' },
     { label: 'X', value: '@fontainor', href: 'https://x.com/fontainor' },
+    { label: 'All links', value: 'solo.to/fontainor', href: 'https://solo.to/fontainor' },
   ]
   return (
     <Doc title="Contact" sub="No ticket systems, no chatbots — email a human.">
