@@ -1,8 +1,31 @@
 import { parseRegistryText, type Release } from './registry'
 
-// Same-origin in production (vercel.json rewrites /registry → api function);
-// vite dev server proxies to the deployed API.
-export const API_BASE = ''
+// The canonical deployed origin. Used as the API host inside the native shell
+// and as the base for shareable links so they never point at the device.
+export const SITE_ORIGIN = 'https://fontainor-protocol.vercel.app'
+
+/** True when running inside the Capacitor Android/iOS WebView. */
+export function isNativeShell(): boolean {
+  return typeof window !== 'undefined' && !!(window as unknown as Record<string, unknown>).Capacitor
+}
+
+// On the web the app is same-origin with the API (vercel.json rewrites
+// /registry and /api/* to the serverless function), so a relative base is
+// correct. But the native shell serves this bundle from https://localhost, so
+// relative URLs resolve to the DEVICE, not the API — every /registry, publish,
+// login, purchase-verify, favorites and play-log call would silently fail and
+// the app would freeze on the bundled demo snapshot. Point native builds at the
+// deployed origin (CORS is `*`, and capacitor allowNavigation lists *.vercel.app).
+export const API_BASE = isNativeShell() ? SITE_ORIGIN : ''
+
+/** Origin for user-shareable links. Never the device's https://localhost. */
+export function shareOrigin(): string {
+  if (isNativeShell()) return SITE_ORIGIN
+  if (typeof window !== 'undefined' && !/^https?:\/\/localhost/i.test(window.location.origin)) {
+    return window.location.origin
+  }
+  return SITE_ORIGIN
+}
 
 export type RegistrySource = 'api' | 'file' | 'sample'
 

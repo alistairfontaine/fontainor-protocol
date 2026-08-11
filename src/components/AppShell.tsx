@@ -153,6 +153,9 @@ function Sidebar() {
           </>
         )}
       </NavLink>
+      <NavLink to="/search" className={sideLink}>
+        <IconSearch size={19} /> Search
+      </NavLink>
       <NavLink to="/editorial" className={sideLink}>
         {({ isActive }) => (
           <>

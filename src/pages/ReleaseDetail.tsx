@@ -4,6 +4,7 @@ import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
 import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
+import { shareOrigin } from '../lib/api'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
 import { edLabel, fmtDate, isSold, priceLabel, prettyStatus, type Release } from '../lib/registry'
@@ -56,7 +57,18 @@ export default function ReleaseDetail() {
   const sold = isSold(rel.editions)
 
   return (
-    <div className="fade-up">
+    <div className="fade-up relative">
+      {/* Cover-derived gradient hero: a blurred, over-scaled copy of the
+          artwork fades into the page background behind the release header, so
+          each release page takes on the colour of its own cover — depth with
+          zero extra assets. Purely decorative; hidden from assistive tech. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] overflow-hidden">
+        <div className="absolute inset-0 scale-125 opacity-25 blur-3xl saturate-150">
+          <Cover rel={rel} />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-bg/40 via-bg/80 to-bg" />
+      </div>
+
       <button
         onClick={() => navigate(-1)}
         className="mb-6 flex cursor-pointer items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
@@ -370,7 +382,7 @@ function QueueButton({ rel }: { rel: Release }) {
 
 function ShareButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false)
-  const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
+  const url = `${shareOrigin()}/share/${encodeURIComponent(id)}`
   return (
     <Button
       size="lg"

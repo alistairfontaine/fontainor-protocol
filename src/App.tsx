@@ -5,6 +5,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { WalletButton } from './components/WalletButton'
 import Home from './pages/Home'
 import Library from './pages/Library'
+import Search from './pages/Search'
 import ReleaseDetail from './pages/ReleaseDetail'
 import Publish from './pages/Publish'
 import Profile from './pages/Profile'
@@ -54,6 +55,7 @@ export default function App() {
               <Routes>
                 <Route path="/" element={<Home />} />
                 <Route path="/library" element={<Library />} />
+                <Route path="/search" element={<Search />} />
                 <Route path="/release/:id" element={<ReleaseDetail />} />
                 <Route path="/editorial" element={<EditorialList />} />
                 <Route path="/editorial/:id" element={<EditorialArticle />} />

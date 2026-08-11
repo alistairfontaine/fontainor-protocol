@@ -26,8 +26,40 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
+// A malformed JSON body makes express.json throw a SyntaxError; without this
+// the default handler returns an HTML error page (and a 413 HTML page when the
+// 5mb limit is exceeded), so JSON clients get an unparseable body and the
+// wrong-looking status. Answer with a clean JSON error instead.
+app.use((err, _req, res, next) => {
+    if (err && err.type === 'entity.too.large') {
+        return res.status(413).json({ success: false, error: 'PAYLOAD_TOO_LARGE', message: 'Request body exceeds 5mb.' });
+    }
+    if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+        return res.status(400).json({ success: false, error: 'INVALID_JSON', message: 'Request body is not valid JSON.' });
+    }
+    return next(err);
+});
 // NOTE: no express.static here on purpose — __dirname is the api/ source
 // directory; serving it exposed index.js/pointer.json on non-Vercel deploys.
+
+// Decode a wallet-signature payload safely. The three signed endpoints all
+// receive `publicKey` and `signature` as JSON byte-array strings; a client
+// sending non-JSON, a non-array, or a wrong-length key must be a 400 (bad
+// request) — not a 500 that leaks a raw parser/tweetnacl error message. Ed25519
+// public keys are exactly 32 bytes and detached signatures exactly 64; nacl
+// throws on any other size, so we reject those up front too.
+function decodeSignedPayload(publicKey, signature) {
+    try {
+        const pk = Uint8Array.from(JSON.parse(publicKey));
+        const sig = Uint8Array.from(JSON.parse(signature));
+        if (pk.length !== 32 || sig.length !== 64) return null;
+        if (pk.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return null;
+        if (sig.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return null;
+        return { pk, sig };
+    } catch {
+        return null;
+    }
+}
 
 // --- Arweave Setup ---
 const arweave = initArweave({
@@ -420,10 +452,30 @@ app.post('/upload', validateUpload, async (req, res) => {
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
 app.post('/api/v1/verify-payment', async (req, res) => {
     try {
-        const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body;
+        const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body || {};
 
         if (!signature || !artistWallet || !trackId || !(Number(amountLamports) > 0)) {
             return res.status(400).json({ success: false, message: 'Missing signature, artistWallet, trackId or amountLamports.' });
+        }
+        // Validate shapes up front so a malformed request is a clean 400 rather
+        // than a downstream PublicKey throw, and so junk is never written into a
+        // receipt. amountLamports must be a finite positive integer (Infinity /
+        // 1e309 would otherwise sail through `Number(x) > 0`).
+        const amt = Number(amountLamports);
+        if (!Number.isSafeInteger(amt) || amt <= 0) {
+            return res.status(400).json({ success: false, message: 'amountLamports must be a positive integer.' });
+        }
+        if (typeof signature !== 'string' || signature.length < 32 || signature.length > 200) {
+            return res.status(400).json({ success: false, message: 'Invalid transaction signature.' });
+        }
+        if (!WALLET_RE.test(String(artistWallet))) {
+            return res.status(400).json({ success: false, message: 'Invalid artistWallet address.' });
+        }
+        if (buyerWallet != null && !WALLET_RE.test(String(buyerWallet))) {
+            return res.status(400).json({ success: false, message: 'Invalid buyerWallet address.' });
+        }
+        if (typeof trackId !== 'string' || trackId.length < 1 || trackId.length > 64) {
+            return res.status(400).json({ success: false, message: 'Invalid trackId.' });
         }
 
         // Verify the 98/2 split actually happened on the Solana ledger, and —
@@ -482,11 +534,14 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing wallet verification payload." });
         }
 
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
+
         const nacl = await import('tweetnacl');
         const encodedMessage = new TextEncoder().encode(message || "Authenticate Fontainor Sovereign Session");
-
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
 
         const isWalletOwnerVerified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
 
@@ -536,11 +591,15 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
             });
         }
 
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
+
         const nacl = await import('tweetnacl');
         const expectedMessage = `Fontainor handle claim: @${bare}`;
         const encodedMessage = new TextEncoder().encode(expectedMessage);
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
             return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
@@ -675,10 +734,14 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         // Same proof of wallet ownership the sovereign login produces — the app
         // stores it for the session so likes never trigger extra Phantom popups.
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
+
         const nacl = await import('tweetnacl');
         const encodedMessage = new TextEncoder().encode(message || 'Authenticate Fontainor Sovereign Session');
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
             return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
@@ -761,7 +824,7 @@ app.get('/api/v1/plays/top', async (req, res) => {
         if (!redis) return res.json({ success: true, durable: false, window, top: [] });
         const key = window === 'all' ? PLAYS_ALL_KEY : playsWeekKey();
         // zrange rev withScores returns [member, score, member, score, ...]
-        const flat = await redis.zrange(key, 0, n - 1, { rev: true, withScores: true });
+        const flat = (await redis.zrange(key, 0, n - 1, { rev: true, withScores: true })) || [];
         const top = [];
         for (let i = 0; i + 1 < flat.length; i += 2) {
             top.push({ id: String(flat[i]), plays: Number(flat[i + 1]) });
