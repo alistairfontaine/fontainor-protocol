@@ -23,22 +23,6 @@ try {
 
 // --- App Setup ---
 const app = express();
-// Middleware configuration: accept raw binary streams up to 100MB to accommodate compiled files safely
-const rawBodyParser = express.raw({ type: 'application/octet-stream', limit: '100mb' });
-// In-memory store for chunking, bounded so abandoned sessions can't OOM the
-// process: capped session count, capped bytes per session, stale-session sweep.
-const uploadBuffer = new Map(); // uploadId -> { chunks, totalChunks, bytes, createdAt }
-const MAX_UPLOAD_SESSIONS = 32;
-const MAX_SESSION_BYTES = 120 * 1024 * 1024;
-const MAX_TOTAL_CHUNKS = 4096;
-const SESSION_TTL_MS = 15 * 60 * 1000;
-
-function sweepStaleUploadSessions() {
-    const now = Date.now();
-    for (const [id, s] of uploadBuffer) {
-        if (now - s.createdAt > SESSION_TTL_MS) uploadBuffer.delete(id);
-    }
-}
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
@@ -428,124 +412,10 @@ app.post('/upload', validateUpload, async (req, res) => {
     }
 });
 
-// 3. Audio Chunk Upload
-app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
-    try {
-        sweepStaleUploadSessions();
-
-        const uploadId = String(req.headers['x-upload-id'] || '');
-        const chunkIndex = parseInt(req.headers['x-chunk-index'], 10);
-        const totalChunks = parseInt(req.headers['x-total-chunks'], 10);
-
-        // Strict header validation: a NaN totalChunks used to throw on
-        // `new Array(NaN)`, and unbounded indexes let sessions grow forever.
-        if (!uploadId || uploadId.length > 128 || !Buffer.isBuffer(req.body) || req.body.length === 0) {
-            return res.status(400).json({ success: false, message: "Missing headers or binary body" });
-        }
-        if (!Number.isInteger(totalChunks) || totalChunks < 1 || totalChunks > MAX_TOTAL_CHUNKS) {
-            return res.status(400).json({ success: false, message: `X-Total-Chunks must be an integer between 1 and ${MAX_TOTAL_CHUNKS}.` });
-        }
-        if (!Number.isInteger(chunkIndex) || chunkIndex < 0 || chunkIndex >= totalChunks) {
-            return res.status(400).json({ success: false, message: "X-Chunk-Index out of range for X-Total-Chunks." });
-        }
-
-        if (!uploadBuffer.has(uploadId)) {
-            if (uploadBuffer.size >= MAX_UPLOAD_SESSIONS) {
-                return res.status(429).json({ success: false, message: "Too many concurrent upload sessions — retry shortly." });
-            }
-            uploadBuffer.set(uploadId, { chunks: new Array(totalChunks).fill(null), totalChunks, bytes: 0, createdAt: Date.now() });
-        }
-
-        const session = uploadBuffer.get(uploadId);
-        if (session.totalChunks !== totalChunks) {
-            uploadBuffer.delete(uploadId);
-            return res.status(400).json({ success: false, message: "X-Total-Chunks changed mid-session." });
-        }
-        if (session.chunks[chunkIndex] == null) session.bytes += req.body.length;
-        if (session.bytes > MAX_SESSION_BYTES) {
-            uploadBuffer.delete(uploadId);
-            return res.status(413).json({ success: false, message: "Upload session exceeds the size limit." });
-        }
-        session.chunks[chunkIndex] = req.body; // Buffer stored here
-
-        if (chunkIndex === totalChunks - 1) {
-            const missing = session.chunks.findIndex((c) => c == null);
-            if (missing !== -1) {
-                uploadBuffer.delete(uploadId);
-                return res.status(400).json({ success: false, error: "CHUNKS_MISSING", message: `Chunk ${missing} never arrived — restart the upload.` });
-            }
-            const fullFileBuffer = Buffer.concat(session.chunks);
-            console.log(`📦 Final chunk received. Concatenating bitstream (${fullFileBuffer.length} bytes)...`);
-
-            /* 🔥 NATIVE BARE-METAL ARWEAVE TRANSACTION ENGINE 🔥 */
-            try {
-                const wallet = loadWallet();
-
-                // 🔒 FIXED: Securely copy the exact file bitstream into an isolated standard web Uint8Array
-                const binaryDataArray = new Uint8Array(fullFileBuffer);
-
-                // 1. Instantiate a raw data transaction container directly from the verified byte array
-                const transaction = await arweave.createTransaction({
-                    data: binaryDataArray
-                }, wallet);
-
-
-                // 2. Attach standard, high-integrity cryptographic protocol tags
-                transaction.addTag('Content-Type', 'application/octet-stream');
-                transaction.addTag('Protocol-Layer', 'Fontainor-Audio-Registry');
-
-                // 3. Cryptographically sign the transaction using the local developer JWK wallet
-                await arweave.transactions.sign(transaction, wallet);
-                const txId = transaction.id;
-
-                // 4. Broadcast the signed transaction bytes to Arweave mainnet
-                let finalTxId = txId;
-
-                try {
-                    const response = await arweave.transactions.post(transaction);
-
-                    if (response.status !== 200 && response.status !== 208) {
-                        throw new Error(`Node rejected with status: ${response.status}`);
-                    }
-
-                    console.log(`🎯 [Blockchain] Audio upload successful! Permanent TxID: ${txId}`);
-                } catch (nodeError) {
-                    console.error(`❌ Arweave upload failed: ${nodeError.message}`);
-                    uploadBuffer.delete(uploadId);
-                    return res.status(502).json({
-                        success: false,
-                        error: "BLOCKCHAIN_WRITE_FAILED",
-                        message: nodeError.message
-                    });
-                }
-
-                // Wipe the volatile in-memory storage buffer array space to prevent heap leakage
-                uploadBuffer.delete(uploadId);
-
-                return res.status(201).json({
-                    success: true,
-                    audioUri: `https://arweave.net/${finalTxId}`
-                });
-
-
-
-
-            } catch (storageError) {
-                console.error("❌ On-Chain Native Arweave Upload Failed:", storageError.message);
-                uploadBuffer.delete(uploadId);
-                return res.status(502).json({
-                    success: false,
-                    error: "BLOCKCHAIN_WRITE_FAILED",
-                    message: storageError.message
-                });
-            }
-        }
-
-        return res.status(200).json({ success: true, chunkReceived: chunkIndex });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: "CHUNK_WRITE_FAILED", message: err.message });
-    }
-});
+// 3. Audio Chunk Upload — REMOVED. This route was permanently non-functional:
+// `arweave` is always the boot-time stub (the real Arweave client was never
+// wired in), so every completed upload 502'd, and no client ever called it —
+// the real publish path is musician-pays Irys (src/lib/irysPublish.ts).
 
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
 app.post('/api/v1/verify-payment', async (req, res) => {
