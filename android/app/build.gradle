@@ -25,7 +25,12 @@ android {
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
-            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+            // ...plus '!*.map': the web build emits source maps beside every
+            // chunk and `cap sync` copies them into assets/public. They were
+            // 8.7 MB of the 15.5 MB v4.2.0/v4.3.0 APK — more than half the
+            // download, for files no device ever reads. The web deploy keeps
+            // its maps; only the APK drops them.
+            ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!*.map'
         }
     }
 

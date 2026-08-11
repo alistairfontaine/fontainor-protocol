@@ -152,6 +152,11 @@ jobs:
           grep -rql "fontainor-protocol.vercel.app" /tmp/apkcheck/assets/public/assets/*.js \
             || { echo "::error::built APK has no deployed-origin API base — native build would show demo data only"; exit 1; }
           echo "Verified: APK web bundle targets the deployed API origin."
+          # Source maps are 8.7 MB of dead weight if they slip back in.
+          MAPS=$(find /tmp/apkcheck/assets/public -name '*.map' | wc -l)
+          [ "$MAPS" = "0" ] || { echo "::error::$MAPS source maps packaged in the APK (should be excluded by ignoreAssetsPattern)"; exit 1; }
+          echo "Verified: no source maps packaged."
+          du -h "$UNIVERSAL" | awk '{print "Universal APK size: " $1}'
 
       - name: Cleanup signing material
         if: always()
