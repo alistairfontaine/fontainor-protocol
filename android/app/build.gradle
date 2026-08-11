@@ -56,16 +56,13 @@ android {
         }
     }
 
-    // Per-ABI APK splits (each install ships only its device's native libs) plus
-    // a universal APK for easy sideloading. Matches the lanlink CI output shape.
-    splits {
-        abi {
-            enable true
-            reset()
-            include "armeabi-v7a", "arm64-v8a", "x86_64"
-            universalApk true
-        }
-    }
+    // No ABI splits. This shell ships ZERO native libraries (verified: no lib/
+    // directory and 0 .so files in the built APK), so per-ABI splits emitted four
+    // byte-identical 12.6 MiB APKs -- same md5 for armeabi-v7a, arm64-v8a, x86_64
+    // and universal. That quadrupled the CI artifact and invited people to
+    // sideload an "arm64" file that is really the universal one. If a plugin with
+    // native code is ever added, re-enable splits AND give each ABI its own
+    // versionCode offset, which the old block also failed to do.
 }
 
 repositories {
