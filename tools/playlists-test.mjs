@@ -16,7 +16,8 @@
 import { spawn } from 'child_process'
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const PORT = 4183
 const BASE = `http://localhost:${PORT}`
 
@@ -45,7 +46,7 @@ await new Promise((resolve, reject) => {
 const playerRegion = (page) => page.locator('[role="region"][aria-label="Audio player"]')
 const nowPlayingTitle = async (page) => (await playerRegion(page).locator('a[href^="#/release/"]').first().innerText()).trim()
 
-const browser = await chromium.launch({ executablePath: EXE })
+const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 await ctx.route(/^https?:\/\/(?!localhost)/, (route) => route.abort())
 const page = await ctx.newPage()

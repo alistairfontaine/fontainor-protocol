@@ -88,6 +88,20 @@ function runCommand(cmd) {
             for (let i = 1; i + 1 < args.length; i += 2) { h.set(args[i], args[i + 1]); n++; }
             return n;
         }
+        case 'HSETNX': {
+            if (!store.hashes.has(args[0])) store.hashes.set(args[0], new Map());
+            const h = store.hashes.get(args[0]);
+            if (h.has(args[1])) return 0;
+            h.set(args[1], args[2]);
+            return 1;
+        }
+        case 'SADD': {
+            if (!store.kv.has('__sets__' + args[0])) store.kv.set('__sets__' + args[0], new Set());
+            const s = store.kv.get('__sets__' + args[0]);
+            let n = 0;
+            for (const m of args.slice(1)) { if (!s.has(m)) { s.add(m); n++; } }
+            return n;
+        }
         case 'HDEL': {
             const h = store.hashes.get(args[0]);
             let n = 0;

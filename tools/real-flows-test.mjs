@@ -3,7 +3,8 @@
 // Headless verification: musician-pays publish quote + real purchase flow (simulated chain)
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const BASE = 'http://localhost:4173'
 const BUYER = '71FvemD53qhyPSbT4abM19PUcFkhkPGCAW85SRZt9eKg'
 const ARTIST = 'So11111111111111111111111111111111111111112'
@@ -20,7 +21,7 @@ const REGISTRY = [
 ]
 
 async function main() {
-  const browser = await chromium.launch({ executablePath: EXE })
+  const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   const pageErrors = []
   page.on('pageerror', (e) => pageErrors.push(String(e)))

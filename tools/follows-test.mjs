@@ -2,7 +2,8 @@
 // Run: npm run build && npx vite preview --port 4173 & node tools/follows-test.mjs
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const BASE = 'http://localhost:4173'
 const results = []
 const check = (name, ok, extra = '') => { results.push({ name, ok }); console.log(`${ok ? 'PASS' : 'FAIL'} — ${name}${extra ? ' | ' + extra : ''}`) }
@@ -21,7 +22,7 @@ const WITH_NEW = [
 ]
 
 async function main() {
-  const browser = await chromium.launch({ executablePath: EXE })
+  const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } })
   let registry = OLD
   await page.route('**/registry', (r) => r.fulfill({ json: registry, headers: { 'access-control-allow-origin': '*' } }))

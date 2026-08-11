@@ -16,7 +16,8 @@
 import { spawn } from 'child_process'
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const PORT = 4181
 const BASE = `http://localhost:${PORT}`
 
@@ -57,7 +58,7 @@ const addButtons = (page) => page.locator('button[aria-label^="Add "][aria-label
 const queuedBadges = (page) => page.locator('[aria-label="Play queue"] >> text=Queued')
 const titleFromAria = (aria) => aria.replace(/^Add /, '').replace(/ to queue$/, '')
 
-const browser = await chromium.launch({ executablePath: EXE })
+const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
 try {
     // ---------- 1. queue while playing, consume via Next ----------
     console.log('queue while playing')

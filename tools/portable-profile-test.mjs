@@ -7,7 +7,8 @@ import nacl from 'tweetnacl'
 import bs58 from 'bs58'
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const BASE = 'http://localhost:4174'
 const results = []
 const check = (name, ok, extra = '') => {
@@ -161,7 +162,7 @@ async function connectOnProfile(page) {
 }
 
 async function frontend() {
-  const browser = await chromium.launch({ executablePath: EXE })
+  const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
 
   // ── Machine A: connect, like a track ──
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } })
