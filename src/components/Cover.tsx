@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { localCoverSrc, useDownloads } from '../lib/downloads'
 import { IS_NATIVE } from '../lib/platform'
 import { coverSVG, type Release } from '../lib/registry'
 
@@ -6,11 +7,15 @@ import { coverSVG, type Release } from '../lib/registry'
 export function Cover({ rel, className = '' }: { rel: Release; className?: string }) {
   const [broken, setBroken] = useState(false)
   const fallback = useMemo(() => coverSVG(rel.id + rel.title), [rel.id, rel.title])
+  // Downloaded releases show their SAVED artwork: the remote URL is unreachable
+  // in airplane mode, which is exactly when an offline download is used.
+  const { ids } = useDownloads()
+  const src = (ids.has(rel.id) ? localCoverSrc(rel.id) : null) ?? rel.coverUrl
 
-  if (rel.coverUrl && !broken) {
+  if (src && !broken) {
     return (
       <img
-        src={rel.coverUrl}
+        src={src}
         alt={`${rel.title} cover art`}
         // Native: the whole registry is ~a dozen small covers — decode them at
         // launch instead of mid-fling (lazy decode was the last source of

@@ -107,8 +107,12 @@ try {
     await page.locator('a', { hasText: 'Road Trip' }).click()
     const rowTitles = page.locator('ul li a[href^="#/release/"]')
     await rowTitles.first().waitFor({ timeout: 5000 })
+    const detailRows = []
+    for (let i = 0; i < (await rowTitles.count()); i++) detailRows.push((await rowTitles.nth(i).innerText()).trim())
+    const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('fontainor_playlists_v1') ?? '[]'))
     check('detail shows both tracks in add order',
-        (await rowTitles.nth(0).innerText()).trim() === titleA && (await rowTitles.nth(1).innerText()).trim() === titleB)
+        detailRows[0] === titleA && detailRows[1] === titleB,
+        `wanted [${titleA} | ${titleB}] got [${detailRows.join(' | ')}] stored=${JSON.stringify(stored)}`)
 
     await page.locator(`button[aria-label="Move ${titleB} up"]`).click()
     check('move up reorders the playlist', (await rowTitles.nth(0).innerText()).trim() === titleB)

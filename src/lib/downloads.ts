@@ -28,6 +28,9 @@ export interface DownloadEntry {
   coverPath: string | null
   bytes: number
   at: number
+  /** Remote refs kept so a download survives disappearing from the registry. */
+  audioUri?: string | null
+  coverUri?: string | null
 }
 
 const KEY = 'fontainor.downloads.v1'
@@ -43,6 +46,7 @@ function load(): Record<string, DownloadEntry> {
 
 let index: Record<string, DownloadEntry> = load()
 let uriCache: Record<string, string> = {} // id -> convertFileSrc-ed audio URL
+let coverCache: Record<string, string> = {} // id -> convertFileSrc-ed cover URL
 const listeners = new Set<() => void>()
 const emit = () => {
   listeners.forEach((l) => l())
@@ -61,6 +65,7 @@ const persist = () => {
 async function warmUriCache(): Promise<void> {
   if (!IS_NATIVE) return
   const next: Record<string, string> = {}
+  const nextCover: Record<string, string> = {}
   for (const e of Object.values(index)) {
     try {
       const { uri } = await Filesystem.getUri({ directory: DIR, path: e.audioPath })
@@ -68,8 +73,17 @@ async function warmUriCache(): Promise<void> {
     } catch {
       /* file gone — leave unresolved; playback falls back to streaming */
     }
+    if (e.coverPath) {
+      try {
+        const { uri } = await Filesystem.getUri({ directory: DIR, path: e.coverPath })
+        nextCover[e.id] = Capacitor.convertFileSrc(uri)
+      } catch {
+        /* cover gone — generative fallback covers it */
+      }
+    }
   }
   uriCache = next
+  coverCache = nextCover
   emit()
 }
 void warmUriCache()
@@ -89,6 +103,47 @@ export function isDownloaded(id: string): boolean {
 /** Local (offline) audio URL if downloaded and resolvable, else null. */
 export function localAudioSrc(id: string): string | null {
   return uriCache[id] ?? null
+}
+
+/**
+ * Local (offline) cover URL if downloaded and resolvable, else null.
+ * Before v4.3.1 the cover was downloaded, stored and deleted again but NEVER
+ * read: every screen used the remote coverUrl, so a downloaded release showed
+ * no artwork in airplane mode and re-fetched the same JPEG over the network
+ * whenever it was online. The bytes were pure waste.
+ */
+export function localCoverSrc(id: string): string | null {
+  return coverCache[id] ?? null
+}
+
+/**
+ * A Release reconstructed from the download index alone.
+ *
+ * The Downloads shelf used to intersect the index with the CURRENTLY LOADED
+ * registry, which silently hid (and made un-deletable) any download missing
+ * from it — including every real published release when the app is offline and
+ * falls back to the bundled demo snapshot. The index is authoritative for
+ * things the user has on disk.
+ */
+export function releaseFromDownload(e: DownloadEntry): Release {
+  return {
+    type: 'release',
+    id: e.id,
+    title: e.title,
+    artist: e.artist,
+    label: null,
+    tags: [],
+    coverUrl: e.coverUri ?? null,
+    audio: e.audioUri ?? null,
+    arweaveTx: null,
+    desc: '',
+    status: null,
+    date: null,
+    price: { amount: 0, currency: 'USD' },
+    editions: { total: 0 },
+    royaltyBps: 0,
+    artistWallet: null,
+  }
 }
 
 /**
@@ -185,9 +240,27 @@ export async function downloadRelease(rel: Release): Promise<void> {
     }
     index = {
       ...index,
-      [rel.id]: { id: rel.id, title: rel.title, artist: rel.artist, audioPath, coverPath, bytes, at: Date.now() },
+      [rel.id]: {
+        id: rel.id,
+        title: rel.title,
+        artist: rel.artist,
+        audioPath,
+        coverPath,
+        bytes,
+        at: Date.now(),
+        audioUri: rel.audio,
+        coverUri: rel.coverUrl,
+      },
     }
     uriCache = { ...uriCache, [rel.id]: localSrc }
+    if (coverPath) {
+      try {
+        const { uri } = await Filesystem.getUri({ directory: DIR, path: coverPath })
+        coverCache = { ...coverCache, [rel.id]: Capacitor.convertFileSrc(uri) }
+      } catch {
+        /* cosmetic */
+      }
+    }
     setProgress(rel.id, null)
     persist()
   } catch (e) {
@@ -235,6 +308,8 @@ export async function removeDownload(id: string): Promise<void> {
   index = rest
   const { [id]: _g2, ...restUri } = uriCache
   uriCache = restUri
+  const { [id]: _g3, ...restCover } = coverCache
+  coverCache = restCover
   persist()
 }
 

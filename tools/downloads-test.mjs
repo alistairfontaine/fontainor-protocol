@@ -154,6 +154,9 @@ await new Promise((resolve, reject) => {
 
 const browser = await chromium.launch()
 const nativeAttempts = []
+// Lets a test pretend the loaded catalog no longer contains a downloaded
+// release (offline bundled snapshot, withdrawn release).
+let registryView = null
 const writtenFiles = new Map() // "downloads/<id>.mp3" -> source url
 try {
   const ctx = await browser.newContext({
@@ -214,7 +217,7 @@ try {
   await ctx.route('**://fontainor-protocol.vercel.app/**', async (route) => {
     const path = new URL(route.request().url()).pathname
     if (path === '/registry') {
-      return route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', date: new Date().toUTCString() }, body: JSON.stringify(CATALOG) })
+      return route.fulfill({ status: 200, headers: { 'content-type': 'application/json', 'access-control-allow-origin': '*', date: new Date().toUTCString() }, body: JSON.stringify(registryView ?? CATALOG) })
     }
     // Media requested BY THE WEBVIEW (cover art, streaming playback).
     if (/\.(mp3|jpg|png|svg)$/.test(path)) return route.fulfill({ status: 200, headers: { 'access-control-allow-origin': '*' }, body: Buffer.from([0]) })
@@ -319,6 +322,59 @@ try {
   await page.getByRole('button', { name: /Remove Relative Path Release/ }).waitFor({ timeout: 8000 })
   const audioCalls = await page.evaluate(() => window.__downloadCalls.filter((u) => u.endsWith('.mp3')).length)
   check('double-tap starts exactly one audio download', audioCalls === 1, `${audioCalls} calls`)
+
+  // ---------- 9. a download must not depend on the loaded registry ----------
+  // Offline, loadRegistry() falls back to the BUNDLED demo snapshot, which does
+  // not contain real published releases. The Downloads shelf used to intersect
+  // the index with that snapshot, so the user's own downloads vanished and
+  // their bytes could no longer be freed.
+  console.log('downloads: off-registry survival')
+  registryView = CATALOG.filter((r) => r.id !== 'FONT-RELATIVE1')
+
+  // 9a. The last-known-good registry cache: a release this device has already
+  // seen must not stop existing because one /registry answer came back short.
+  await page.goto(`${BASE}/#/release/FONT-RELATIVE1`, { waitUntil: 'networkidle' })
+  // A hash-only goto does NOT reload the document, so the in-memory registry
+  // from the previous load would still be there — reload to really re-fetch.
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForTimeout(600)
+  check(
+    'a release dropped from the live registry is restored from the cache',
+    /Relative Path Release/.test(await page.evaluate(() => document.body.innerText)),
+  )
+  check(
+    'the registry cache is persisted',
+    (await page.evaluate(() => (localStorage.getItem('fontainor_registry_cache_v1') ?? '').includes('FONT-RELATIVE1'))) === true,
+  )
+
+  // 9b. With NO cache either (fresh install, first launch offline) the download
+  // shelf must still stand on its own index.
+  await page.evaluate(() => localStorage.removeItem('fontainor_registry_cache_v1'))
+  await page.goto(`${BASE}/#/library`, { waitUntil: 'networkidle' })
+  const shelf = page.locator('section[aria-label="Downloads"]')
+  await shelf.waitFor({ timeout: 8000 })
+  check('a download missing from the loaded registry is still listed', /Relative Path Release/.test(await shelf.innerText()), await shelf.innerText())
+  const coverSrc = await shelf.locator('img').first().getAttribute('src').catch(() => null)
+  check(
+    'the shelf shows the SAVED cover, not the unreachable remote one',
+    !!coverSrc && !coverSrc.startsWith(DEPLOYED_ORIGIN) && /FONT-RELATIVE1\.jpg/.test(coverSrc),
+    String(coverSrc),
+  )
+  // Other releases stay downloaded, so target THIS row's Remove button.
+  const removeBtn = shelf.getByRole('button', { name: /Remove Relative Path Release/ })
+  check('an off-registry download can still be removed', (await removeBtn.count()) > 0)
+  await removeBtn.click()
+  await page.waitForTimeout(600)
+  const orphan = await page.evaluate(() => ({
+    idx: Object.keys(JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')),
+    files: Object.keys(window.__files).filter((k) => k.includes('FONT-RELATIVE1')),
+  }))
+  check(
+    'removing an off-registry download frees its disk',
+    orphan.files.length === 0 && !orphan.idx.includes('FONT-RELATIVE1'),
+    JSON.stringify(orphan),
+  )
+  registryView = null
 
   // ---------- 8. no crashes ----------
   const realErrors = errors.filter((e) => !/Failed to load resource|net::ERR|favicon|Autoplay|play\(\) failed/i.test(e))

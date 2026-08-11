@@ -61,6 +61,63 @@ export function nativeFetchableUrl(path: string): string {
 
 export type RegistrySource = 'api' | 'file' | 'sample'
 
+// ── last-known-good registry cache ─────────────────────────────────────────
+// The catalog the app shows can change between two navigations: the live
+// /registry may answer, then time out or come back empty, and the loader falls
+// back to the BUNDLED demo snapshot. Anything the user saved by id (playlists,
+// favorites, downloads, history) then points at releases that "don't exist",
+// so rows silently disappear. Offline in the APK that is the normal case.
+// The registry is append-only, so remembering what we have already seen and
+// unioning it back in is always safe — and it is what makes the app usable
+// with no network.
+const CACHE_KEY = 'fontainor_registry_cache_v1'
+
+function asList(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) return raw
+  const o = raw as Record<string, unknown> | null
+  if (o && Array.isArray(o.releases)) return o.releases as unknown[]
+  if (o && Array.isArray(o.assets)) return o.assets as unknown[]
+  if (o && typeof o === 'object') return [o]
+  return []
+}
+
+function rawId(x: unknown): string | null {
+  const o = x as Record<string, unknown> | null
+  if (!o || typeof o !== 'object') return null
+  for (const k of ['assetId', 'id', 'catalogNumber']) {
+    const v = o[k]
+    if (typeof v === 'string' && v) return v
+  }
+  return null
+}
+
+function readCache(): unknown[] {
+  try {
+    return asList(JSON.parse(localStorage.getItem(CACHE_KEY) ?? '[]'))
+  } catch {
+    return []
+  }
+}
+
+function writeCache(list: unknown[]): void {
+  if (!list.length) return
+  try {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(list))
+  } catch {
+    /* storage full — cache is an optimization, never a requirement */
+  }
+}
+
+/** `primary` order wins; previously-seen releases missing from it are appended. */
+function unionSeen(primary: unknown[], seen: unknown[]): unknown[] {
+  const have = new Set(primary.map(rawId).filter((v): v is string => !!v))
+  const extra = seen.filter((x) => {
+    const id = rawId(x)
+    return !!id && !have.has(id)
+  })
+  return extra.length ? [...primary, ...extra] : primary
+}
+
 export interface RegistryLoad {
   data: unknown
   source: RegistrySource
@@ -75,7 +132,10 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
       // An empty live registry (fresh deploy, serverless pointer lost) is not
       // useful to show — fall through to the bundled demo snapshot instead.
       if (out.data != null && !(Array.isArray(out.data) && out.data.length === 0)) {
-        return { data: out.data, source: 'api', repaired: out.repaired }
+        const live = asList(out.data)
+        const merged = unionSeen(live, readCache())
+        writeCache(merged)
+        return { data: merged, source: 'api', repaired: out.repaired }
       }
     }
   } catch {
@@ -85,11 +145,17 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
     const res = await fetch('/registry.json', { cache: 'no-store' })
     if (res.ok) {
       const out = parseRegistryText(await res.text())
-      if (out.data != null) return { data: out.data, source: 'file', repaired: out.repaired }
+      if (out.data != null) {
+        // Bundled snapshot + everything this device has already seen live, so a
+        // dropped connection never makes the user's saved releases vanish.
+        return { data: unionSeen(asList(out.data), readCache()), source: 'file', repaired: out.repaired }
+      }
     }
   } catch {
     /* fall through */
   }
+  const seen = readCache()
+  if (seen.length) return { data: unionSeen(asList(fallback), seen), source: 'file', repaired: false }
   return { data: fallback, source: 'sample', repaired: false }
 }
 

@@ -4,7 +4,7 @@ import { FixedSizeGrid } from 'react-window'
 import { Cover } from '../components/Cover'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
 import { IconClose, IconLibrary, IconSearch } from '../components/icons'
-import { clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
+import { clearDownloadError, downloadRelease, releaseFromDownload, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { usePlayer } from '../state/PlayerContext'
@@ -99,7 +99,10 @@ function DownloadsSection() {
     .map(([id, p]) => ({ rel: byId.get(id), p }))
     .filter((x): x is { rel: Release; p: (typeof progress)[string] } => !!x.rel)
   if (!IS_NATIVE || (entries.length === 0 && active.length === 0)) return null
-  const items = entries.map((e) => byId.get(e.id)).filter((r): r is NonNullable<typeof r> => !!r)
+  // Index-first: a download the loaded registry does not know about (offline
+  // fallback snapshot, withdrawn release) must still be listed, playable and
+  // deletable — otherwise its bytes are stranded on the device forever.
+  const items = entries.map((e) => byId.get(e.id) ?? releaseFromDownload(e))
   if (!items.length && !active.length) return null
   return (
     <section className="mb-10" aria-label="Downloads">
