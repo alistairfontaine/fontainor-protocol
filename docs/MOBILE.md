@@ -100,3 +100,20 @@ from the dApp. Fixes: (1) move to a custom domain and point the app at it via
 `VITE_API_BASE` + `app_url`; (2) file a false-positive with Phantom's blocklist.
 The native app already avoids the full-screen in-app-browser block because it
 connects via deeplink rather than loading the site inside Phantom.
+
+## Release checklist (GitHub Releases drives the /android page)
+
+The site's `/android` page and its download button read
+`releases/latest/download/fontainor-android.apk`, so cutting a release IS the
+deployment:
+
+1. Bump `versionName` / `versionCode` in `android/app/build.gradle`.
+2. Build a **release-signed** APK (CI with the four `ANDROID_KEYSTORE_*`
+   secrets, or locally with `android/key.properties`). A debug-signed APK
+   cannot upgrade the release-signed installs users already have.
+3. Create the GitHub release `vX.Y.Z` and attach the APK **twice**:
+   `fontainor-X.Y.Z-release.apk` (archival name) and `fontainor-android.apk`
+   (the stable name `/releases/latest/download/` serves).
+4. Update `FALLBACK_VERSION` / `FALLBACK_SIZE_MB` in `src/lib/androidApp.ts`
+   to match the release you just published — the fallback must only ever
+   describe a build that actually exists.
