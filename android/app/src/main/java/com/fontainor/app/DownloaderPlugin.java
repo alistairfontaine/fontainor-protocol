@@ -1,6 +1,10 @@
 package com.fontainor.app;
 
+import android.content.Context;
 import android.content.Intent;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -59,16 +63,77 @@ public class DownloaderPlugin extends Plugin {
         }
     };
 
+    /** Fires networkStatusChanged so the JS Wi-Fi-only queue can auto-resume. */
+    private ConnectivityManager.NetworkCallback networkCallback;
+
     @Override
     public void load() {
         super.load();
         DownloadService.setReporter(reporter);
+        ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm != null) {
+            networkCallback = new ConnectivityManager.NetworkCallback() {
+                @Override
+                public void onCapabilitiesChanged(Network network, NetworkCapabilities caps) {
+                    JSObject d = new JSObject();
+                    d.put("connected", caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET));
+                    d.put("metered", !caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED));
+                    notifyListeners("networkStatusChanged", d);
+                }
+
+                @Override
+                public void onLost(Network network) {
+                    JSObject d = new JSObject();
+                    d.put("connected", false);
+                    d.put("metered", true);
+                    notifyListeners("networkStatusChanged", d);
+                }
+            };
+            try {
+                cm.registerDefaultNetworkCallback(networkCallback);
+            } catch (Exception e) {
+                networkCallback = null; // too many callbacks / SecurityException: polling via isMetered still works
+            }
+        }
     }
 
     @Override
     protected void handleOnDestroy() {
         DownloadService.setReporter(null);
+        if (networkCallback != null) {
+            ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (cm != null) {
+                try {
+                    cm.unregisterNetworkCallback(networkCallback);
+                } catch (Exception ignored) {
+                    /* already unregistered */
+                }
+            }
+            networkCallback = null;
+        }
         super.handleOnDestroy();
+    }
+
+    /**
+     * Is the active connection metered (mobile data / metered hotspot)?
+     * The JS layer fails OPEN when this method is missing (older shell), so the
+     * answer here only ever tightens behaviour, never blocks downloads.
+     */
+    @PluginMethod
+    public void isMetered(PluginCall call) {
+        boolean connected = false;
+        boolean metered = true;
+        ConnectivityManager cm = (ConnectivityManager) getContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        if (cm != null) {
+            Network n = cm.getActiveNetwork();
+            NetworkCapabilities caps = n == null ? null : cm.getNetworkCapabilities(n);
+            connected = caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET);
+            metered = cm.isActiveNetworkMetered();
+        }
+        JSObject ret = new JSObject();
+        ret.put("connected", connected);
+        ret.put("metered", metered);
+        call.resolve(ret);
     }
 
     @PluginMethod

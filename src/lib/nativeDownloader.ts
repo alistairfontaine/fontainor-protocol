@@ -20,13 +20,20 @@ export interface ServiceDownloadOptions {
   title?: string
 }
 
+export interface NetworkStatus {
+  connected: boolean
+  metered: boolean
+}
+
 interface FontainorDownloadsPlugin {
   download(options: ServiceDownloadOptions): Promise<void>
   cancel(options: { id?: string }): Promise<void>
+  isMetered(): Promise<NetworkStatus>
   addListener(
     event: 'downloadProgress' | 'downloadComplete' | 'downloadFailed' | 'downloadCancelled',
     cb: (data: { id: string; bytes?: number; total?: number; path?: string; message?: string }) => void,
   ): Promise<PluginListenerHandle>
+  addListener(event: 'networkStatusChanged', cb: (data: NetworkStatus) => void): Promise<PluginListenerHandle>
 }
 
 const Downloads = registerPlugin<FontainorDownloadsPlugin>('FontainorDownloads')
@@ -108,4 +115,40 @@ export async function cancelServiceDownload(id?: string): Promise<void> {
 
 export function isCancellation(e: unknown): boolean {
   return e instanceof Error && e.message === DOWNLOAD_CANCELLED
+}
+
+// ── network status (for Wi-Fi-only downloads) ──
+
+/**
+ * Is the active connection metered? Fails OPEN (not metered) when the shell
+ * cannot answer — an old APK without the method must keep downloading exactly
+ * as before, never silently queue forever.
+ */
+export async function isMeteredConnection(): Promise<boolean> {
+  if (!hasDownloadService()) return false
+  try {
+    const st = await Downloads.isMetered()
+    return !!st.connected && !!st.metered
+  } catch {
+    return false // method missing on an older shell — fail open
+  }
+}
+
+/** Subscribe to connectivity changes. No-op (returns a no-op unsubscriber) without the plugin. */
+export function onNetworkChange(cb: (st: NetworkStatus) => void): () => void {
+  if (!hasDownloadService()) return () => {}
+  let handle: PluginListenerHandle | null = null
+  let dead = false
+  void Downloads.addListener('networkStatusChanged', cb)
+    .then((h) => {
+      if (dead) void h.remove()
+      else handle = h
+    })
+    .catch(() => {
+      /* older shell without the event — the metered check still gates each start */
+    })
+  return () => {
+    dead = true
+    void handle?.remove()
+  }
 }

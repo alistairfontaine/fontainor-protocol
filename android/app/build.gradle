@@ -17,8 +17,8 @@ android {
         applicationId "com.fontainor.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "4.3.0"
+        versionCode 8
+        versionName "4.4.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         // English-only UI strings — drop other locale resources to slim the APK.
         resourceConfigurations += ["en"]

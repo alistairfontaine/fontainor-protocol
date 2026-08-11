@@ -434,6 +434,7 @@ function DownloadButton({ rel }: { rel: Release }) {
   const has = ids.has(rel.id)
   const prog = progress[rel.id]
   const downloading = prog?.state === 'downloading'
+  const waiting = prog?.state === 'waiting'
   const failed = prog?.state === 'error'
   if (!rel.audio) return null
 
@@ -446,6 +447,11 @@ function DownloadButton({ rel }: { rel: Release }) {
     hapticTick()
     if (downloading) {
       if (cancellable) await cancelDownload(rel.id)
+      return
+    }
+    if (waiting) {
+      // "Waiting for Wi-Fi" tapped again = "download now anyway".
+      await downloadRelease(rel, { force: true })
       return
     }
     if (failed) clearDownloadError(rel.id)
@@ -464,9 +470,11 @@ function DownloadButton({ rel }: { rel: Release }) {
       aria-label={
         cancellable
           ? `Cancel download of ${rel.title}`
-          : has
-            ? `Remove ${rel.title} from downloads`
-            : `Download ${rel.title}`
+          : waiting
+            ? `Download ${rel.title} now`
+            : has
+              ? `Remove ${rel.title} from downloads`
+              : `Download ${rel.title}`
       }
     >
       {downloading ? <IconSpinner size={18} /> : has ? <IconCheck size={18} className="text-accent" /> : <IconDownload size={18} />}
@@ -474,11 +482,13 @@ function DownloadButton({ rel }: { rel: Release }) {
         ? prog.pct != null
           ? `Downloading ${prog.pct}%`
           : 'Downloading…'
-        : has
-          ? 'Downloaded'
-          : failed
-            ? 'Retry download'
-            : 'Download'}
+        : waiting
+          ? 'Waiting for Wi-Fi'
+          : has
+            ? 'Downloaded'
+            : failed
+              ? 'Retry download'
+              : 'Download'}
     </Button>
   )
 }

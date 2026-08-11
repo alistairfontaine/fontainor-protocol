@@ -4,16 +4,17 @@ import { FixedSizeGrid } from 'react-window'
 import { Cover } from '../components/Cover'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
 import { IconClose, IconLibrary, IconSearch } from '../components/icons'
-import { clearDownloadError, downloadRelease, releaseFromDownload, removeDownload, useDownloads } from '../lib/downloads'
+import { clearDownloadError, dismissWaiting, downloadRelease, releaseFromDownload, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { usePlayer } from '../state/PlayerContext'
+import { useSettings } from '../state/settings'
 import { Chip, EmptyState, GridSkeleton, PageHead } from '../components/ui'
 import type { Release } from '../lib/registry'
 import { useRegistry } from '../state/RegistryContext'
 
 type SortKey = 'newest' | 'title' | 'artist' | 'price'
-type TypeFilter = 'all' | 'release' | 'editorial'
+type TypeFilter = 'all' | 'release' | 'editorial' | 'downloaded'
 
 const VIRTUALIZE_AT = 60
 const GAP = 20
@@ -88,6 +89,59 @@ function VirtualGrid({ items }: { items: Release[] }) {
   )
 }
 
+function SettingToggle({ label, hint, checked, onChange }: { label: string; hint: string; checked: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <button
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      onClick={() => {
+        hapticTick()
+        onChange(!checked)
+      }}
+      className="flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-medium text-ink">{label}</span>
+        <span className="block text-[12px] text-faint">{hint}</span>
+      </span>
+      <span
+        aria-hidden="true"
+        className={`relative h-6 w-10 shrink-0 rounded-full transition-colors ${checked ? 'bg-accent' : 'bg-line'}`}
+      >
+        <span
+          className={`absolute top-0.5 h-5 w-5 rounded-full bg-surface shadow transition-[left] ${checked ? 'left-[18px]' : 'left-0.5'}`}
+        />
+      </span>
+    </button>
+  )
+}
+
+/** Native-only download preferences. Lives in the Library because that is where downloads live. */
+function DownloadSettings() {
+  const { settings, set } = useSettings()
+  if (!IS_NATIVE) return null
+  return (
+    <section className="mb-10" aria-label="Download settings">
+      <h2 className="mb-4 text-lg font-semibold text-ink">Download settings</h2>
+      <div className="divide-y divide-line rounded-card border border-line bg-surface">
+        <SettingToggle
+          label="Download over Wi-Fi only"
+          hint="On mobile data, downloads wait and start by themselves on Wi-Fi."
+          checked={settings.wifiOnlyDownloads}
+          onChange={(v) => set('wifiOnlyDownloads', v)}
+        />
+        <SettingToggle
+          label="Auto-download liked releases"
+          hint="Liking a release saves it for offline listening."
+          checked={settings.autoDownloadLikes}
+          onChange={(v) => set('autoDownloadLikes', v)}
+        />
+      </div>
+    </section>
+  )
+}
+
 function DownloadsSection() {
   const { entries, progress } = useDownloads()
   const { music } = useRegistry()
@@ -129,6 +183,29 @@ function DownloadsSection() {
                   <span className="mt-0.5 block text-[11px] tabular-nums text-faint">
                     {p.pct != null ? `Downloading ${p.pct}%` : 'Downloading…'}
                   </span>
+                </span>
+              ) : p.state === 'waiting' ? (
+                <span className="mt-0.5 flex items-center gap-2 text-[12px]">
+                  <button
+                    onClick={() => {
+                      hapticTick()
+                      void downloadRelease(rel, { force: true })
+                    }}
+                    className="cursor-pointer font-medium text-muted hover:text-accent"
+                    aria-label={`Download ${rel.title} now`}
+                  >
+                    Waiting for Wi-Fi — tap to download now
+                  </button>
+                  <button
+                    onClick={() => {
+                      hapticTick()
+                      dismissWaiting(rel.id)
+                    }}
+                    className="cursor-pointer text-faint hover:text-ink"
+                    aria-label={`Stop waiting for ${rel.title}`}
+                  >
+                    Dismiss
+                  </button>
                 </span>
               ) : (
                 <button
@@ -186,13 +263,27 @@ export default function Library() {
   const q = params.get('q') ?? ''
   const [type, setType] = useState<TypeFilter>('all')
   const [sort, setSort] = useState<SortKey>('newest')
+  const { entries, ids: downloadedIds } = useDownloads()
+
+  // The chip hides itself when the last download goes — the filter must not
+  // stay stuck on an invisible option.
+  useEffect(() => {
+    if (type === 'downloaded' && downloadedIds.size === 0) setType('all')
+  }, [type, downloadedIds])
 
   const filtered = useMemo(() => {
     let items = releases
-    if (type !== 'all') items = items.filter((r) => r.type === type)
+    if (type === 'downloaded') {
+      // Index-first, like the shelf: a download the registry no longer knows
+      // about must still show up here.
+      const known = new Set(items.map((r) => r.id))
+      items = [...items.filter((r) => downloadedIds.has(r.id)), ...entries.filter((e) => !known.has(e.id)).map(releaseFromDownload)]
+    } else if (type !== 'all') {
+      items = items.filter((r) => r.type === type)
+    }
     if (q) items = items.filter((r) => matches(r, q))
     return sortItems(items, sort)
-  }, [releases, q, type, sort])
+  }, [releases, q, type, sort, entries, downloadedIds])
 
   return (
     <>
@@ -227,6 +318,11 @@ export default function Library() {
         <Chip active={type === 'editorial'} onClick={() => setType('editorial')}>
           Articles
         </Chip>
+        {IS_NATIVE && downloadedIds.size > 0 && (
+          <Chip active={type === 'downloaded'} onClick={() => setType('downloaded')}>
+            Downloaded
+          </Chip>
+        )}
         <select
           value={sort}
           onChange={(e) => setSort(e.target.value as SortKey)}
@@ -241,6 +337,7 @@ export default function Library() {
       </div>
 
       <DownloadsSection />
+      <DownloadSettings />
 
       {q && (
         <p className="mb-5 text-sm text-muted">

@@ -18,9 +18,10 @@ import { Directory, Filesystem } from '@capacitor/filesystem'
 import { useSyncExternalStore } from 'react'
 import { nativeFetchableUrl } from './api'
 import { markGatewayDown, markGatewayUp, mediaCandidates } from './gateways'
-import { cancelServiceDownload, hasDownloadService, isCancellation, serviceDownload } from './nativeDownloader'
+import { cancelServiceDownload, hasDownloadService, isCancellation, isMeteredConnection, onNetworkChange, serviceDownload } from './nativeDownloader'
 import { IS_NATIVE } from './platform'
 import type { Release } from './registry'
+import { getSetting } from '../state/settings'
 
 export interface DownloadEntry {
   id: string
@@ -180,6 +181,7 @@ function verifyPlayable(src: string): Promise<boolean> {
 // ── download progress (YouTube-style states) ──
 export type DownloadProgress =
   | { state: 'downloading'; pct: number | null } // null = size unknown
+  | { state: 'waiting' } // queued until an unmetered connection (Wi-Fi only setting)
   | { state: 'error'; message: string }
 
 let progressMap: Record<string, DownloadProgress> = {}
@@ -207,9 +209,46 @@ function armProgressListener(): void {
   })
 }
 
-export async function downloadRelease(rel: Release): Promise<void> {
+// ── Wi-Fi-only queue ──
+// With the "Wi-Fi only" setting on, a download requested on a metered
+// connection waits (visible "Waiting for Wi-Fi" state) and starts by itself
+// when an unmetered network arrives. `force` (the user's explicit "download
+// now anyway" tap) always bypasses the gate — the user outranks the setting.
+const waitingQueue = new Map<string, Release>()
+let networkWatcherArmed = false
+function armNetworkWatcher(): void {
+  if (networkWatcherArmed) return
+  networkWatcherArmed = true
+  onNetworkChange((st) => {
+    if (!st.connected || st.metered || waitingQueue.size === 0) return
+    const batch = [...waitingQueue.values()]
+    waitingQueue.clear()
+    for (const rel of batch) void downloadRelease(rel, { force: true })
+  })
+}
+
+/** Give up on a queued (waiting-for-Wi-Fi) download. */
+export function dismissWaiting(id: string): void {
+  if (!waitingQueue.delete(id)) return
+  if (progressMap[id]?.state === 'waiting') setProgress(id, null)
+}
+
+/** The queued release, so the UI's "download now" tap can force-start it. */
+export function waitingRelease(id: string): Release | null {
+  return waitingQueue.get(id) ?? null
+}
+
+export async function downloadRelease(rel: Release, opts: { force?: boolean } = {}): Promise<void> {
   if (!IS_NATIVE || !rel.audio || isDownloaded(rel.id)) return
   if (progressMap[rel.id]?.state === 'downloading') return // already in flight
+  if (!opts.force && getSetting('wifiOnlyDownloads') && (await isMeteredConnection())) {
+    if (progressMap[rel.id]?.state === 'downloading') return // metered check is async — recheck
+    waitingQueue.set(rel.id, rel)
+    armNetworkWatcher()
+    setProgress(rel.id, { state: 'waiting' })
+    return
+  }
+  waitingQueue.delete(rel.id)
   armProgressListener()
   const audioPath = `downloads/${rel.id}.mp3`
   // One gateway being unreachable must not mean "this release cannot be saved":

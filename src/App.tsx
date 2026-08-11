@@ -18,7 +18,8 @@ import { AndroidApp } from './pages/AndroidApp'
 import { AndroidBanner } from './components/AndroidBanner'
 import { AuthProvider } from './state/AuthContext'
 import { PlayerProvider } from './state/PlayerContext'
-import { RegistryProvider } from './state/RegistryContext'
+import { RegistryProvider, useRegistry } from './state/RegistryContext'
+import { useAutoDownloadLikes } from './lib/autoDownload'
 
 // NO route-level code splitting. All pages together are ~46 KB minified —
 // splitting them saved nothing but made every navigation depend on a
@@ -37,6 +38,13 @@ function PageTransition({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   )
+}
+
+/** Auto-download newly-liked releases (native, opt-in). Needs the registry, so it lives under RegistryProvider. */
+function AutoDownloadLikes() {
+  const { music } = useRegistry()
+  useAutoDownloadLikes(music)
+  return null
 }
 
 function ScrollToTop() {
@@ -59,6 +67,7 @@ export default function App() {
       <RegistryProvider>
         <PlayerProvider>
           <ScrollToTop />
+          <AutoDownloadLikes />
           <AppShell walletSlot={<WalletButton />}>
             <ErrorBoundary>
               {/* Promo banner sits OUTSIDE PageTransition so it doesn't

@@ -70,6 +70,28 @@ If the file is absent, release falls back to debug signing so the build still
 produces an installable APK. The current keystore is a **sideload/dev** key —
 a Google Play *upload* key (or Play App Signing) is a separate step.
 
+## Downloads
+
+Offline downloads run in a **foreground service** (`DownloadService`) with a
+progress notification and real cancellation; the WebView half is
+`src/lib/nativeDownloader.ts` (feature-detected, falls back to
+`Filesystem.downloadFile` on older shells).
+
+Download preferences live in the Library (native only):
+
+- **Download over Wi-Fi only** — on a metered connection a requested download
+  waits (visible "Waiting for Wi-Fi" state) and starts automatically when an
+  unmetered network arrives (`DownloaderPlugin.isMetered()` +
+  `networkStatusChanged` from a `registerDefaultNetworkCallback`). Tapping the
+  waiting item downloads immediately anyway — the user outranks the setting.
+- **Auto-download liked releases** — liking a release queues its download
+  (only *new* likes; the existing backlog is never bulk-fetched). Respects the
+  Wi-Fi-only gate. Un-liking never deletes a download.
+
+A **Downloaded** filter chip appears in the Library once anything is
+downloaded; it is index-first, so downloads missing from the loaded registry
+still show up.
+
 ## Known limitation — Phantom domain warning
 
 Phantom's in-app browser and connect screen flag `*.vercel.app` subdomains via
