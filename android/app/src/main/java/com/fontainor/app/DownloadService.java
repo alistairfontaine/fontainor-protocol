@@ -135,13 +135,13 @@ public class DownloadService extends Service {
         pool.execute(new Runnable() {
             @Override
             public void run() {
-                run(id, url, path, cancelled);
+                performDownload(id, url, path, cancelled);
             }
         });
         return START_NOT_STICKY;
     }
 
-    private void run(String id, String url, String relPath, AtomicBoolean cancelled) {
+    private void performDownload(String id, String url, String relPath, AtomicBoolean cancelled) {
         File target = new File(getFilesDir(), relPath);
         File part = new File(target.getAbsolutePath() + ".part");
         File parent = target.getParentFile();
