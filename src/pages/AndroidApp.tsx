@@ -78,7 +78,7 @@ export function AndroidApp() {
         <p className="mt-4 border-t border-line pt-4 text-[13px] leading-relaxed text-muted">
           Every build is compiled from the public source and signed with the Fontainor release key. You can inspect the
           code and grab any version from the{' '}
-          <a href={RELEASES_PAGE} target="_blank" rel="noopener noreferrer" className="text-accent hover:underline">
+          <a href={RELEASES_PAGE} target="_blank" rel="noopener noreferrer" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
             releases page on GitHub
           </a>
           .
@@ -153,11 +153,11 @@ export function AndroidApp() {
               href="https://discord.gg/ARezqHYS23"
               target="_blank"
               rel="noopener noreferrer"
-              className="text-accent hover:underline"
+              className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent"
             >
               Discord
             </a>{' '}
-            or use the <Link to="/contact" className="text-accent hover:underline">contact page</Link>.
+            or use the <Link to="/contact" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">contact page</Link>.
           </li>
         </ul>
       </section>

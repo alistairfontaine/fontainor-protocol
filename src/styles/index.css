@@ -81,7 +81,7 @@
   --color-ink: #edeff3;
   --color-body: #c3c8d2;
   --color-muted: #99a0ad;
-  --color-faint: #697180;
+  --color-faint: #808898; /* ≥4.68:1 on bg/surface/raised — #697180 failed WCAG AA (3.5–3.9:1) */
   --color-accent: #f7b733;
   --color-accent-hi: #ffc94d;
   --color-accent-ink: #211803;

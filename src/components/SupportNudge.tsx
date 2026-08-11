@@ -23,7 +23,7 @@ export function SupportNudge() {
     <div className="mb-5 flex items-center justify-between gap-3 rounded-btn bg-raised px-3.5 py-2 text-[13px] text-muted ring-1 ring-line">
       <p>
         Fontainor is free and open source. If it's useful,{' '}
-        <Link to="/support" className="font-medium text-accent hover:underline">
+        <Link to="/support" className="font-medium text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">
           chip in
         </Link>
         .

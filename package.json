@@ -55,6 +55,7 @@
     "@types/node": "^25.9.1",
     "@vitejs/plugin-react": "^4.3.1",
     "arlocal": "^1.1.66",
+    "axe-core": "^4.13.0",
     "playwright": "^1.62.0",
     "ts-node": "^10.9.2",
     "tsx": "^4.22.4",

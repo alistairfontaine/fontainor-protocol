@@ -144,7 +144,7 @@ export function Privacy() {
       <section>
         <H>Questions</H>
         <p>
-          Privacy questions go to the address on the <Link to="/contact" className="text-accent hover:underline">contact page</Link>.
+          Privacy questions go to the address on the <Link to="/contact" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">contact page</Link>.
         </p>
       </section>
     </Doc>
@@ -199,7 +199,7 @@ export function Contact() {
         ))}
       </div>
       <p className="text-[13px] text-muted">
-        Before writing in, the <Link to="/faq" className="text-accent hover:underline">FAQ</Link> answers the ten questions
+        Before writing in, the <Link to="/faq" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">FAQ</Link> answers the ten questions
         we get most.
       </p>
     </Doc>
@@ -234,7 +234,7 @@ export function Faq() {
         ))}
       </div>
       <p className="text-[13px] text-muted">
-        Something missing? <Link to="/contact" className="text-accent hover:underline">Ask us directly.</Link>
+        Something missing? <Link to="/contact" className="text-accent underline decoration-accent/40 underline-offset-2 hover:decoration-accent">Ask us directly.</Link>
       </p>
     </Doc>
   )
