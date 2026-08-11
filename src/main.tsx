@@ -20,7 +20,13 @@ import { HashRouter } from 'react-router-dom'
 import App from './App'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { formatEntry, recordError } from './lib/errlog'
+import { bootNativeWalletEarly, setupNativeChrome } from './lib/native'
 import './styles/index.css'
+
+// Native (Capacitor) app: install the Phantom deeplink provider as
+// `window.solana` BEFORE React renders, so AuthContext detects a wallet on
+// first paint exactly as it would with the desktop extension. No-op on web.
+bootNativeWalletEarly()
 
 // Vercel Web Analytics — no-op until it's enabled in the Vercel dashboard.
 inject()
@@ -70,3 +76,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
     </HashRouter>
   </React.StrictMode>,
 )
+
+// Native chrome (status bar, splash, back button, safe-area top). No-op on web.
+void setupNativeChrome()

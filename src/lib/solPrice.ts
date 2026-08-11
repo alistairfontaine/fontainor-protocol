@@ -6,8 +6,12 @@ let cached: { usd: number; at: number } | null = null
 
 const WSOL_MINT = 'So11111111111111111111111111111111111111112'
 
+const FETCH_TIMEOUT_MS = 8_000 // a hung price API must not stall the purchase/publish UI
+
 async function fromCoinGecko(): Promise<number | null> {
-  const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+  const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
   if (!res.ok) return null
   const j = (await res.json()) as { solana?: { usd?: number } }
   const usd = j.solana?.usd
@@ -15,7 +19,9 @@ async function fromCoinGecko(): Promise<number | null> {
 }
 
 async function fromJupiter(): Promise<number | null> {
-  const res = await fetch(`https://lite-api.jup.ag/price/v2?ids=${WSOL_MINT}`)
+  const res = await fetch(`https://lite-api.jup.ag/price/v2?ids=${WSOL_MINT}`, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  })
   if (!res.ok) return null
   const j = (await res.json()) as { data?: Record<string, { price?: string | number }> }
   const p = Number(j.data?.[WSOL_MINT]?.price)

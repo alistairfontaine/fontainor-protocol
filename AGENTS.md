@@ -10,11 +10,15 @@ react-router, react-window; `api/index.js` Express serverless on Vercel.
 ## Commands
 
 ```bash
-npm install            # setup
-npm run ci             # full gate: typecheck + build — must pass before commit
-npm run dev            # run the app locally (vite)
-node api-server.js     # run the API locally (if needed)
+npm install                      # setup
+npx playwright install chromium  # once per machine — the tools/*-test.mjs browser suites need it
+npm run ci                       # full gate: typecheck + build — must pass before commit
+npm run dev                      # run the app locally (vite)
+node api-server.js               # run the API locally (if needed)
 ```
+
+Browser tests resolve Chromium through Playwright's own registry; set
+`FONTAINOR_CHROMIUM=/path/to/chrome` only to override.
 
 ## Structure
 

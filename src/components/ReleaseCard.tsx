@@ -1,12 +1,17 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState, Children, type CSSProperties, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import { hapticThump, hapticTick } from '../lib/haptics'
+import { IS_NATIVE } from '../lib/platform'
 import { edLabel, isSold, priceLabel, type Release } from '../lib/registry'
 import { useFavorites } from '../state/collections'
 import { usePlayer } from '../state/PlayerContext'
 import { Cover } from './Cover'
 import { IconCheck, IconHeart, IconPlay, IconQueue } from './icons'
 
-export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
+/** Memoized: grids render dozens of these; the player context is tick-stable
+ *  now (see PlayerContext), so cards only re-render when their props change
+ *  or favorites flip. */
+export const ReleaseCard = memo(function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
   const { play, addToQueue } = usePlayer()
   const { ids, toggle } = useFavorites()
   const navigate = useNavigate()
@@ -22,7 +27,7 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
   const href = rel.type === 'editorial' ? `/editorial/${encodeURIComponent(rel.id)}` : `/release/${encodeURIComponent(rel.id)}`
 
   return (
-    <article className="group fade-up">
+    <article className="press group fade-up">
       <div className="relative aspect-square overflow-hidden rounded-card bg-raised shadow-card">
         <Link to={href} aria-label={rel.title}>
           <Cover rel={rel} className="transition-transform duration-300 group-hover:scale-[1.03]" />
@@ -32,6 +37,7 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
           <button
             onClick={(e) => {
               e.preventDefault()
+              hapticThump()
               play(rel)
             }}
             className="absolute bottom-3 left-3 grid h-11 w-11 cursor-pointer place-items-center rounded-full bg-accent text-accent-ink opacity-0 shadow-glow transition-all duration-200 group-focus-within:opacity-100 group-hover:opacity-100 hover:bg-accent-hi max-lg:opacity-100"
@@ -44,6 +50,7 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
         <button
           onClick={(e) => {
             e.preventDefault()
+            hapticTick()
             toggle(rel.id)
           }}
           className={`absolute right-3 top-3 grid h-10 w-10 cursor-pointer place-items-center rounded-full bg-bg/70 backdrop-blur transition-all duration-200 ${
@@ -59,6 +66,7 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
           <button
             onClick={(e) => {
               e.preventDefault()
+              hapticTick()
               addToQueue(rel)
               setJustQueued(true)
               if (queuedTimer.current) clearTimeout(queuedTimer.current)
@@ -107,13 +115,34 @@ export function ReleaseCard({ rel, note }: { rel: Release; note?: string }) {
       )}
     </article>
   )
-}
+})
 
 export function ReleaseGrid({ items }: { items: Release[] }) {
   return (
     <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
       {items.map((rel) => (
         <ReleaseCard key={rel.id + rel.title} rel={rel} />
+      ))}
+    </div>
+  )
+}
+
+/**
+ * Rail — on the packaged app, sections lay out as horizontally snapping
+ * rails (the music-app idiom: thumb-friendly, endless-feeling shelves);
+ * on the web they keep the responsive grid. Children are usually
+ * <ReleaseCard>s.
+ */
+export function Rail({ children }: { children: ReactNode }) {
+  if (!IS_NATIVE) {
+    return <div className="grid grid-cols-2 gap-x-5 gap-y-9 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">{children}</div>
+  }
+  return (
+    <div className="stagger -mx-4 flex snap-x snap-proximity gap-4 overflow-x-auto px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      {Children.map(children, (c, i) => (
+        <div className="w-[42vw] max-w-[190px] shrink-0 snap-start" style={{ '--stagger': `${Math.min(i, 5) * 40}ms` } as CSSProperties}>
+          {c}
+        </div>
       ))}
     </div>
   )

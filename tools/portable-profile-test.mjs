@@ -7,7 +7,8 @@ import nacl from 'tweetnacl'
 import bs58 from 'bs58'
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const BASE = 'http://localhost:4174'
 const results = []
 const check = (name, ok, extra = '') => {
@@ -64,7 +65,7 @@ async function backend() {
   const kp = nacl.sign.keyPair()
   const wallet = bs58.encode(kp.publicKey)
   const other = bs58.encode(nacl.sign.keyPair().publicKey)
-  const msg = 'Authenticate Fontainor Sovereign Session'
+  const msg = `Authenticate Fontainor Sovereign Session :: ${Date.now()}`
   const sig = nacl.sign.detached(new TextEncoder().encode(msg), kp.secretKey)
   const proof = {
     publicKey: JSON.stringify(Array.from(kp.publicKey)),
@@ -161,7 +162,7 @@ async function connectOnProfile(page) {
 }
 
 async function frontend() {
-  const browser = await chromium.launch({ executablePath: EXE })
+  const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
 
   // ── Machine A: connect, like a track ──
   const ctxA = await browser.newContext({ viewport: { width: 1280, height: 900 } })
@@ -197,7 +198,7 @@ async function frontend() {
 
   const persisted = await pageB.evaluate(() => ({
     purchases: JSON.parse(localStorage.getItem('fontainor_purchases_v1') ?? '[]').length,
-    favs: JSON.parse(localStorage.getItem('fontainor_favorites_v1') ?? '[]'),
+    favs: (JSON.parse(localStorage.getItem('fontainor_favorites_v2') ?? '{"ids":[]}').ids ?? []),
   }))
   check('B4 machine B local stores hydrated', persisted.purchases === 1 && persisted.favs.includes('FONT-BUYME1'))
 

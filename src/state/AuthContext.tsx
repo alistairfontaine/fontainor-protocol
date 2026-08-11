@@ -3,8 +3,11 @@
 // incl. the Firefox service-worker workarounds.
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { API_BASE } from '../lib/api'
+import { MwaUserDeclinedError } from '../lib/mwa'
+import { PhantomUserError } from '../lib/phantomDeeplink'
 import { isMobileDevice } from '../lib/phantom'
 import { clearSessionProof, saveSessionProof, startFavoritesAutoPush, syncProfile } from '../lib/profileSync'
+import { noteServerDate, primeServerClock, syncedNow } from '../lib/serverClock'
 
 export interface User {
   address: string
@@ -63,6 +66,13 @@ async function getProvider(): Promise<PhantomProvider | null> {
   return provider?.isPhantom ? provider : null
 }
 
+/** True only when the human explicitly rejected the request in the wallet. */
+function isUserDecline(e: unknown): boolean {
+  if (e instanceof MwaUserDeclinedError || e instanceof PhantomUserError) return true
+  const msg = e instanceof Error ? e.message : String(e)
+  return /declined|reject|cancel|denied/i.test(msg)
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(loadUser)
   const [connecting, setConnecting] = useState(false)
@@ -98,12 +108,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const address = publicKey.toString()
-      const msg = 'Authenticate Fontainor Sovereign Session'
+      // The signed message carries its issue time — the server rejects logins
+      // signed more than a few minutes ago and profile writes after 7 days,
+      // so a captured signature is no longer a forever-valid bearer token.
+      // Stamp with SERVER time, not device time: the API's freshness window is
+      // measured on its own clock, and a phone running minutes behind would
+      // otherwise sign a message the server reads as already expired.
+      await primeServerClock(API_BASE)
+      const issuedAt = syncedNow()
+      const msg = `Authenticate Fontainor Sovereign Session :: ${issuedAt}`
       let signed: { signature: Uint8Array }
       try {
         signed = await provider.signMessage(new TextEncoder().encode(msg), 'utf8')
-      } catch {
-        return { success: false, error: 'Signature cancelled. Approve the signature request in Phantom to sign in.' }
+      } catch (e) {
+        // Only an actual decline reads as "cancelled" — v4.0.0 mapped EVERY
+        // failure here (stale sessions, protocol errors) to that message,
+        // which is why approving in Phantom still showed it.
+        if (isUserDecline(e)) {
+          return { success: false, error: 'Signature cancelled. Approve the signature request in Phantom to sign in.' }
+        }
+        const detail = e instanceof Error && e.message ? e.message : 'Unknown wallet error'
+        return { success: false, error: `Wallet sign-in failed: ${detail} — try again.` }
       }
 
       const res = await fetch(`${API_BASE}/api/v1/auth/sovereign-login`, {
@@ -115,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           message: msg,
         }),
       })
+      noteServerDate(res)
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; handle?: string; message?: string }
       if (!res.ok || !data.success) {
         return { success: false, error: data.message || 'The registry rejected the signature. Try again.' }
@@ -135,9 +161,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signature: JSON.stringify(Array.from(signed.signature)),
         message: msg,
         wallet: address,
+        issuedAt,
       })
       void syncProfile(address)
       return { success: true }
+    } catch (e) {
+      // Never let a network failure escape as an unhandled rejection — every
+      // caller treats { success:false } as the inline-error path.
+      return {
+        success: false,
+        error: 'Could not reach the registry to verify the signature (' + String((e as Error)?.message || e) + '). Check your connection and try again.',
+      }
     } finally {
       setConnecting(false)
     }
@@ -172,11 +206,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Phantom is on a different wallet than this session. Switch accounts and retry.' }
       }
 
+      // Timestamp-bound claim: the server rejects claims signed more than a
+      // few minutes ago, so a captured payload can't re-claim an old handle.
+      await primeServerClock(API_BASE)
+      const claimIssuedAt = syncedNow()
       let signed: { signature: Uint8Array }
       try {
-        signed = await provider.signMessage(new TextEncoder().encode(`Fontainor handle claim: @${bare}`), 'utf8')
+        signed = await provider.signMessage(new TextEncoder().encode(`Fontainor handle claim: @${bare} :: ${claimIssuedAt}`), 'utf8')
       } catch {
         return { success: false, error: 'Signature cancelled. Approve the request in Phantom to claim the handle.' }
+        // (claim flow keeps the simple message: it is always user-initiated right after a successful sign-in)
       }
 
       const res = await fetch(`${API_BASE}/api/v1/auth/set-handle`, {
@@ -186,6 +225,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
           signature: JSON.stringify(Array.from(signed.signature)),
           handle: bare,
+          issuedAt: claimIssuedAt,
         }),
       })
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; handle?: string; message?: string }

@@ -1,0 +1,56 @@
+{
+  "label": "before-v4.1",
+  "cpu_throttle": 8,
+  "budget_ms": 17.2,
+  "scenarios": {
+    "home-scroll-idle": {
+      "frames": 511,
+      "avg_ms": 17.84,
+      "p50_ms": 16.7,
+      "p95_ms": 33.3,
+      "worst_ms": 33.5,
+      "dropped_pct": 7
+    },
+    "home-scroll-playing": {
+      "frames": 527,
+      "avg_ms": 18.78,
+      "p50_ms": 16.7,
+      "p95_ms": 33.3,
+      "worst_ms": 33.5,
+      "dropped_pct": 12.7
+    },
+    "rail-fling": {
+      "frames": 426,
+      "avg_ms": 18.04,
+      "p50_ms": 16.7,
+      "p95_ms": 33.3,
+      "worst_ms": 33.4,
+      "dropped_pct": 8.2
+    },
+    "nowplaying-hold-playing": {
+      "frames": 600,
+      "avg_ms": 16.67,
+      "p50_ms": 16.7,
+      "p95_ms": 16.8,
+      "worst_ms": 16.8,
+      "dropped_pct": 0
+    },
+    "nowplaying-open-close": {
+      "frames": 948,
+      "avg_ms": 16.68,
+      "p50_ms": 16.7,
+      "p95_ms": 16.8,
+      "worst_ms": 33.4,
+      "dropped_pct": 0.1
+    }
+  },
+  "scroll_moved_px": 1069,
+  "playing": true,
+  "tick_cost_over_hold": {
+    "hold_s": 10,
+    "sheet_open": true,
+    "script_ms": 295.5,
+    "layouts": 38,
+    "style_recalcs": 38
+  }
+}

@@ -1,5 +1,66 @@
 @import "tailwindcss";
 
+/* Self-hosted webfonts (latin subset).
+ * These used to come from fonts.googleapis.com, which meant: no typography at
+ * all in the APK when offline (the one state offline downloads exist for), an
+ * extra DNS + TLS round trip to Google on every cold start from a mobile
+ * network, every visitor's IP handed to a third party, and a render-blocking
+ * stylesheet a Content-Security-Policy has to punch a hole for. A registry
+ * whose pitch is "can't be taken down" should not need Google to look right.
+ * Weights are only the ones actually used: Inter 400/500/600/700 (body),
+ * Space Grotesk 600/700 (display). Characters outside the latin subset fall
+ * back to the system font.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/inter-400-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/inter-500-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/inter-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/inter-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-600-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Space Grotesk';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('/fonts/space-grotesk-700-latin.woff2') format('woff2');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+
 /* ─────────────────────────────────────────────────────────────
    Fontainor design tokens — "the permanent archive"
    Audience: independent artists + collectors who value permanence.
@@ -44,10 +105,36 @@
 :root {
   --player-h: 72px;
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-top: env(safe-area-inset-top, 0px);
 }
 
 html {
   scrollbar-gutter: stable;
+}
+
+/* Native (Capacitor) app: pad the sticky header down past the status bar on
+   edge-to-edge Android/iOS so the logo + wallet button are never clipped. */
+.is-native header {
+  padding-top: var(--safe-top, 0px);
+}
+
+/* ── Native perf rules ─────────────────────────────────────────
+   backdrop-filter is the single most expensive effect in the Android
+   WebView compositor: every frame under a blurred fixed surface re-blurs
+   on scroll. The app uses solid surfaces instead — visually near-identical
+   on our dark palette (chrome was already 90–97% opaque), dramatically
+   cheaper. Do NOT relax this to specific selectors; any new blur someone
+   adds must stay dead on native. */
+.is-native *,
+.is-native *::before,
+.is-native *::after {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* With blur gone, near-opaque chrome reads as cheap solid surfaces. */
+.is-native nav[aria-label="Primary"] {
+  background: var(--color-surface);
 }
 
 body {
@@ -112,12 +199,66 @@ h1, h2, h3, h4 {
 /* Fullscreen player entrance. Transform-only for the same compositor-freeze
    reason as fade-up, and a SMALL offset on purpose: a stalled animation must
    never leave the player parked offscreen. Do not raise the offset. */
+/* Page transitions: each route's content slides up + fades in. Opacity is
+   safe here because the animation is on the INCOMING view only (a stalled
+   animation leaves the page fully visible at worst — see fade-up note). */
+@keyframes page-in {
+  from { opacity: 0.001; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-in { animation: page-in 0.28s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Mini player entrance (first track starts): floats up from the bottom nav. */
+@keyframes mini-in {
+  from { opacity: 0.001; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.mini-in { animation: mini-in 0.3s cubic-bezier(0.22, 1, 0.36, 1); }
+
+/* Now Playing artwork: full size while playing, gently recedes when paused
+   (Spotify's pause affordance). Composited transform only — cheap on mobile. */
+.np-art { transition: transform 0.35s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease; }
+.np-art.is-paused { transform: scale(0.94); }
+
+/* Marquee for long titles in the player bar: only scrolls when the text
+   actually overflows (the .overflowing class is set from JS measurement). */
+/* Opacity here follows the page-in precedent: incoming view only, so a
+   stalled animation worst-cases to a visible sheet 28px low, never lost
+   content. Offset stays capped at 28px (see note above). */
 @keyframes rise-in {
-  from { transform: translateY(28px); }
-  to { transform: translateY(0); }
+  from { opacity: 0.001; transform: translateY(28px) scale(0.985); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
-.rise-in { animation: rise-in 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+.rise-in { animation: rise-in 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+
+/* Tactile press feedback (native feel): composited scale only. Applied to
+   cards, shortcut tiles and nav tabs. Fast in, springy out. */
+.press { transition: transform 0.18s cubic-bezier(0.2, 0, 0, 1); }
+.press:active { transform: scale(0.96); }
+
+/* Bottom-nav tab: icon pops when it becomes the active tab. */
+@keyframes tab-pop {
+  0% { transform: scale(1); }
+  45% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+.tab-pop { animation: tab-pop 0.28s cubic-bezier(0.34, 1.56, 0.64, 1); }
+
+/* Below-fold Home sections skip layout/paint until scrolled near (native
+   only — the observable win is on WebView compositors). The placeholder
+   size keeps the scrollbar stable. */
+/* v4.2: content-visibility REMOVED on native. It skipped offscreen Home
+   sections, so a fast vertical fling hit a synchronous activation wall at
+   each music rail (layout of 12 complex cards + entrance animations starting
+   mid-scroll) while the 3-link editorial strip activated for free — the
+   exact "music section laggy, editorial smooth" device report. The whole
+   registry is ~30 cards; rendering everything up front is far cheaper than
+   paying layout mid-fling. Do not reintroduce cv-auto on scroll paths. */
+
+/* Rail entrance stagger: each card rises a beat after the previous one.
+   Transform-only (see fade-up note); delay is set inline per item. */
+.stagger > * { animation: fade-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) backwards; animation-delay: var(--stagger, 0ms); }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -125,3 +266,18 @@ h1, h2, h3, h4 {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ── Native scroll cost diet (v4.1 — device report: music rails janky,
+      editorial smooth). Editorial cards are plain bordered links; release
+      cards carried a 32px-blur box-shadow + a hover scale transition on the
+      cover + an amber glow shadow on the play button. On the WebView
+      compositor those repaint at texture size during fling; on our near-black
+      bg the big soft shadows are invisible anyway — pure cost. Hover motion
+      is meaningless on touch. Web keeps all of it. */
+.is-native .press .shadow-card {
+  box-shadow: none;
+  border: 1px solid var(--color-line);
+}
+.is-native .press .shadow-glow { box-shadow: none; }
+.is-native .press img { transition-property: none; }
+.is-native .press .group-hover\:scale-\[1\.03\] { transform: none; }

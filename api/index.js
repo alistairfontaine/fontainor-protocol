@@ -5,7 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import bs58 from 'bs58';
-import { checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from './registryGuard.js';
+import { canonical, checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from './registryGuard.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -23,15 +23,43 @@ try {
 
 // --- App Setup ---
 const app = express();
-// Middleware configuration: accept raw binary streams up to 100MB to accommodate compiled files safely
-const rawBodyParser = express.raw({ type: 'application/octet-stream', limit: '100mb' });
-// In-memory store for chunking
-const uploadBuffer = new Map();
-
 
 app.use(cors());
 app.use(express.json({ limit: '5mb' }));
-app.use(express.static(__dirname));
+// A malformed JSON body makes express.json throw a SyntaxError; without this
+// the default handler returns an HTML error page (and a 413 HTML page when the
+// 5mb limit is exceeded), so JSON clients get an unparseable body and the
+// wrong-looking status. Answer with a clean JSON error instead.
+app.use((err, _req, res, next) => {
+    if (err && err.type === 'entity.too.large') {
+        return res.status(413).json({ success: false, error: 'PAYLOAD_TOO_LARGE', message: 'Request body exceeds 5mb.' });
+    }
+    if (err && (err.type === 'entity.parse.failed' || err instanceof SyntaxError)) {
+        return res.status(400).json({ success: false, error: 'INVALID_JSON', message: 'Request body is not valid JSON.' });
+    }
+    return next(err);
+});
+// NOTE: no express.static here on purpose — __dirname is the api/ source
+// directory; serving it exposed index.js/pointer.json on non-Vercel deploys.
+
+// Decode a wallet-signature payload safely. The three signed endpoints all
+// receive `publicKey` and `signature` as JSON byte-array strings; a client
+// sending non-JSON, a non-array, or a wrong-length key must be a 400 (bad
+// request) — not a 500 that leaks a raw parser/tweetnacl error message. Ed25519
+// public keys are exactly 32 bytes and detached signatures exactly 64; nacl
+// throws on any other size, so we reject those up front too.
+function decodeSignedPayload(publicKey, signature) {
+    try {
+        const pk = Uint8Array.from(JSON.parse(publicKey));
+        const sig = Uint8Array.from(JSON.parse(signature));
+        if (pk.length !== 32 || sig.length !== 64) return null;
+        if (pk.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return null;
+        if (sig.some((b) => !Number.isInteger(b) || b < 0 || b > 255)) return null;
+        return { pk, sig };
+    } catch {
+        return null;
+    }
+}
 
 // --- Arweave Setup ---
 const arweave = initArweave({
@@ -59,6 +87,7 @@ const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 // (Arweave manifest pointer + ephemeral filesystem).
 const REGISTRY_KEY = 'fontainor:registry:v1';
 const PURCHASES_KEY = 'fontainor:purchases:v1';
+const PURCHASE_SIGS_KEY = 'fontainor:purchases:sigs:v1'; // replay guard: signatures already receipted
 const favoritesKey = (wallet) => `fontainor:favorites:v1:${wallet}`;
 let redis = null;
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -91,6 +120,31 @@ async function writeDurableRegistry(manifestArray) {
         console.error('Redis write error:', e.message);
         return false;
     }
+}
+
+/**
+ * Merge-on-write for publish paths. The guard validates `incoming` against a
+ * registry snapshot read earlier; writing `incoming` verbatim would drop any
+ * entry another publisher appended in between (lost update). Re-reading at
+ * write time and unioning by id narrows that race to milliseconds. (A full
+ * fix needs an atomic compare-and-set, which Upstash REST doesn't offer.)
+ * Existing durable entries always win over incoming duplicates.
+ */
+async function mergeWriteDurableRegistry(incoming) {
+    const latest = await readDurableRegistry();
+    if (!latest || latest.length === 0) {
+        return { merged: incoming, durable: await writeDurableRegistry(incoming) };
+    }
+    const haveIds = new Set(latest.map((e) => (e && typeof e.id === 'string' ? e.id : null)).filter(Boolean));
+    const haveCanon = new Set(latest.map((e) => canonical(e)));
+    const merged = [
+        ...latest,
+        ...incoming.filter((e) => {
+            const id = e && typeof e.id === 'string' ? e.id : null;
+            return id ? !haveIds.has(id) : !haveCanon.has(canonical(e));
+        }),
+    ];
+    return { merged, durable: await writeDurableRegistry(merged) };
 }
 
 // --- Wallet-bound handles (claimed usernames) ---
@@ -255,12 +309,17 @@ const MANIFEST_TAGS = [
     { name: 'Type', value: 'registry-manifest' },
 ];
 
+// Tunable via env: a deeper scan widens the window an attacker must flood
+// with tagged manifests to push honest history out of recovery range. Each
+// extra slot costs one gateway fetch on a cold start, so keep it bounded.
+const RECOVERY_SCAN_DEPTH = Math.min(100, Math.max(4, Number(process.env.RECOVERY_SCAN_DEPTH) || 24));
+
 async function recoverLatestManifestFromIrys() {
     try {
         const query = `query { transactions(tags: [
             { name: "App-Name", values: ["Fontainor-Protocol"] },
             { name: "Type", values: ["registry-manifest"] }
-        ], order: DESC, limit: 1) { edges { node { id } } } }`;
+        ], order: DESC, limit: ${RECOVERY_SCAN_DEPTH}) { edges { node { id } } } }`;
         const res = await fetch('https://uploader.irys.xyz/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -268,12 +327,36 @@ async function recoverLatestManifestFromIrys() {
         });
         if (!res.ok) return null;
         const out = await res.json();
-        const id = out?.data?.transactions?.edges?.[0]?.node?.id;
-        if (!id) return null;
-        const data = await fetchRegistryFromGateway(id);
-        if (!Array.isArray(data) || data.length === 0) return null;
-        writeManifestPointer(id); // warm-instance cache for subsequent reads
-        return data;
+        const ids = (out?.data?.transactions?.edges ?? []).map((e) => e?.node?.id).filter(Boolean);
+        if (ids.length === 0) return null;
+
+        // Tags are not access-controlled, so the newest tagged manifest may be
+        // an attacker's. Every LEGIT manifest is an append-only extension of
+        // the one before it, so we fetch the newest few and accept the newest
+        // candidate that contains every older fetched manifest unchanged
+        // (checkAppendOnly). A forged full-replacement manifest drops or edits
+        // honest history and is skipped; a forged append-only extension is
+        // equivalent to a normal publish (spam entry, no hijack). Limitation:
+        // an attacker who floods more than RECOVERY_SCAN_DEPTH manifests can
+        // push honest history out of the window — the durable store (Upstash),
+        // once configured, always takes precedence over this path.
+        const manifests = [];
+        for (const id of ids) {
+            try {
+                const data = await fetchRegistryFromGateway(id);
+                if (Array.isArray(data) && data.length > 0) manifests.push({ id, data });
+            } catch { /* unresolvable yet — skip */ }
+        }
+        for (let i = 0; i < manifests.length; i++) {
+            const candidate = manifests[i];
+            const tampers = manifests.slice(i + 1).some((older) => !checkAppendOnly(older.data, candidate.data).ok);
+            if (tampers) continue;
+            if (i > 0) console.warn(`⚠️ Irys recovery: skipped ${i} newer manifest(s) that tampered with older history.`);
+            writeManifestPointer(candidate.id); // warm-instance cache for subsequent reads
+            return candidate.data;
+        }
+        console.error('Irys manifest recovery: no consistent manifest found in the newest ' + manifests.length + '.');
+        return null;
     } catch (e) {
         console.error('Irys manifest recovery failed:', e.message);
         return null;
@@ -287,8 +370,7 @@ app.get('/registry', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, PATCH, DELETE');
     res.setHeader('Access-Control-Allow-Headers', 'X-Requested-With, content-type, Authorization, X-Upload-Id, X-Chunk-Index, X-Total-Chunks');
-    res.setHeader('Access-Control-Allow-Credentials', 'true');
-    if (req.method === 'OPTIONS') return res.status(200).end();
+    // (no Allow-Credentials: it is invalid combined with the * origin)
 
     try {
         // durable store first — survives redeploys, no gateway round-trip
@@ -338,7 +420,8 @@ app.post('/upload', validateUpload, async (req, res) => {
         const hasWallet = wallet && Object.keys(wallet).length > 0;
         let txId = null;
         if (hasWallet) {
-            const up = await uploadManifest(JSON.stringify(req.body), { arweave, wallet });
+            // Always etch the normalized ARRAY (req.body may be a bare object).
+            const up = await uploadManifest(JSON.stringify(manifestArray), { arweave, wallet });
             if (up.success) {
                 writeManifestPointer(up.txId);
                 txId = up.txId;
@@ -348,8 +431,9 @@ app.post('/upload', validateUpload, async (req, res) => {
             }
         }
 
-        // Durable registry write (works with or without Arweave).
-        const durableOk = await writeDurableRegistry(manifestArray);
+        // Durable registry write (works with or without Arweave). Merge-on-write
+        // so a concurrent publish that landed since the guard check isn't dropped.
+        const { durable: durableOk } = await mergeWriteDurableRegistry(manifestArray);
         if (!txId && !durableOk) {
             return res.status(502).json({
                 success: false,
@@ -363,110 +447,46 @@ app.post('/upload', validateUpload, async (req, res) => {
     }
 });
 
-// 3. Audio Chunk Upload
-app.post('/api/v1/upload-audio/chunk', rawBodyParser, async (req, res) => {
-    try {
-        const uploadId = req.headers['x-upload-id'];
-        const chunkIndex = parseInt(req.headers['x-chunk-index']);
-        const totalChunks = parseInt(req.headers['x-total-chunks']);
-
-        if (!uploadId || isNaN(chunkIndex) || !req.body) {
-            return res.status(400).json({ success: false, message: "Missing headers or binary body" });
-        }
-
-        if (!uploadBuffer.has(uploadId)) {
-            uploadBuffer.set(uploadId, new Array(totalChunks).fill(null));
-        }
-
-        const session = uploadBuffer.get(uploadId);
-        session[chunkIndex] = req.body; // Buffer stored here
-
-                if (chunkIndex === totalChunks - 1) {
-            const fullFileBuffer = Buffer.concat(session);
-            console.log(`📦 Final chunk received. Concatenating bitstream (${fullFileBuffer.length} bytes)...`);
-
-            /* 🔥 NATIVE BARE-METAL ARWEAVE TRANSACTION ENGINE 🔥 */
-            try {
-                const wallet = loadWallet();
-
-                // 🔒 FIXED: Securely copy the exact file bitstream into an isolated standard web Uint8Array
-                const binaryDataArray = new Uint8Array(fullFileBuffer);
-
-                // 1. Instantiate a raw data transaction container directly from the verified byte array
-                const transaction = await arweave.createTransaction({
-                    data: binaryDataArray
-                }, wallet);
-
-
-                // 2. Attach standard, high-integrity cryptographic protocol tags
-                transaction.addTag('Content-Type', 'application/octet-stream');
-                transaction.addTag('Protocol-Layer', 'Fontainor-Audio-Registry');
-
-                // 3. Cryptographically sign the transaction using the local developer JWK wallet
-                await arweave.transactions.sign(transaction, wallet);
-                const txId = transaction.id;
-
-                // 4. Broadcast the signed transaction bytes to Arweave mainnet
-                let finalTxId = txId;
-
-                try {
-                    const response = await arweave.transactions.post(transaction);
-
-                    if (response.status !== 200 && response.status !== 208) {
-                        throw new Error(`Node rejected with status: ${response.status}`);
-                    }
-
-                    console.log(`🎯 [Blockchain] Audio upload successful! Permanent TxID: ${txId}`);
-                } catch (nodeError) {
-                    console.error(`❌ Arweave upload failed: ${nodeError.message}`);
-                    uploadBuffer.delete(uploadId);
-                    return res.status(502).json({
-                        success: false,
-                        error: "BLOCKCHAIN_WRITE_FAILED",
-                        message: nodeError.message
-                    });
-                }
-
-                // Wipe the volatile in-memory storage buffer array space to prevent heap leakage
-                uploadBuffer.delete(uploadId);
-
-                return res.status(201).json({
-                    success: true,
-                    audioUri: `https://arweave.net/${finalTxId}`
-                });
-
-
-
-
-            } catch (storageError) {
-                console.error("❌ On-Chain Native Arweave Upload Failed:", storageError.message);
-                uploadBuffer.delete(uploadId);
-                return res.status(502).json({
-                    success: false,
-                    error: "BLOCKCHAIN_WRITE_FAILED",
-                    message: storageError.message
-                });
-            }
-        }
-
-        return res.status(200).json({ success: true, chunkReceived: chunkIndex });
-    } catch (err) {
-        return res.status(500).json({ success: false, error: "CHUNK_WRITE_FAILED", message: err.message });
-    }
-});
+// 3. Audio Chunk Upload — REMOVED. This route was permanently non-functional:
+// `arweave` is always the boot-time stub (the real Arweave client was never
+// wired in), so every completed upload 502'd, and no client ever called it —
+// the real publish path is musician-pays Irys (src/lib/irysPublish.ts).
 
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
 app.post('/api/v1/verify-payment', async (req, res) => {
     try {
-        const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body;
+        const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body || {};
 
         if (!signature || !artistWallet || !trackId || !(Number(amountLamports) > 0)) {
             return res.status(400).json({ success: false, message: 'Missing signature, artistWallet, trackId or amountLamports.' });
         }
+        // Validate shapes up front so a malformed request is a clean 400 rather
+        // than a downstream PublicKey throw, and so junk is never written into a
+        // receipt. amountLamports must be a finite positive integer (Infinity /
+        // 1e309 would otherwise sail through `Number(x) > 0`).
+        const amt = Number(amountLamports);
+        if (!Number.isSafeInteger(amt) || amt <= 0) {
+            return res.status(400).json({ success: false, message: 'amountLamports must be a positive integer.' });
+        }
+        if (typeof signature !== 'string' || signature.length < 32 || signature.length > 200) {
+            return res.status(400).json({ success: false, message: 'Invalid transaction signature.' });
+        }
+        if (!WALLET_RE.test(String(artistWallet))) {
+            return res.status(400).json({ success: false, message: 'Invalid artistWallet address.' });
+        }
+        if (buyerWallet != null && !WALLET_RE.test(String(buyerWallet))) {
+            return res.status(400).json({ success: false, message: 'Invalid buyerWallet address.' });
+        }
+        if (typeof trackId !== 'string' || trackId.length < 1 || trackId.length > 64) {
+            return res.status(400).json({ success: false, message: 'Invalid trackId.' });
+        }
 
-        // Verify the 98/2 split actually happened on the Solana ledger.
+        // Verify the 98/2 split actually happened on the Solana ledger, and —
+        // when a buyer is claimed — that the claimed buyer actually paid in
+        // that transaction (otherwise anyone who sees a signature on-chain
+        // could attach someone else's purchase to their own wallet).
         const { verifySolanaPayment } = await import('./paymentBridge.js');
-        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL');
+        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL', buyerWallet || null);
         if (!isVerified) {
             return res.status(400).json({ success: false, message: 'On-chain payment verification failed.' });
         }
@@ -475,6 +495,11 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         let receiptStored = false;
         if (redis) {
             try {
+                // Replay guard: one on-chain signature = at most one receipt.
+                const firstSeen = await redis.sadd(PURCHASE_SIGS_KEY, signature);
+                if (!firstSeen) {
+                    return res.json({ success: true, verified: true, receiptStored: false, duplicate: true, signature });
+                }
                 await redis.lpush(PURCHASES_KEY, JSON.stringify({
                     trackId,
                     signature,
@@ -498,6 +523,38 @@ app.post('/api/v1/verify-payment', async (req, res) => {
 });
 
 
+// --- Signed-message freshness ------------------------------------------------
+// Every signed auth message carries an issue timestamp: "<intent> :: <unix-ms>".
+// Without it a captured signature was a bearer token forever: the localStorage
+// session proof (or any intercepted payload) could authenticate favorites
+// writes and logins for eternity. Now:
+//   - logins / handle claims must be signed within the last LOGIN_FRESHNESS_MS
+//     (a stolen payload goes stale in minutes);
+//   - stored session proofs may keep authenticating profile writes for
+//     SESSION_TTL_MS, after which the app asks Phantom for one fresh signature.
+// Timestamps slightly in the future are tolerated up to CLOCK_SKEW_MS.
+const LOGIN_FRESHNESS_MS = 10 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/** Extract the trailing " :: <unix-ms>" issue timestamp, or null if absent/invalid. */
+function signedMessageIssuedAt(message) {
+    const m = /^[\s\S]*? :: (\d{10,16})$/.exec(String(message || ''));
+    if (!m) return null;
+    const ts = Number(m[1]);
+    return Number.isSafeInteger(ts) ? ts : null;
+}
+
+/** null if fresh, else a human-readable rejection reason. */
+function signedMessageStaleness(message, maxAgeMs) {
+    const ts = signedMessageIssuedAt(message);
+    if (ts == null) return 'Signed message is missing its issue timestamp — update the app and sign in again.';
+    const age = Date.now() - ts;
+    if (age > maxAgeMs) return 'Signed message has expired — sign in again to refresh the session.';
+    if (age < -CLOCK_SKEW_MS) return 'Signed message is timestamped in the future — check the device clock and try again.';
+    return null;
+}
+
 // 5. Zero-Cost Cryptographic Sovereign Identity Login Gate
 app.post('/api/v1/auth/sovereign-login', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -512,11 +569,19 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
             return res.status(400).json({ success: false, message: "Missing wallet verification payload." });
         }
 
-        const nacl = await import('tweetnacl');
-        const encodedMessage = new TextEncoder().encode(message || "Authenticate Fontainor Sovereign Session");
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
 
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
+        const stale = signedMessageStaleness(message, LOGIN_FRESHNESS_MS);
+        if (stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale, serverTime: Date.now() });
+        }
+
+        const nacl = await import('tweetnacl');
+        const encodedMessage = new TextEncoder().encode(message);
 
         const isWalletOwnerVerified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
 
@@ -566,11 +631,24 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
             });
         }
 
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
+
+        // The claim is bound to an issue timestamp (client sends the ms value it
+        // signed) so a captured claim payload can't be replayed later — e.g. to
+        // revert a handle the wallet has since changed.
+        const issuedAt = Number(req.body?.issuedAt);
+        const expectedMessage = `Fontainor handle claim: @${bare} :: ${issuedAt}`;
+        const stale = signedMessageStaleness(expectedMessage, LOGIN_FRESHNESS_MS);
+        if (!Number.isSafeInteger(issuedAt) || stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale || 'Handle claim is missing its issue timestamp — update the app and try again.', serverTime: Date.now() });
+        }
+
         const nacl = await import('tweetnacl');
-        const expectedMessage = `Fontainor handle claim: @${bare}`;
         const encodedMessage = new TextEncoder().encode(expectedMessage);
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
             return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
@@ -599,7 +677,16 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
         }
 
         const previous = await getHandleForWallet(wallet);
-        await redis.hset(HANDLES_BY_NAME, { [bare]: wallet });
+        // Atomic claim: HSETNX loses cleanly when two wallets race for the
+        // same name (the old check-then-HSET let the second claimer overwrite
+        // the first). A falsy result with a different owner = taken.
+        const claimedNow = await redis.hsetnx(HANDLES_BY_NAME, bare, wallet);
+        if (!claimedNow) {
+            const owner = await getWalletForHandle(bare);
+            if (owner && owner !== wallet) {
+                return res.status(409).json({ success: false, code: 'HANDLE_TAKEN', message: `@${bare} is already claimed.` });
+            }
+        }
         await redis.hset(HANDLES_BY_WALLET, { [wallet]: bare });
         if (previous && previous !== bare) {
             try { await redis.hdel(HANDLES_BY_NAME, previous); }
@@ -627,6 +714,20 @@ function profileCors(req, res) {
     return false;
 }
 
+/** Read purchase receipts in pages (the old flat lrange 0..999 silently
+ *  truncated collections once the platform passed 1000 total receipts). */
+async function readAllPurchaseReceipts(limit = 10000) {
+    if (!redis) return [];
+    const out = [];
+    for (let start = 0; start < limit; start += 1000) {
+        const batch = await redis.lrange(PURCHASES_KEY, start, Math.min(start + 999, limit - 1));
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        out.push(...batch);
+        if (batch.length < 1000) break;
+    }
+    return out;
+}
+
 // 6a. Purchases by buyer wallet — rebuilds "Your collection" on any machine.
 app.get('/api/v1/purchases', async (req, res) => {
     if (profileCors(req, res)) return;
@@ -637,7 +738,7 @@ app.get('/api/v1/purchases', async (req, res) => {
         }
         if (!redis) return res.json({ success: true, durable: false, purchases: [] });
 
-        const raw = await redis.lrange(PURCHASES_KEY, 0, 999);
+        const raw = await readAllPurchaseReceipts();
         const purchases = (Array.isArray(raw) ? raw : [])
             .map((item) => {
                 try { return typeof item === 'string' ? JSON.parse(item) : item; }
@@ -659,15 +760,70 @@ app.get('/api/v1/favorites', async (req, res) => {
         if (!WALLET_RE.test(wallet)) {
             return res.status(400).json({ success: false, message: 'Invalid or missing wallet address.' });
         }
-        if (!redis) return res.json({ success: true, durable: false, ids: [] });
-        const stored = await redis.get(favoritesKey(wallet));
-        const ids = Array.isArray(stored) ? stored.map(String) : [];
-        return res.json({ success: true, durable: true, ids });
+        if (!redis) return res.json({ success: true, durable: false, ids: [], likedAt: {}, unlikedAt: {} });
+        const doc = parseStoredFavorites(await redis.get(favoritesKey(wallet)));
+        return res.json({ success: true, durable: true, ids: doc.ids, likedAt: doc.likedAt, unlikedAt: doc.unlikedAt });
     } catch (err) {
         console.error('Favorites read failed:', err.message);
         return res.status(500).json({ success: false, message: err.message });
     }
 });
+
+// Tombstones older than this are pruned — after 90 days every device has
+// long since synced the unlike, so the marker is dead weight.
+const FAV_TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const FAV_TS_MAP_MAX = 1500;
+
+/** Coerce a client/server likedAt/unlikedAt map to { id: finite-ms }, capped. */
+function sanitizeFavTimestampMap(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    let n = 0;
+    for (const [id, ts] of Object.entries(raw)) {
+        if (typeof id !== 'string' || id.length === 0 || id.length > 200) continue;
+        const t = Number(ts);
+        if (!Number.isFinite(t) || t <= 0) continue;
+        out[id] = t;
+        if (++n >= FAV_TS_MAP_MAX) break;
+    }
+    return out;
+}
+
+/** Parse a stored favorites value — either the legacy bare id array or the
+ *  versioned { ids, likedAt, unlikedAt } doc. */
+function parseStoredFavorites(stored) {
+    if (Array.isArray(stored)) return { ids: stored.map(String), likedAt: {}, unlikedAt: {} };
+    if (stored && typeof stored === 'object' && Array.isArray(stored.ids)) {
+        return {
+            ids: stored.ids.map(String),
+            likedAt: sanitizeFavTimestampMap(stored.likedAt),
+            unlikedAt: sanitizeFavTimestampMap(stored.unlikedAt),
+        };
+    }
+    return { ids: [], likedAt: {}, unlikedAt: {} };
+}
+
+/** Last-write-wins per id: for each track the newest action (like vs unlike)
+ *  across both replicas decides. This is what stops the resurrection bug —
+ *  an unlike on device A used to be undone by device B pushing a stale union. */
+function mergeFavoritesLww(a, b) {
+    const now = Date.now();
+    const likedAt = {};
+    const unlikedAt = {};
+    const allIds = new Set([...Object.keys(a.likedAt), ...Object.keys(b.likedAt), ...Object.keys(a.unlikedAt), ...Object.keys(b.unlikedAt), ...a.ids, ...b.ids]);
+    for (const id of allIds) {
+        // Legacy replicas carry ids without timestamps — treat those likes as
+        // epoch 1 so any explicit, timestamped action beats them.
+        const like = Math.max(a.likedAt[id] ?? (a.ids.includes(id) ? 1 : 0), b.likedAt[id] ?? (b.ids.includes(id) ? 1 : 0));
+        const unlike = Math.max(a.unlikedAt[id] ?? 0, b.unlikedAt[id] ?? 0);
+        if (like > 0 && like >= unlike) likedAt[id] = like;
+        else if (unlike > 0 && now - unlike < FAV_TOMBSTONE_TTL_MS) unlikedAt[id] = unlike;
+    }
+    // Order: keep each replica's local ordering where possible, a first.
+    const ids = [...a.ids, ...b.ids.filter((id) => !a.ids.includes(id))].filter((id) => id in likedAt);
+    for (const id of Object.keys(likedAt)) if (!ids.includes(id)) ids.push(id);
+    return { ids: ids.slice(0, 500), likedAt, unlikedAt };
+}
 
 app.post('/api/v1/favorites', async (req, res) => {
     if (profileCors(req, res)) return;
@@ -682,10 +838,21 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         // Same proof of wallet ownership the sovereign login produces — the app
         // stores it for the session so likes never trigger extra Phantom popups.
+        // The proof carries its signed issue timestamp and expires after
+        // SESSION_TTL_MS (a leaked localStorage proof is no longer forever).
+        const decoded = decodeSignedPayload(publicKey, signature);
+        if (!decoded) {
+            return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
+        }
+        const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
+
+        const stale = signedMessageStaleness(message, SESSION_TTL_MS);
+        if (stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale, serverTime: Date.now() });
+        }
+
         const nacl = await import('tweetnacl');
-        const encodedMessage = new TextEncoder().encode(message || 'Authenticate Fontainor Sovereign Session');
-        const signatureBytes = Uint8Array.from(JSON.parse(signature));
-        const publicKeyBytes = Uint8Array.from(JSON.parse(publicKey));
+        const encodedMessage = new TextEncoder().encode(message);
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
             return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
@@ -693,8 +860,16 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         const wallet = bs58.encode(publicKeyBytes);
         if (!redis) return res.json({ success: true, durable: false, wallet });
-        await redis.set(favoritesKey(wallet), ids.map(String));
-        return res.json({ success: true, durable: true, wallet });
+
+        const incoming = {
+            ids: ids.map(String),
+            likedAt: sanitizeFavTimestampMap(req.body?.likedAt),
+            unlikedAt: sanitizeFavTimestampMap(req.body?.unlikedAt),
+        };
+        const current = parseStoredFavorites(await redis.get(favoritesKey(wallet)));
+        const merged = mergeFavoritesLww(current, incoming);
+        await redis.set(favoritesKey(wallet), merged);
+        return res.json({ success: true, durable: true, wallet, ids: merged.ids, likedAt: merged.likedAt, unlikedAt: merged.unlikedAt });
     } catch (err) {
         console.error('Favorites write failed:', err.message);
         return res.status(500).json({ success: false, message: err.message });
@@ -717,12 +892,36 @@ function playsWeekKey(d = new Date()) {
     return `fontainor:plays:v1:w:${t.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
 }
 
+// Light anti-spam on the anonymous play counter: per-IP sliding minute,
+// in-memory (per serverless instance — a floor, not a wall; keeps a naive
+// while-loop from pumping Trending). PLAYS_RATE_LIMIT=0 disables; default 120
+// plays/min/IP is far above human listening rates, shared-NAT friendly.
+const PLAYS_RATE_LIMIT = process.env.PLAYS_RATE_LIMIT === undefined ? 120 : Number(process.env.PLAYS_RATE_LIMIT) || 0;
+const playHits = new Map(); // ip -> { count, windowStart }
+function playRateExceeded(ip) {
+    if (!PLAYS_RATE_LIMIT) return false;
+    const now = Date.now();
+    if (playHits.size > 10000) playHits.clear(); // hard memory cap
+    const h = playHits.get(ip);
+    if (!h || now - h.windowStart > 60_000) {
+        playHits.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    h.count += 1;
+    return h.count > PLAYS_RATE_LIMIT;
+}
+
 app.post('/api/v1/plays', async (req, res) => {
     if (profileCors(req, res)) return;
     try {
         const id = String((req.body || {}).id || '');
         if (!PLAY_ID_RE.test(id)) {
             return res.status(400).json({ success: false, message: 'Invalid release id.' });
+        }
+        const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+        if (playRateExceeded(ip)) {
+            // Count not recorded; still 200 so clients never retry-loop (plays are fire-and-forget).
+            return res.json({ success: true, durable: false, throttled: true });
         }
         if (!redis) return res.json({ success: true, durable: false });
         const wk = playsWeekKey();
@@ -744,7 +943,7 @@ app.get('/api/v1/plays/top', async (req, res) => {
         if (!redis) return res.json({ success: true, durable: false, window, top: [] });
         const key = window === 'all' ? PLAYS_ALL_KEY : playsWeekKey();
         // zrange rev withScores returns [member, score, member, score, ...]
-        const flat = await redis.zrange(key, 0, n - 1, { rev: true, withScores: true });
+        const flat = (await redis.zrange(key, 0, n - 1, { rev: true, withScores: true })) || [];
         const top = [];
         for (let i = 0; i + 1 < flat.length; i += 2) {
             top.push({ id: String(flat[i]), plays: Number(flat[i + 1]) });
@@ -766,7 +965,7 @@ app.get('/api/v1/stats', async (req, res) => {
         if (!redis) return res.json({ success: true, durable: false, stats: null });
         const [flat, rawPurchases] = await Promise.all([
             redis.zrange(PLAYS_ALL_KEY, 0, -1, { withScores: true }),
-            redis.lrange(PURCHASES_KEY, 0, 999),
+            readAllPurchaseReceipts(),
         ]);
         let totalPlays = 0;
         let tracksPlayed = 0;
@@ -829,7 +1028,9 @@ app.post('/api/v1/publish', async (req, res) => {
         const guardFail = await guardIncomingManifest(manifest);
         if (guardFail) return res.status(guardFail.status).json(guardFail.body);
         writeManifestPointer(txId);
-        const durable = await writeDurableRegistry(manifest);
+        // Merge-on-write: don't drop a release another artist published
+        // between the guard read and this write.
+        const { durable } = await mergeWriteDurableRegistry(manifest);
         return res.json({ success: true, txId, durable });
     } catch (error) {
         return res.status(500).json({ success: false, error: error.message });

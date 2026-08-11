@@ -10,3 +10,11 @@ dist/
 *.log
 test-ledger/
 dist-preview/
+
+# Android signing (local only)
+android/key.properties
+*.jks
+*.keystore
+
+# Local serverless registry pointer
+api/pointer.json

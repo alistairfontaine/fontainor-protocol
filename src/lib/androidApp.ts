@@ -6,7 +6,10 @@
 export const RELEASES_PAGE = 'https://github.com/alistairfontaine/fontainor-protocol/releases/latest'
 export const APK_URL = 'https://github.com/alistairfontaine/fontainor-protocol/releases/latest/download/fontainor-android.apk'
 
-/** Static fallbacks shown until (or if) the live release lookup resolves. */
+/** Static fallbacks shown until (or if) the live release lookup resolves.
+ *  These must describe the latest release that actually EXISTS on GitHub —
+ *  the download button serves `/releases/latest/`, so advertising an
+ *  unpublished version here would promise a build the user cannot get. */
 export const FALLBACK_VERSION = '4.2.0'
 export const FALLBACK_SIZE_MB = 15
 

@@ -2,8 +2,12 @@ import { useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
-import { IconArweave, IconBack, IconCheck, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { IconArweave, IconBack, IconCheck, IconDownload, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
+import { canCancelDownloads, cancelDownload, clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
+import { hapticTick } from '../lib/haptics'
+import { IS_NATIVE } from '../lib/platform'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
+import { shareOrigin } from '../lib/api'
 import { hasPurchased, isPurchasable, purchase, quotePurchase, solscanTx, type PurchaseQuote } from '../lib/purchase'
 import { similarTo } from '../lib/recommend'
 import { edLabel, fmtDate, isSold, priceLabel, prettyStatus, type Release } from '../lib/registry'
@@ -56,7 +60,18 @@ export default function ReleaseDetail() {
   const sold = isSold(rel.editions)
 
   return (
-    <div className="fade-up">
+    <div className="fade-up relative">
+      {/* Cover-derived gradient hero: a blurred, over-scaled copy of the
+          artwork fades into the page background behind the release header, so
+          each release page takes on the colour of its own cover — depth with
+          zero extra assets. Purely decorative; hidden from assistive tech. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] overflow-hidden">
+        <div className="absolute inset-0 scale-125 opacity-25 blur-3xl saturate-150">
+          <Cover rel={rel} />
+        </div>
+        <div className="absolute inset-0 bg-gradient-to-b from-bg/40 via-bg/80 to-bg" />
+      </div>
+
       <button
         onClick={() => navigate(-1)}
         className="mb-6 flex cursor-pointer items-center gap-1.5 text-sm text-muted transition-colors hover:text-ink"
@@ -128,6 +143,7 @@ export default function ReleaseDetail() {
               {fav ? 'Saved' : 'Save'}
             </Button>
             <QueueButton rel={rel} />
+            {IS_NATIVE && <DownloadButton rel={rel} />}
             <PlaylistButton rel={rel} />
             <ShareButton id={rel.id} />
             <CollectCta rel={rel} sold={sold} />
@@ -370,7 +386,7 @@ function QueueButton({ rel }: { rel: Release }) {
 
 function ShareButton({ id }: { id: string }) {
   const [copied, setCopied] = useState(false)
-  const url = `${window.location.origin}/share/${encodeURIComponent(id)}`
+  const url = `${shareOrigin()}/share/${encodeURIComponent(id)}`
   return (
     <Button
       size="lg"
@@ -407,5 +423,72 @@ function MoreLikeThis({ rel, all }: { rel: Release; all: Release[] }) {
         ))}
       </div>
     </section>
+  )
+}
+
+
+// ── offline download (F59, native only) ───────────────────────────────────
+
+function DownloadButton({ rel }: { rel: Release }) {
+  const { ids, progress } = useDownloads()
+  const has = ids.has(rel.id)
+  const prog = progress[rel.id]
+  const downloading = prog?.state === 'downloading'
+  const waiting = prog?.state === 'waiting'
+  const failed = prog?.state === 'error'
+  if (!rel.audio) return null
+
+  // Tapping while downloading cancels — but only where cancellation is real
+  // (the foreground download service); an older shell cannot interrupt a
+  // transfer, so it must not pretend to.
+  const cancellable = downloading && canCancelDownloads()
+
+  const onClick = async () => {
+    hapticTick()
+    if (downloading) {
+      if (cancellable) await cancelDownload(rel.id)
+      return
+    }
+    if (waiting) {
+      // "Waiting for Wi-Fi" tapped again = "download now anyway".
+      await downloadRelease(rel, { force: true })
+      return
+    }
+    if (failed) clearDownloadError(rel.id)
+    if (has) {
+      await removeDownload(rel.id)
+      return
+    }
+    await downloadRelease(rel) // never throws; failures land in progress state
+  }
+
+  return (
+    <Button
+      size="lg"
+      onClick={() => void onClick()}
+      aria-pressed={has}
+      aria-label={
+        cancellable
+          ? `Cancel download of ${rel.title}`
+          : waiting
+            ? `Download ${rel.title} now`
+            : has
+              ? `Remove ${rel.title} from downloads`
+              : `Download ${rel.title}`
+      }
+    >
+      {downloading ? <IconSpinner size={18} /> : has ? <IconCheck size={18} className="text-accent" /> : <IconDownload size={18} />}
+      {downloading
+        ? prog.pct != null
+          ? `Downloading ${prog.pct}%`
+          : 'Downloading…'
+        : waiting
+          ? 'Waiting for Wi-Fi'
+          : has
+            ? 'Downloaded'
+            : failed
+              ? 'Retry download'
+              : 'Download'}
+    </Button>
   )
 }

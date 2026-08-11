@@ -21,6 +21,11 @@ export function isMobileDevice(): boolean {
 /**
  * Deep link that opens `target` (default: the current page) inside Phantom's
  * in-app browser, where `window.solana` is injected and the wallet works.
+ *
+ * Web-mobile only: in the packaged app the deeplink provider installs
+ * `window.solana`, so WalletButton never reaches this branch. That is why
+ * `location.origin` is correct here and must NOT be swapped for shareOrigin() —
+ * `url` and `ref` have to describe the same page.
  * https://phantom.app/ul/browse/<url>?ref=<ref>
  */
 export function phantomBrowseUrl(target?: string): string {
