@@ -102,6 +102,104 @@ export function isGatewayDown(uri: string): boolean {
   return !!o && o in readDown()
 }
 
+// --- Settled promotion -------------------------------------------------
+//
+// The two gateways serve the same permanent bytes with wildly different HTTP
+// caching (verified live 2026-08-11): arweave.net answers with
+// `cache-control: max-age=3153600000` (a hundred years — correct for
+// immutable content), while gateway.irys.xyz answers with `max-age=10`.
+// Ten seconds. So a catalog that always streams from the published Irys URL
+// re-downloads the ENTIRE file on every replay, while the identical content
+// one gateway over would be a free browser-cache hit — real money for
+// listeners on metered data.
+//
+// We cannot simply put arweave.net first: a fresh Irys item 404s there until
+// the bundle settles. But settlement is one-way — Arweave is permanent, so an
+// id seen settled once is settled forever. Hence: after a gateway-addressed
+// track plays, a throttled background probe asks arweave.net for the id
+// (follow redirects — arweave.net 302s to a sandbox subdomain and the
+// redirect itself says nothing; only the FINAL status counts). A settled id
+// is remembered in localStorage and from then on arweave.net is preferred
+// for it. Demotion still outranks promotion: a host that just failed goes to
+// the back regardless.
+
+const SETTLED_KEY = 'fontainor_gateway_settled_v1'
+const SETTLED_MAX = 500 // ids; oldest dropped first (recency, not correctness)
+const PROBE_TTL = 24 * 60 * 60 * 1000 // failed probes retry at most daily
+const probeInFlight = new Set<string>()
+const probeFailedAt = new Map<string, number>()
+
+function readSettled(): Record<string, number> {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SETTLED_KEY) ?? '{}') as Record<string, unknown>
+    const out: Record<string, number> = {}
+    for (const [k, v] of Object.entries(raw)) {
+      if (ID_RE.test(k) && typeof v === 'number') out[k] = v
+    }
+    return out
+  } catch {
+    return {}
+  }
+}
+
+function writeSettled(map: Record<string, number>): void {
+  try {
+    const keys = Object.keys(map)
+    if (keys.length > SETTLED_MAX) {
+      // drop the oldest entries; the ids stay settled, we just forget the hint
+      keys
+        .sort((a, b) => map[a] - map[b])
+        .slice(0, keys.length - SETTLED_MAX)
+        .forEach((k) => delete map[k])
+    }
+    localStorage.setItem(SETTLED_KEY, JSON.stringify(map))
+  } catch {
+    /* best-effort */
+  }
+}
+
+/** True when this content id is known to be settled onto Arweave. */
+export function isSettled(id: string): boolean {
+  return id in readSettled()
+}
+
+/** Record a settled id (exported for the player, which learns it for free
+ *  whenever arweave.net successfully serves a track). */
+export function markSettled(id: string): void {
+  if (!ID_RE.test(id) || isSettled(id)) return
+  const map = readSettled()
+  map[id] = Date.now()
+  writeSettled(map)
+}
+
+/**
+ * Background settlement probe: a bare HEAD (no custom headers, so no CORS
+ * preflight; no body, so no data cost), throttled, fire-and-forget. Call it
+ * when a gateway-addressed track starts playing; it makes the NEXT play of
+ * that track cache-friendly.
+ */
+export function probeSettled(uri: string): void {
+  const id = contentIdOf(uri)
+  if (!id || isSettled(id) || probeInFlight.has(id)) return
+  const failed = probeFailedAt.get(id)
+  if (failed && Date.now() - failed < PROBE_TTL) return
+  probeInFlight.add(id)
+  fetch(`https://arweave.net/${id}`, {
+    method: 'HEAD',
+    redirect: 'follow', // the 302 to the sandbox subdomain proves nothing
+  })
+    .then((r) => {
+      if (r.ok) markSettled(id)
+      else probeFailedAt.set(id, Date.now())
+    })
+    .catch(() => {
+      probeFailedAt.set(id, Date.now())
+    })
+    .finally(() => {
+      probeInFlight.delete(id)
+    })
+}
+
 /**
  * Every URL worth trying for this media, best first.
  *
@@ -110,6 +208,9 @@ export function isGatewayDown(uri: string): boolean {
  * - Gateway-addressed → published URL first, then the other known gateways,
  *   with any gateway inside its demotion window moved to the back (still tried:
  *   a demoted host is better than no audio).
+ * - Once the id is known settled, arweave.net moves to the front: its
+ *   hundred-year `cache-control` makes every replay a free cache hit, where
+ *   the Irys gateway's `max-age=10` re-downloads the file every time.
  */
 export function mediaCandidates(uri: string): string[] {
   if (!uri) return []
@@ -119,6 +220,14 @@ export function mediaCandidates(uri: string): string[] {
   for (const g of GATEWAYS) {
     const u = `${g}/${id}`
     if (!ordered.includes(u)) ordered.push(u)
+  }
+  if (isSettled(id)) {
+    const arw = `https://arweave.net/${id}`
+    const i = ordered.indexOf(arw)
+    if (i > 0) {
+      ordered.splice(i, 1)
+      ordered.unshift(arw)
+    }
   }
   const down = readDown()
   const live = ordered.filter((u) => {

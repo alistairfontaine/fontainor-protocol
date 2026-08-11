@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Release } from '../lib/registry'
 import { streamableAudioUrl } from '../lib/api'
 import { dropBrokenDownload, localAudioSrc } from '../lib/downloads'
-import { markGatewayDown, markGatewayUp, mediaCandidates } from '../lib/gateways'
+import { contentIdOf, markGatewayDown, markGatewayUp, markSettled, mediaCandidates, probeSettled } from '../lib/gateways'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
@@ -290,6 +290,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       if (audioRef.current === a) {
         setStalled(false)
         markGatewayUp(a.src)
+        // arweave.net answering IS the settlement proof — no probe needed.
+        if (a.src.startsWith('https://arweave.net/')) {
+          const id = contentIdOf(a.src)
+          if (id) markSettled(id)
+        }
       }
     })
     a.addEventListener('timeupdate', () => {
@@ -436,6 +441,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         const local = localAudioSrc(rel.id)
         const list = [...(local ? [local] : []), ...mediaCandidates(streamableAudioUrl(rel.audio))]
         attemptsRef.current = { id: rel.id, list, idx: 0 }
+        // Learn (in the background, throttled) whether this content is settled
+        // on arweave.net — its immutable cache-control makes replays free.
+        probeSettled(streamableAudioUrl(rel.audio))
         const a = new Audio(list[0])
         if (local) a.dataset.localDownload = rel.id
         audioRef.current = a
