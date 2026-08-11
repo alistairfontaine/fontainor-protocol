@@ -23,9 +23,10 @@
     <meta name="twitter:title" content="Fontainor — the permanent music registry" />
     <meta name="twitter:description" content="Publish on Arweave. Get paid on Solana. Artists keep 98%, forever." />
     <meta name="twitter:image" content="https://fontainor-protocol.vercel.app/og.png" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Fonts are self-hosted (public/fonts, @font-face in src/styles/index.css):
+         the APK has to look right offline, and the app should not need a Google
+         round trip on every cold start. -->
+    <link rel="preload" href="/fonts/inter-400-latin.woff2" as="font" type="font/woff2" crossorigin />
   </head>
   <body>
     <div id="root"></div>
