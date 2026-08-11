@@ -43,7 +43,26 @@ node api-server.js # API (Express, same function Vercel runs)
 npm run ci         # typecheck + production build → dist/
 ```
 
-Deployment: pushes to `v06-development` auto-deploy to Vercel (static `dist/` + `api/index.js` serverless function, see `vercel.json`).
+Deployment: pushes to `main` auto-deploy to Vercel (static `dist/` + `api/index.js` serverless function, see `vercel.json`).
+
+### 🧪 4. Test
+
+```bash
+node tools/handles-test.mjs   # one of 22 portable suites (376 checks total)
+```
+
+CI runs the full suite on every push (`.github/workflows/ci.yml`); the Android
+workflow builds and gates the APK (`.github/workflows/android.yml`).
+
+---
+
+## 📱 Android app
+
+A native Android app (Capacitor shell, Phantom deeplink wallet, offline
+downloads with a foreground service, Wi-Fi-only + auto-download options) ships
+from [GitHub Releases](https://github.com/alistairfontaine/fontainor-protocol/releases/latest) —
+the in-app `/android` page always points at the latest release. Build docs in
+[`docs/MOBILE.md`](docs/MOBILE.md).
 
 ---
 
