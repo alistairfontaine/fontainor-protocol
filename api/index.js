@@ -293,12 +293,14 @@ const MANIFEST_TAGS = [
     { name: 'Type', value: 'registry-manifest' },
 ];
 
+const RECOVERY_SCAN_DEPTH = 8;
+
 async function recoverLatestManifestFromIrys() {
     try {
         const query = `query { transactions(tags: [
             { name: "App-Name", values: ["Fontainor-Protocol"] },
             { name: "Type", values: ["registry-manifest"] }
-        ], order: DESC, limit: 1) { edges { node { id } } } }`;
+        ], order: DESC, limit: ${RECOVERY_SCAN_DEPTH}) { edges { node { id } } } }`;
         const res = await fetch('https://uploader.irys.xyz/graphql', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -306,12 +308,36 @@ async function recoverLatestManifestFromIrys() {
         });
         if (!res.ok) return null;
         const out = await res.json();
-        const id = out?.data?.transactions?.edges?.[0]?.node?.id;
-        if (!id) return null;
-        const data = await fetchRegistryFromGateway(id);
-        if (!Array.isArray(data) || data.length === 0) return null;
-        writeManifestPointer(id); // warm-instance cache for subsequent reads
-        return data;
+        const ids = (out?.data?.transactions?.edges ?? []).map((e) => e?.node?.id).filter(Boolean);
+        if (ids.length === 0) return null;
+
+        // Tags are not access-controlled, so the newest tagged manifest may be
+        // an attacker's. Every LEGIT manifest is an append-only extension of
+        // the one before it, so we fetch the newest few and accept the newest
+        // candidate that contains every older fetched manifest unchanged
+        // (checkAppendOnly). A forged full-replacement manifest drops or edits
+        // honest history and is skipped; a forged append-only extension is
+        // equivalent to a normal publish (spam entry, no hijack). Limitation:
+        // an attacker who floods more than RECOVERY_SCAN_DEPTH manifests can
+        // push honest history out of the window — the durable store (Upstash),
+        // once configured, always takes precedence over this path.
+        const manifests = [];
+        for (const id of ids) {
+            try {
+                const data = await fetchRegistryFromGateway(id);
+                if (Array.isArray(data) && data.length > 0) manifests.push({ id, data });
+            } catch { /* unresolvable yet — skip */ }
+        }
+        for (let i = 0; i < manifests.length; i++) {
+            const candidate = manifests[i];
+            const tampers = manifests.slice(i + 1).some((older) => !checkAppendOnly(older.data, candidate.data).ok);
+            if (tampers) continue;
+            if (i > 0) console.warn(`⚠️ Irys recovery: skipped ${i} newer manifest(s) that tampered with older history.`);
+            writeManifestPointer(candidate.id); // warm-instance cache for subsequent reads
+            return candidate.data;
+        }
+        console.error('Irys manifest recovery: no consistent manifest found in the newest ' + manifests.length + '.');
+        return null;
     } catch (e) {
         console.error('Irys manifest recovery failed:', e.message);
         return null;
@@ -710,6 +736,20 @@ function profileCors(req, res) {
     return false;
 }
 
+/** Read purchase receipts in pages (the old flat lrange 0..999 silently
+ *  truncated collections once the platform passed 1000 total receipts). */
+async function readAllPurchaseReceipts(limit = 10000) {
+    if (!redis) return [];
+    const out = [];
+    for (let start = 0; start < limit; start += 1000) {
+        const batch = await redis.lrange(PURCHASES_KEY, start, Math.min(start + 999, limit - 1));
+        if (!Array.isArray(batch) || batch.length === 0) break;
+        out.push(...batch);
+        if (batch.length < 1000) break;
+    }
+    return out;
+}
+
 // 6a. Purchases by buyer wallet — rebuilds "Your collection" on any machine.
 app.get('/api/v1/purchases', async (req, res) => {
     if (profileCors(req, res)) return;
@@ -720,7 +760,7 @@ app.get('/api/v1/purchases', async (req, res) => {
         }
         if (!redis) return res.json({ success: true, durable: false, purchases: [] });
 
-        const raw = await redis.lrange(PURCHASES_KEY, 0, 999);
+        const raw = await readAllPurchaseReceipts();
         const purchases = (Array.isArray(raw) ? raw : [])
             .map((item) => {
                 try { return typeof item === 'string' ? JSON.parse(item) : item; }
@@ -800,12 +840,36 @@ function playsWeekKey(d = new Date()) {
     return `fontainor:plays:v1:w:${t.getUTCFullYear()}-${String(week).padStart(2, '0')}`;
 }
 
+// Light anti-spam on the anonymous play counter: per-IP sliding minute,
+// in-memory (per serverless instance — a floor, not a wall; keeps a naive
+// while-loop from pumping Trending). PLAYS_RATE_LIMIT=0 disables; default 120
+// plays/min/IP is far above human listening rates, shared-NAT friendly.
+const PLAYS_RATE_LIMIT = process.env.PLAYS_RATE_LIMIT === undefined ? 120 : Number(process.env.PLAYS_RATE_LIMIT) || 0;
+const playHits = new Map(); // ip -> { count, windowStart }
+function playRateExceeded(ip) {
+    if (!PLAYS_RATE_LIMIT) return false;
+    const now = Date.now();
+    if (playHits.size > 10000) playHits.clear(); // hard memory cap
+    const h = playHits.get(ip);
+    if (!h || now - h.windowStart > 60_000) {
+        playHits.set(ip, { count: 1, windowStart: now });
+        return false;
+    }
+    h.count += 1;
+    return h.count > PLAYS_RATE_LIMIT;
+}
+
 app.post('/api/v1/plays', async (req, res) => {
     if (profileCors(req, res)) return;
     try {
         const id = String((req.body || {}).id || '');
         if (!PLAY_ID_RE.test(id)) {
             return res.status(400).json({ success: false, message: 'Invalid release id.' });
+        }
+        const ip = String(req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+        if (playRateExceeded(ip)) {
+            // Count not recorded; still 200 so clients never retry-loop (plays are fire-and-forget).
+            return res.json({ success: true, durable: false, throttled: true });
         }
         if (!redis) return res.json({ success: true, durable: false });
         const wk = playsWeekKey();
@@ -849,7 +913,7 @@ app.get('/api/v1/stats', async (req, res) => {
         if (!redis) return res.json({ success: true, durable: false, stats: null });
         const [flat, rawPurchases] = await Promise.all([
             redis.zrange(PLAYS_ALL_KEY, 0, -1, { withScores: true }),
-            redis.lrange(PURCHASES_KEY, 0, 999),
+            readAllPurchaseReceipts(),
         ]);
         let totalPlays = 0;
         let tracksPlayed = 0;

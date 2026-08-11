@@ -10,3 +10,4 @@ dist/
 *.log
 test-ledger/
 dist-preview/
+api/pointer.json
