@@ -133,8 +133,17 @@ const kp = nacl.sign.keyPair();
 const wallet = bs58.encode(Buffer.from(kp.publicKey));
 const sign = (msg) => JSON.stringify(Array.from(nacl.sign.detached(new TextEncoder().encode(msg), kp.secretKey)));
 const pkArr = JSON.stringify(Array.from(kp.publicKey));
-r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign('Authenticate Fontainor Sovereign Session'), message: 'Authenticate Fontainor Sovereign Session' } });
+const loginMsg = (ts = Date.now()) => `Authenticate Fontainor Sovereign Session :: ${ts}`;
+let m = loginMsg();
+r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
 check('login valid signature -> 200 with derived base58 wallet', r.status === 200 && r.json?.wallet === wallet, JSON.stringify(r.json));
+// replay protection: signatures go stale
+m = 'Authenticate Fontainor Sovereign Session'; // legacy, no timestamp
+r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
+check('login without issue timestamp -> 401 SIGNATURE_STALE', r.status === 401 && r.json?.code === 'SIGNATURE_STALE', String(r.status));
+m = loginMsg(Date.now() - 11 * 60 * 1000);
+r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
+check('login signed 11 min ago -> 401 SIGNATURE_STALE (replay window closed)', r.status === 401 && r.json?.code === 'SIGNATURE_STALE', String(r.status));
 
 // ============ 3. set-handle ============
 console.log('set-handle');
@@ -142,21 +151,43 @@ r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, sig
 check('set-handle invalid handle -> 400 HANDLE_INVALID', r.status === 400 && r.json?.code === 'HANDLE_INVALID', String(r.status));
 r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: 'nope', signature: 'nope', handle: 'validname' } });
 check('set-handle malformed payload -> 400 (not 500)', r.status === 400 && noLeak(r), String(r.status));
-r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, signature: sign('Fontainor handle claim: @fontainor'), handle: 'fontainor' } });
+let ts = Date.now();
+r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, signature: sign(`Fontainor handle claim: @fontainor :: ${ts}`), handle: 'fontainor', issuedAt: ts } });
 check('set-handle protected name by non-treasury -> 403 HANDLE_PROTECTED', r.status === 403 && r.json?.code === 'HANDLE_PROTECTED', String(r.status));
-r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, signature: sign('Fontainor handle claim: @coolartist'), handle: 'coolartist' } });
+ts = Date.now();
+r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, signature: sign(`Fontainor handle claim: @coolartist :: ${ts}`), handle: 'coolartist', issuedAt: ts } });
 check('set-handle valid claim -> 200', r.status === 200 && r.json?.handle === '@coolartist', JSON.stringify(r.json));
+ts = Date.now() - 11 * 60 * 1000;
+r = await req('POST', '/api/v1/auth/set-handle', { body: { publicKey: pkArr, signature: sign(`Fontainor handle claim: @oldclaim :: ${ts}`), handle: 'oldclaim', issuedAt: ts } });
+check('set-handle stale claim payload -> 401 SIGNATURE_STALE (no replay)', r.status === 401 && r.json?.code === 'SIGNATURE_STALE', String(r.status));
 
 // ============ 4. favorites ============
 console.log('favorites');
-r = await req('POST', '/api/v1/favorites', { body: { publicKey: pkArr, signature: sign('Authenticate Fontainor Sovereign Session'), ids: 'not-an-array' } });
+const sessionMsg = loginMsg();
+const sessionSig = sign(sessionMsg);
+const favBody = (extra) => ({ publicKey: pkArr, signature: sessionSig, message: sessionMsg, ...extra });
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: 'not-an-array' }) });
 check('favorites non-array ids -> 400', r.status === 400, String(r.status));
-r = await req('POST', '/api/v1/favorites', { body: { publicKey: pkArr, signature: sign('Authenticate Fontainor Sovereign Session'), ids: Array(501).fill('x') } });
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: Array(501).fill('x') }) });
 check('favorites >500 ids -> 400', r.status === 400, String(r.status));
 r = await req('POST', '/api/v1/favorites', { body: { publicKey: 'bad', signature: 'bad', ids: ['a'] } });
 check('favorites malformed payload -> 400 (not 500)', r.status === 400 && noLeak(r), String(r.status));
-r = await req('POST', '/api/v1/favorites', { body: { publicKey: pkArr, signature: sign('Authenticate Fontainor Sovereign Session'), message: 'Authenticate Fontainor Sovereign Session', ids: ['FONT-BASE0001'] } });
+const expiredMsg = loginMsg(Date.now() - 8 * 24 * 60 * 60 * 1000);
+r = await req('POST', '/api/v1/favorites', { body: { publicKey: pkArr, signature: sign(expiredMsg), message: expiredMsg, ids: ['a'] } });
+check('favorites with 8-day-old session proof -> 401 SIGNATURE_STALE (bearer token expires)', r.status === 401 && r.json?.code === 'SIGNATURE_STALE', String(r.status));
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: ['FONT-BASE0001'] }) });
 check('favorites valid signature -> 200 durable', r.status === 200 && r.json?.durable === true, JSON.stringify(r.json));
+
+// LWW tombstones: an unlike on device A must survive a stale union push from device B
+const t0 = Date.now() - 60000, t1 = Date.now() - 30000;
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: ['FONT-BASE0001', 'FONT-KEEP01'], likedAt: { 'FONT-BASE0001': t0, 'FONT-KEEP01': t0 } }) });
+check('favorites device A likes two tracks', r.status === 200, String(r.status));
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: ['FONT-KEEP01'], likedAt: { 'FONT-KEEP01': t0 }, unlikedAt: { 'FONT-BASE0001': t1 } }) });
+check('favorites device A unlikes one (tombstone recorded)', r.status === 200 && !r.json.ids.includes('FONT-BASE0001'), JSON.stringify(r.json?.ids));
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: ['FONT-BASE0001', 'FONT-KEEP01'], likedAt: { 'FONT-BASE0001': t0, 'FONT-KEEP01': t0 } }) });
+check('favorites stale union from device B does NOT resurrect the unlike', r.status === 200 && !r.json.ids.includes('FONT-BASE0001') && r.json.ids.includes('FONT-KEEP01'), JSON.stringify(r.json?.ids));
+r = await req('POST', '/api/v1/favorites', { body: favBody({ ids: ['FONT-BASE0001'], likedAt: { 'FONT-BASE0001': Date.now() } }) });
+check('favorites deliberate NEW re-like after the unlike wins (LWW)', r.status === 200 && r.json.ids.includes('FONT-BASE0001'), JSON.stringify(r.json?.ids));
 r = await req('GET', `/api/v1/favorites?wallet=${wallet}`);
 check('favorites read back persisted id', r.status === 200 && Array.isArray(r.json?.ids) && r.json.ids.includes('FONT-BASE0001'), JSON.stringify(r.json));
 r = await req('GET', '/api/v1/favorites?wallet=%20%20%20');

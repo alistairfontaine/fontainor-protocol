@@ -98,7 +98,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       const address = publicKey.toString()
-      const msg = 'Authenticate Fontainor Sovereign Session'
+      // The signed message carries its issue time — the server rejects logins
+      // signed more than a few minutes ago and profile writes after 7 days,
+      // so a captured signature is no longer a forever-valid bearer token.
+      const issuedAt = Date.now()
+      const msg = `Authenticate Fontainor Sovereign Session :: ${issuedAt}`
       let signed: { signature: Uint8Array }
       try {
         signed = await provider.signMessage(new TextEncoder().encode(msg), 'utf8')
@@ -135,6 +139,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         signature: JSON.stringify(Array.from(signed.signature)),
         message: msg,
         wallet: address,
+        issuedAt,
       })
       void syncProfile(address)
       return { success: true }
@@ -179,9 +184,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Phantom is on a different wallet than this session. Switch accounts and retry.' }
       }
 
+      // Timestamp-bound claim: the server rejects claims signed more than a
+      // few minutes ago, so a captured payload can't re-claim an old handle.
+      const claimIssuedAt = Date.now()
       let signed: { signature: Uint8Array }
       try {
-        signed = await provider.signMessage(new TextEncoder().encode(`Fontainor handle claim: @${bare}`), 'utf8')
+        signed = await provider.signMessage(new TextEncoder().encode(`Fontainor handle claim: @${bare} :: ${claimIssuedAt}`), 'utf8')
       } catch {
         return { success: false, error: 'Signature cancelled. Approve the request in Phantom to claim the handle.' }
       }
@@ -193,6 +201,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
           signature: JSON.stringify(Array.from(signed.signature)),
           handle: bare,
+          issuedAt: claimIssuedAt,
         }),
       })
       const data = (await res.json().catch(() => ({}))) as { success?: boolean; handle?: string; message?: string }

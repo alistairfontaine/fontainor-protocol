@@ -65,7 +65,7 @@ async function backend() {
   const kp = nacl.sign.keyPair()
   const wallet = bs58.encode(kp.publicKey)
   const other = bs58.encode(nacl.sign.keyPair().publicKey)
-  const msg = 'Authenticate Fontainor Sovereign Session'
+  const msg = `Authenticate Fontainor Sovereign Session :: ${Date.now()}`
   const sig = nacl.sign.detached(new TextEncoder().encode(msg), kp.secretKey)
   const proof = {
     publicKey: JSON.stringify(Array.from(kp.publicKey)),
@@ -198,7 +198,7 @@ async function frontend() {
 
   const persisted = await pageB.evaluate(() => ({
     purchases: JSON.parse(localStorage.getItem('fontainor_purchases_v1') ?? '[]').length,
-    favs: JSON.parse(localStorage.getItem('fontainor_favorites_v1') ?? '[]'),
+    favs: (JSON.parse(localStorage.getItem('fontainor_favorites_v2') ?? '{"ids":[]}').ids ?? []),
   }))
   check('B4 machine B local stores hydrated', persisted.purchases === 1 && persisted.favs.includes('FONT-BUYME1'))
 

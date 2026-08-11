@@ -309,7 +309,10 @@ const MANIFEST_TAGS = [
     { name: 'Type', value: 'registry-manifest' },
 ];
 
-const RECOVERY_SCAN_DEPTH = 8;
+// Tunable via env: a deeper scan widens the window an attacker must flood
+// with tagged manifests to push honest history out of recovery range. Each
+// extra slot costs one gateway fetch on a cold start, so keep it bounded.
+const RECOVERY_SCAN_DEPTH = Math.min(100, Math.max(4, Number(process.env.RECOVERY_SCAN_DEPTH) || 24));
 
 async function recoverLatestManifestFromIrys() {
     try {
@@ -520,6 +523,38 @@ app.post('/api/v1/verify-payment', async (req, res) => {
 });
 
 
+// --- Signed-message freshness ------------------------------------------------
+// Every signed auth message carries an issue timestamp: "<intent> :: <unix-ms>".
+// Without it a captured signature was a bearer token forever: the localStorage
+// session proof (or any intercepted payload) could authenticate favorites
+// writes and logins for eternity. Now:
+//   - logins / handle claims must be signed within the last LOGIN_FRESHNESS_MS
+//     (a stolen payload goes stale in minutes);
+//   - stored session proofs may keep authenticating profile writes for
+//     SESSION_TTL_MS, after which the app asks Phantom for one fresh signature.
+// Timestamps slightly in the future are tolerated up to CLOCK_SKEW_MS.
+const LOGIN_FRESHNESS_MS = 10 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
+
+/** Extract the trailing " :: <unix-ms>" issue timestamp, or null if absent/invalid. */
+function signedMessageIssuedAt(message) {
+    const m = /^[\s\S]*? :: (\d{10,16})$/.exec(String(message || ''));
+    if (!m) return null;
+    const ts = Number(m[1]);
+    return Number.isSafeInteger(ts) ? ts : null;
+}
+
+/** null if fresh, else a human-readable rejection reason. */
+function signedMessageStaleness(message, maxAgeMs) {
+    const ts = signedMessageIssuedAt(message);
+    if (ts == null) return 'Signed message is missing its issue timestamp — update the app and sign in again.';
+    const age = Date.now() - ts;
+    if (age > maxAgeMs) return 'Signed message has expired — sign in again to refresh the session.';
+    if (age < -CLOCK_SKEW_MS) return 'Signed message is timestamped in the future — check the device clock and try again.';
+    return null;
+}
+
 // 5. Zero-Cost Cryptographic Sovereign Identity Login Gate
 app.post('/api/v1/auth/sovereign-login', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -540,8 +575,13 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
         }
         const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
 
+        const stale = signedMessageStaleness(message, LOGIN_FRESHNESS_MS);
+        if (stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale });
+        }
+
         const nacl = await import('tweetnacl');
-        const encodedMessage = new TextEncoder().encode(message || "Authenticate Fontainor Sovereign Session");
+        const encodedMessage = new TextEncoder().encode(message);
 
         const isWalletOwnerVerified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
 
@@ -597,8 +637,17 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
         }
         const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
 
+        // The claim is bound to an issue timestamp (client sends the ms value it
+        // signed) so a captured claim payload can't be replayed later — e.g. to
+        // revert a handle the wallet has since changed.
+        const issuedAt = Number(req.body?.issuedAt);
+        const expectedMessage = `Fontainor handle claim: @${bare} :: ${issuedAt}`;
+        const stale = signedMessageStaleness(expectedMessage, LOGIN_FRESHNESS_MS);
+        if (!Number.isSafeInteger(issuedAt) || stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale || 'Handle claim is missing its issue timestamp — update the app and try again.' });
+        }
+
         const nacl = await import('tweetnacl');
-        const expectedMessage = `Fontainor handle claim: @${bare}`;
         const encodedMessage = new TextEncoder().encode(expectedMessage);
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
@@ -711,15 +760,70 @@ app.get('/api/v1/favorites', async (req, res) => {
         if (!WALLET_RE.test(wallet)) {
             return res.status(400).json({ success: false, message: 'Invalid or missing wallet address.' });
         }
-        if (!redis) return res.json({ success: true, durable: false, ids: [] });
-        const stored = await redis.get(favoritesKey(wallet));
-        const ids = Array.isArray(stored) ? stored.map(String) : [];
-        return res.json({ success: true, durable: true, ids });
+        if (!redis) return res.json({ success: true, durable: false, ids: [], likedAt: {}, unlikedAt: {} });
+        const doc = parseStoredFavorites(await redis.get(favoritesKey(wallet)));
+        return res.json({ success: true, durable: true, ids: doc.ids, likedAt: doc.likedAt, unlikedAt: doc.unlikedAt });
     } catch (err) {
         console.error('Favorites read failed:', err.message);
         return res.status(500).json({ success: false, message: err.message });
     }
 });
+
+// Tombstones older than this are pruned — after 90 days every device has
+// long since synced the unlike, so the marker is dead weight.
+const FAV_TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;
+const FAV_TS_MAP_MAX = 1500;
+
+/** Coerce a client/server likedAt/unlikedAt map to { id: finite-ms }, capped. */
+function sanitizeFavTimestampMap(raw) {
+    const out = {};
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+    let n = 0;
+    for (const [id, ts] of Object.entries(raw)) {
+        if (typeof id !== 'string' || id.length === 0 || id.length > 200) continue;
+        const t = Number(ts);
+        if (!Number.isFinite(t) || t <= 0) continue;
+        out[id] = t;
+        if (++n >= FAV_TS_MAP_MAX) break;
+    }
+    return out;
+}
+
+/** Parse a stored favorites value — either the legacy bare id array or the
+ *  versioned { ids, likedAt, unlikedAt } doc. */
+function parseStoredFavorites(stored) {
+    if (Array.isArray(stored)) return { ids: stored.map(String), likedAt: {}, unlikedAt: {} };
+    if (stored && typeof stored === 'object' && Array.isArray(stored.ids)) {
+        return {
+            ids: stored.ids.map(String),
+            likedAt: sanitizeFavTimestampMap(stored.likedAt),
+            unlikedAt: sanitizeFavTimestampMap(stored.unlikedAt),
+        };
+    }
+    return { ids: [], likedAt: {}, unlikedAt: {} };
+}
+
+/** Last-write-wins per id: for each track the newest action (like vs unlike)
+ *  across both replicas decides. This is what stops the resurrection bug —
+ *  an unlike on device A used to be undone by device B pushing a stale union. */
+function mergeFavoritesLww(a, b) {
+    const now = Date.now();
+    const likedAt = {};
+    const unlikedAt = {};
+    const allIds = new Set([...Object.keys(a.likedAt), ...Object.keys(b.likedAt), ...Object.keys(a.unlikedAt), ...Object.keys(b.unlikedAt), ...a.ids, ...b.ids]);
+    for (const id of allIds) {
+        // Legacy replicas carry ids without timestamps — treat those likes as
+        // epoch 1 so any explicit, timestamped action beats them.
+        const like = Math.max(a.likedAt[id] ?? (a.ids.includes(id) ? 1 : 0), b.likedAt[id] ?? (b.ids.includes(id) ? 1 : 0));
+        const unlike = Math.max(a.unlikedAt[id] ?? 0, b.unlikedAt[id] ?? 0);
+        if (like > 0 && like >= unlike) likedAt[id] = like;
+        else if (unlike > 0 && now - unlike < FAV_TOMBSTONE_TTL_MS) unlikedAt[id] = unlike;
+    }
+    // Order: keep each replica's local ordering where possible, a first.
+    const ids = [...a.ids, ...b.ids.filter((id) => !a.ids.includes(id))].filter((id) => id in likedAt);
+    for (const id of Object.keys(likedAt)) if (!ids.includes(id)) ids.push(id);
+    return { ids: ids.slice(0, 500), likedAt, unlikedAt };
+}
 
 app.post('/api/v1/favorites', async (req, res) => {
     if (profileCors(req, res)) return;
@@ -734,14 +838,21 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         // Same proof of wallet ownership the sovereign login produces — the app
         // stores it for the session so likes never trigger extra Phantom popups.
+        // The proof carries its signed issue timestamp and expires after
+        // SESSION_TTL_MS (a leaked localStorage proof is no longer forever).
         const decoded = decodeSignedPayload(publicKey, signature);
         if (!decoded) {
             return res.status(400).json({ success: false, message: 'Malformed verification payload (publicKey/signature must be 32-/64-byte JSON arrays).' });
         }
         const { pk: publicKeyBytes, sig: signatureBytes } = decoded;
 
+        const stale = signedMessageStaleness(message, SESSION_TTL_MS);
+        if (stale) {
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale });
+        }
+
         const nacl = await import('tweetnacl');
-        const encodedMessage = new TextEncoder().encode(message || 'Authenticate Fontainor Sovereign Session');
+        const encodedMessage = new TextEncoder().encode(message);
         const verified = nacl.default.sign.detached.verify(encodedMessage, signatureBytes, publicKeyBytes);
         if (!verified) {
             return res.status(401).json({ success: false, message: 'Cryptographic signature validation rejected.' });
@@ -749,8 +860,16 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         const wallet = bs58.encode(publicKeyBytes);
         if (!redis) return res.json({ success: true, durable: false, wallet });
-        await redis.set(favoritesKey(wallet), ids.map(String));
-        return res.json({ success: true, durable: true, wallet });
+
+        const incoming = {
+            ids: ids.map(String),
+            likedAt: sanitizeFavTimestampMap(req.body?.likedAt),
+            unlikedAt: sanitizeFavTimestampMap(req.body?.unlikedAt),
+        };
+        const current = parseStoredFavorites(await redis.get(favoritesKey(wallet)));
+        const merged = mergeFavoritesLww(current, incoming);
+        await redis.set(favoritesKey(wallet), merged);
+        return res.json({ success: true, durable: true, wallet, ids: merged.ids, likedAt: merged.likedAt, unlikedAt: merged.unlikedAt });
     } catch (err) {
         console.error('Favorites write failed:', err.message);
         return res.status(500).json({ success: false, message: err.message });
