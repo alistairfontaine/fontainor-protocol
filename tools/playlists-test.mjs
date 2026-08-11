@@ -16,7 +16,8 @@
 import { spawn } from 'child_process'
 import { chromium } from 'playwright'
 
-const EXE = '/root/.cache/ms-playwright/chromium_headless_shell-1228/chrome-headless-shell-linux64/chrome-headless-shell'
+// Portable: use Playwright's own resolved browser unless FONTAINOR_CHROMIUM overrides.
+const EXE = process.env.FONTAINOR_CHROMIUM || undefined
 const PORT = 4183
 const BASE = `http://localhost:${PORT}`
 
@@ -45,7 +46,7 @@ await new Promise((resolve, reject) => {
 const playerRegion = (page) => page.locator('[role="region"][aria-label="Audio player"]')
 const nowPlayingTitle = async (page) => (await playerRegion(page).locator('a[href^="#/release/"]').first().innerText()).trim()
 
-const browser = await chromium.launch({ executablePath: EXE })
+const browser = await chromium.launch(EXE ? { executablePath: EXE } : {})
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } })
 await ctx.route(/^https?:\/\/(?!localhost)/, (route) => route.abort())
 const page = await ctx.newPage()
@@ -93,7 +94,11 @@ try {
     }
     await plBtn.waitFor({ timeout: 5000 })
     await plBtn.click()
+    await menu.waitFor({ timeout: 3000 })
     await menu.locator('button', { hasText: 'Road Trip' }).click()
+    // Don't navigate until the membership toggle has actually landed — on slow
+    // CI runners an immediate goto raced the click and track B was never added.
+    await menu.locator('button[aria-pressed="true"]', { hasText: 'Road Trip' }).waitFor({ timeout: 3000 })
 
     // ---------- 3. playlist detail: order, play all, reorder ----------
     console.log('playlist detail + playback order')

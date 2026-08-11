@@ -7,7 +7,9 @@ import { z } from 'zod';
  * Accommodates mixed flat legacy tracks (v0.2) and nested asset collections (v0.4)
  * cleanly within a single continuous blockchain distribution ledger stream.
  */
-export const registryArraySchema = z.array(z.any());
+export const registryArraySchema = z
+  .array(z.looseObject({}), { error: 'Registry manifest must be an array of entry objects.' })
+  .max(10000);
 
 /**
  * Express middleware gateway rule.

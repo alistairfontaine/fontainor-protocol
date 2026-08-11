@@ -480,6 +480,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     }
     // playNow (not play): stepping back must keep any playlist context alive
     const p = stepFrom(-1)
+    // (never the public play(): that clears playlist context, so one Prev
+    // press inside a playlist would dump the session back into catalog order)
     if (p) playNow(p)
   }, [playNow, startSim])
 

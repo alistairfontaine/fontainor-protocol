@@ -15,3 +15,6 @@ dist-preview/
 android/key.properties
 *.jks
 *.keystore
+
+# Local serverless registry pointer
+api/pointer.json

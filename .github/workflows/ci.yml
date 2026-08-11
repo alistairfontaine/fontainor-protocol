@@ -1,0 +1,54 @@
+# CI — the same gate AGENTS.md requires locally: typecheck + build, then the
+# full tools/*-test.mjs verification suite (real api/index.js against protocol
+# stubs + headless-browser flows against the built app).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Typecheck + build
+        run: npm run ci
+
+      - name: Start preview servers (follows / portable-profile / real-flows suites)
+        run: |
+          npx vite preview --port 4173 --strictPort &
+          npx vite preview --port 4174 --strictPort &
+          for port in 4173 4174; do
+            for i in $(seq 1 30); do
+              curl -sf "http://localhost:$port/" > /dev/null && break
+              sleep 1
+            done
+          done
+
+      - name: Run verification suites
+        run: |
+          status=0
+          for t in handles plays share stats recovery publish-persist api-fuzz queue playlists mobile-wallet follows portable-profile real-flows header-search search-page; do
+            echo "::group::tools/$t-test.mjs"
+            if ! node "tools/$t-test.mjs"; then
+              echo "::error::tools/$t-test.mjs failed"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status

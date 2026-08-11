@@ -35,9 +35,22 @@ function SearchBox() {
     return () => document.removeEventListener('keydown', onKey)
   }, [])
 
-  const submit = (value: string) => {
-    navigate(value ? `/library?q=${encodeURIComponent(value)}` : '/library')
+  const go = (value: string) => {
+    navigate(value ? `/library?q=${encodeURIComponent(value)}` : '/library', { replace: location.pathname === '/library' })
   }
+
+  // Live filter as you type (debounced) — matches the mobile Library search box,
+  // which already updates results on every keystroke. Enter still navigates
+  // immediately (and works from any page). The debounce keeps the URL from
+  // churning a history entry per character; replace: on /library so Back isn't
+  // buried under intermediate queries.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const onChange = (value: string) => {
+    setQ(value)
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+    debounceRef.current = setTimeout(() => go(value), 200)
+  }
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current) }, [])
 
   return (
     <div className="relative hidden w-full max-w-md sm:block">
@@ -45,9 +58,12 @@ function SearchBox() {
       <input
         ref={ref}
         value={q}
-        onChange={(e) => setQ(e.target.value)}
+        onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
-          if (e.key === 'Enter') submit(q)
+          if (e.key === 'Enter') {
+            if (debounceRef.current) clearTimeout(debounceRef.current)
+            go(q)
+          }
         }}
         placeholder="Search releases, artists, tags…"
         className="h-10 w-full rounded-btn border border-line bg-surface pl-10 pr-4 text-sm text-ink placeholder:text-faint focus:border-line-strong focus:outline-none"
@@ -137,6 +153,9 @@ function Sidebar() {
             <IconLibrary size={19} filled={isActive} /> Library
           </>
         )}
+      </NavLink>
+      <NavLink to="/search" className={sideLink}>
+        <IconSearch size={19} /> Search
       </NavLink>
       <NavLink to="/editorial" className={sideLink}>
         {({ isActive }) => (

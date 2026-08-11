@@ -88,6 +88,20 @@ function runCommand(cmd) {
             for (let i = 1; i + 1 < args.length; i += 2) { h.set(args[i], args[i + 1]); n++; }
             return n;
         }
+        case 'HSETNX': {
+            if (!store.hashes.has(args[0])) store.hashes.set(args[0], new Map());
+            const h = store.hashes.get(args[0]);
+            if (h.has(args[1])) return 0;
+            h.set(args[1], args[2]);
+            return 1;
+        }
+        case 'SADD': {
+            if (!store.kv.has('__sets__' + args[0])) store.kv.set('__sets__' + args[0], new Set());
+            const s = store.kv.get('__sets__' + args[0]);
+            let n = 0;
+            for (const m of args.slice(1)) { if (!s.has(m)) { s.add(m); n++; } }
+            return n;
+        }
         case 'HDEL': {
             const h = store.hashes.get(args[0]);
             let n = 0;
@@ -145,6 +159,11 @@ const walletB = bs58.encode(B.publicKey);
 const walletT = bs58.encode(T.publicKey);
 process.env.TREASURY_WALLET = walletT;
 
+const loginMsg = () => `Authenticate Fontainor Sovereign Session :: ${Date.now()}`;
+function claimPayload(kp, handle, extra = {}) {
+    const issuedAt = Date.now();
+    return signedPayload(kp, `Fontainor handle claim: @${handle} :: ${issuedAt}`, { issuedAt, ...extra });
+}
 function signedPayload(kp, message, extra = {}) {
     const sig = nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey);
     return {
@@ -163,37 +182,39 @@ async function post(pathname, body) {
 }
 
 // login before any claim -> address-derived fallback
-let out = await post('/api/v1/auth/sovereign-login', signedPayload(A, 'Authenticate Fontainor Sovereign Session', { message: 'Authenticate Fontainor Sovereign Session' }));
+let m = loginMsg();
+let out = await post('/api/v1/auth/sovereign-login', signedPayload(A, m, { message: m }));
 check('login (no claim): fallback handle + claimed=false',
     out.status === 200 && out.data.success && out.data.claimed === false && /^@.{4}\.\.\..{4}$/.test(out.data.handle), JSON.stringify(out));
 
 // claim a handle with wallet A
-out = await post('/api/v1/auth/set-handle', signedPayload(A, 'Fontainor handle claim: @tapiwa_music', { handle: '@Tapiwa_Music' }));
+out = await post('/api/v1/auth/set-handle', claimPayload(A, 'tapiwa_music', { handle: '@Tapiwa_Music' }));
 check('set-handle: wallet A claims @tapiwa_music', out.status === 200 && out.data.handle === '@tapiwa_music', JSON.stringify(out));
 
 // login again -> claimed handle
-out = await post('/api/v1/auth/sovereign-login', signedPayload(A, 'Authenticate Fontainor Sovereign Session', { message: 'Authenticate Fontainor Sovereign Session' }));
+m = loginMsg();
+out = await post('/api/v1/auth/sovereign-login', signedPayload(A, m, { message: m }));
 check('login (claimed): returns @tapiwa_music + claimed=true',
     out.status === 200 && out.data.handle === '@tapiwa_music' && out.data.claimed === true, JSON.stringify(out));
 
 // wallet B tries to steal the handle -> 409
-out = await post('/api/v1/auth/set-handle', signedPayload(B, 'Fontainor handle claim: @tapiwa_music', { handle: 'tapiwa_music' }));
+out = await post('/api/v1/auth/set-handle', claimPayload(B, 'tapiwa_music', { handle: 'tapiwa_music' }));
 check('set-handle: wallet B stealing claimed handle -> 409', out.status === 409 && out.data.code === 'HANDLE_TAKEN', JSON.stringify(out));
 
 // bad signature -> 401 (B signs but sends A's pubkey)
-const badSig = signedPayload(B, 'Fontainor handle claim: @othername', { handle: 'othername' });
+const badSig = claimPayload(B, 'othername', { handle: 'othername' });
 badSig.publicKey = JSON.stringify(Array.from(A.publicKey));
 out = await post('/api/v1/auth/set-handle', badSig);
 check('set-handle: forged signature -> 401', out.status === 401, JSON.stringify(out));
 
 // invalid handle -> 400
-out = await post('/api/v1/auth/set-handle', signedPayload(A, 'Fontainor handle claim: @x', { handle: 'x' }));
+out = await post('/api/v1/auth/set-handle', claimPayload(A, 'x', { handle: 'x' }));
 check('set-handle: invalid handle -> 400', out.status === 400 && out.data.code === 'HANDLE_INVALID', JSON.stringify(out));
 
 // protected handle: non-treasury wallet -> 403, treasury wallet -> 200
-out = await post('/api/v1/auth/set-handle', signedPayload(B, 'Fontainor handle claim: @fontainor', { handle: 'fontainor' }));
+out = await post('/api/v1/auth/set-handle', claimPayload(B, 'fontainor', { handle: 'fontainor' }));
 check('set-handle: non-treasury wallet claiming @fontainor -> 403 HANDLE_PROTECTED', out.status === 403 && out.data.code === 'HANDLE_PROTECTED', JSON.stringify(out));
-out = await post('/api/v1/auth/set-handle', signedPayload(T, 'Fontainor handle claim: @fontainor', { handle: '@Fontainor' }));
+out = await post('/api/v1/auth/set-handle', claimPayload(T, 'fontainor', { handle: '@Fontainor' }));
 check('set-handle: treasury wallet claims @fontainor', out.status === 200 && out.data.handle === '@fontainor', JSON.stringify(out));
 
 // seed the registry via /upload with A's legit release

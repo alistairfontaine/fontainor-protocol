@@ -79,7 +79,7 @@ function TipJar() {
       {state.phase === 'sent' ? (
         <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ok">
           <IconCheck size={16} />
-          <span>Tip received — thank you for keeping the registry alive.</span>
+          <span>Tip sent — thank you for keeping the registry alive.</span>
           <a
             href={`https://solscan.io/tx/${state.signature}`}
             target="_blank"

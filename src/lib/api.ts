@@ -4,21 +4,44 @@ import { parseRegistryText, type Release } from './registry'
 // Where the registry/upload/payment API lives.
 // - Web (browser/PWA): same-origin '' — vercel.json rewrites /registry → the
 //   serverless function; the vite dev server proxies to the deployed API.
-// - Native app (Capacitor): the WebView is served from https://localhost, so
-//   there is no same-origin API. Point at the deployed origin instead (CORS is
-//   open, verified in api/index.js). Overridable at build time via VITE_API_BASE.
-const REMOTE_API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) || 'https://fontainor-protocol.vercel.app'
+// - Native app (Capacitor): the WebView serves this bundle from
+//   https://localhost, so relative URLs resolve to the DEVICE, not the API —
+//   every /registry, publish, login, purchase-verify, favorites and play-log
+//   call would silently fail and the app would freeze on the bundled demo
+//   snapshot. Point native builds at the deployed origin (CORS is `*`, and
+//   capacitor allowNavigation lists *.vercel.app).
+// Overridable at build time via VITE_API_BASE.
+export const SITE_ORIGIN = (import.meta.env.VITE_API_BASE as string | undefined) || 'https://fontainor-protocol.vercel.app'
 
-function resolveApiBase(): string {
+/**
+ * True only inside the Capacitor Android/iOS WebView.
+ * Uses Capacitor.isNativePlatform() rather than a bare `window.Capacitor`
+ * presence check: the web build bundles @capacitor/core too, so presence alone
+ * is truthy on the WEBSITE and would push every web request cross-origin.
+ */
+export function isNativeShell(): boolean {
   try {
-    if (Capacitor.isNativePlatform()) return REMOTE_API_BASE
+    return Capacitor.isNativePlatform()
   } catch {
     /* not in a Capacitor runtime — treat as web */
+    return false
   }
-  return ''
+}
+
+function resolveApiBase(): string {
+  return isNativeShell() ? SITE_ORIGIN : ''
 }
 
 export const API_BASE = resolveApiBase()
+
+/** Origin for user-shareable links. Never the device's https://localhost. */
+export function shareOrigin(): string {
+  if (isNativeShell()) return SITE_ORIGIN
+  if (typeof window !== 'undefined' && !/^https?:\/\/localhost/i.test(window.location.origin)) {
+    return window.location.origin
+  }
+  return SITE_ORIGIN
+}
 
 export type RegistrySource = 'api' | 'file' | 'sample'
 
