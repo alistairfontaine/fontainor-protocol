@@ -78,7 +78,7 @@ jobs:
       - name: Run verification suites
         run: |
           status=0
-          for t in handles plays share stats recovery publish-persist api-fuzz queue playlists mobile-wallet follows portable-profile real-flows header-search search-page; do
+          for t in handles plays share stats recovery publish-persist api-fuzz queue playlists mobile-wallet follows portable-profile real-flows header-search search-page native-shell; do
             echo "::group::tools/$t-test.mjs"
             if ! node "tools/$t-test.mjs"; then
               echo "::error::tools/$t-test.mjs failed"
@@ -87,6 +87,23 @@ jobs:
             echo "::endgroup::"
           done
           exit $status
+
+      # The manifest merger's parse error is a wall of Gradle noise; a broken
+      # XML comment cost one full build. Fail here with the actual reason.
+      - name: Validate native XML (manifest + resources)
+        run: |
+          python3 - <<'PY'
+          import glob, sys, xml.etree.ElementTree as ET
+          bad = []
+          for f in ['android/app/src/main/AndroidManifest.xml'] + glob.glob('android/app/src/main/res/xml/*.xml'):
+              try:
+                  ET.parse(f)
+              except ET.ParseError as e:
+                  bad.append(f'{f}: {e}')
+          for b in bad:
+              print(f'::error::{b}')
+          sys.exit(1 if bad else 0)
+          PY
 
       - name: Sync web build into the native project
         run: npx cap sync android

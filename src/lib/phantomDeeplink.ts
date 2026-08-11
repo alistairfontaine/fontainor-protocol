@@ -61,7 +61,22 @@ export function isNativeApp(): boolean {
   }
 }
 
+let loading: Promise<Session> | null = null
+
 async function loadState(): Promise<Session> {
+  if (state) return state
+  // Memoize the in-flight load: two concurrent callers used to each mint a
+  // fresh x25519 keypair, and the second overwrote the first. If a connect
+  // deeplink was already open with the first key, Phantom's reply could no
+  // longer be decrypted ("shared secret mismatch").
+  if (loading) return loading
+  loading = loadStateOnce().finally(() => {
+    loading = null
+  })
+  return loading
+}
+
+async function loadStateOnce(): Promise<Session> {
   if (state) return state
   try {
     const { value } = await Preferences.get({ key: STORE_KEY })
@@ -118,6 +133,17 @@ function openAndAwait(method: string, url: string): Promise<URLSearchParams> {
         clearTimeout(timeout)
         reject(e)
       },
+    }
+    // A second request for the same method used to overwrite the first
+    // waiter's entry, leaving the first promise to hang for the full 180s
+    // timeout. That is the common double-tap: Phantom takes a moment to come
+    // up, the user taps Connect again, and the ORIGINAL await (the one the
+    // button's spinner is tied to) never settles — the UI looks frozen and
+    // retrying is impossible. Settle the superseded waiter immediately.
+    const superseded = pending.get(method)
+    if (superseded) {
+      pending.delete(method)
+      superseded.reject(new PhantomSessionError('Request superseded by a newer one — try again.'))
     }
     pending.set(method, wrapped)
     void Browser.open({ url, presentationStyle: 'popover' }).catch((e) => {

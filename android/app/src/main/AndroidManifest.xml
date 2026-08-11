@@ -1,12 +1,13 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- allowBackup=false: app data holds the Phantom deeplink session keypair
+         (@capacitor/preferences) and the signed Fontainor session proof. With
+         backup on, `adb backup` / cloud restore can lift both off the device,
+         and a restored copy could sign as the user. Nothing here is worth
+         backing up (the registry is on Arweave, the profile re-syncs from the
+         wallet), so opt out. XML note: comments cannot live INSIDE a start tag
+         — that broke manifest merging once already. -->
     <application
-        <!-- allowBackup=false: app data holds the Phantom deeplink session
-             keypair (@capacitor/preferences) and the signed Fontainor session
-             proof. With backup on, `adb backup` / cloud restore can lift both
-             off the device, and a restored copy could sign as the user. There
-             is nothing here worth backing up (the registry is on Arweave and
-             the profile re-syncs from the wallet), so opt out. -->
         android:allowBackup="false"
         android:fullBackupContent="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
