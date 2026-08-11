@@ -1,8 +1,9 @@
 // Offline downloads (F59, hardened in v4.1) — native only.
 //
 // Audio (and cover) land in the app's private data dir; a localStorage index
-// maps release id → file paths. Playback resolves through `playableSrc()`:
-// a downloaded track plays from disk (airplane-mode safe), else streams.
+// maps release id → file paths. Playback asks `localAudioSrc()` for the local
+// copy (airplane-mode safe) and streams when there is none; a local file that
+// stops decoding is dropped via `dropBrokenDownload()` rather than trusted.
 //
 // v4.1 CRASH FIX + progress: v4.0.0 fetched the MP3 into the WebView and
 // pushed it across the Capacitor bridge as ONE multi-megabyte base64 string
@@ -15,6 +16,7 @@
 import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { useSyncExternalStore } from 'react'
+import { nativeFetchableUrl } from './api'
 import { IS_NATIVE } from './platform'
 import type { Release } from './registry'
 
@@ -72,11 +74,13 @@ async function warmUriCache(): Promise<void> {
 }
 void warmUriCache()
 
-/** Absolute, fetchable source for a release's remote audio/cover path. */
-function remoteUrl(path: string): string {
-  if (/^https?:/i.test(path)) return path
-  return new URL(path, location.origin).href
-}
+/**
+ * Absolute, natively-fetchable source for a release's remote audio/cover path.
+ * MUST NOT resolve against location.origin: in the app that is the WebView's
+ * own https://localhost server, which the downloading Java process cannot
+ * reach. See nativeFetchableUrl().
+ */
+const remoteUrl = nativeFetchableUrl
 
 export function isDownloaded(id: string): boolean {
   return id in index
@@ -87,9 +91,33 @@ export function localAudioSrc(id: string): string | null {
   return uriCache[id] ?? null
 }
 
-/** The URL playback should use: local file when we have it, else the stream. */
-export function playableSrc(rel: Release): string | null {
-  return localAudioSrc(rel.id) ?? rel.audio
+/**
+ * A saved file that will not decode is WORSE than no download: playback prefers
+ * the local copy, so one bad file breaks a release permanently — even online. This is not hypothetical: the site serves its SPA `index.html` with
+ * HTTP 200 for any unknown /audio/* path, so a typo'd or withdrawn audioUri
+ * downloads a 2 KB HTML page as `<id>.mp3`. Verify before committing.
+ *
+ * Metadata of a local file decodes near-instantly; a timeout is treated as OK
+ * so a slow device never loses a good download.
+ */
+function verifyPlayable(src: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const a = new Audio()
+    let done = false
+    const finish = (ok: boolean) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      a.removeAttribute('src')
+      resolve(ok)
+    }
+    const timer = setTimeout(() => finish(true), 15000)
+    a.addEventListener('loadedmetadata', () => finish(true))
+    a.addEventListener('error', () => finish(false))
+    a.preload = 'metadata'
+    a.src = src
+    a.load()
+  })
 }
 
 // ── download progress (YouTube-style states) ──
@@ -139,6 +167,13 @@ export async function downloadRelease(rel: Release): Promise<void> {
     } catch {
       /* size is cosmetic */
     }
+    // Resolve the local URI first: it is needed both to verify the file and
+    // to play it back.
+    const localSrc = Capacitor.convertFileSrc((await Filesystem.getUri({ directory: DIR, path: audioPath })).uri)
+    if (!(await verifyPlayable(localSrc))) {
+      throw new Error('The server did not return playable audio for this release.')
+    }
+
     let coverPath: string | null = null
     if (rel.coverUrl) {
       try {
@@ -152,26 +187,32 @@ export async function downloadRelease(rel: Release): Promise<void> {
       ...index,
       [rel.id]: { id: rel.id, title: rel.title, artist: rel.artist, audioPath, coverPath, bytes, at: Date.now() },
     }
+    uriCache = { ...uriCache, [rel.id]: localSrc }
     setProgress(rel.id, null)
     persist()
-    try {
-      const { uri } = await Filesystem.getUri({ directory: DIR, path: audioPath })
-      uriCache = { ...uriCache, [rel.id]: Capacitor.convertFileSrc(uri) }
-      emit()
-    } catch {
-      /* resolved on next launch */
-    }
   } catch (e) {
-    // Failed/cancelled: clean partial file, surface a retryable error state.
-    try {
-      await Filesystem.deleteFile({ directory: DIR, path: audioPath })
-    } catch {
-      /* nothing written */
+    // Failed / cancelled / unplayable: clean up BOTH files so a retry starts
+    // clean, and surface a retryable error state.
+    for (const p of [audioPath, `downloads/${rel.id}.jpg`]) {
+      try {
+        await Filesystem.deleteFile({ directory: DIR, path: p })
+      } catch {
+        /* nothing written */
+      }
     }
     setProgress(rel.id, { state: 'error', message: e instanceof Error ? e.message : String(e) })
   } finally {
     inflightByUrl.delete(url)
   }
+}
+
+/**
+ * Forget a download whose file stopped working (deleted by the OS, corrupted,
+ * storage evicted). Playback calls this so it can fall back to streaming
+ * instead of insisting on a dead file.
+ */
+export async function dropBrokenDownload(id: string): Promise<void> {
+  await removeDownload(id)
 }
 
 /** Clear an error state (dismiss / before retry). */

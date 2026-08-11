@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
-import { playableSrc } from '../lib/downloads'
+import { dropBrokenDownload, localAudioSrc } from '../lib/downloads'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
 import { recordPlay } from '../lib/supportPlays'
@@ -295,6 +295,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
     a.addEventListener('error', () => {
       if (audioRef.current !== a) return
+      // A local downloaded file that no longer decodes must not silently turn
+      // into the demo progress bar (a moving playhead with no sound). Forget
+      // the download and stream the release instead — once.
+      const rel = currentRef.current
+      if (rel?.audio && a.dataset.localDownload === rel.id) {
+        void dropBrokenDownload(rel.id)
+        const b = new Audio(rel.audio)
+        audioRef.current = b
+        wireAudio(b)
+        void b.play().catch(() => {
+          audioRef.current = null
+          setDur(DEMO_DURATION)
+          startSim(0)
+        })
+        return
+      }
       audioRef.current = null
       setDur(DEMO_DURATION)
       startSim(0)
@@ -339,7 +355,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (remaining > w) return
     const nxt = peekNext()
     if (!nxt?.audio) return
-    const b = new Audio(playableSrc(nxt) ?? nxt.audio)
+    const nextLocal = localAudioSrc(nxt.id)
+    const b = new Audio(nextLocal ?? nxt.audio)
+    if (nextLocal) b.dataset.localDownload = nxt.id
     b.preload = 'auto'
     b.volume = 0
     const timer = setInterval(() => {
@@ -375,7 +393,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
       if (rel.audio) {
         // downloaded releases play from local disk (offline-safe)
-        const a = new Audio(playableSrc(rel) ?? rel.audio)
+        const local = localAudioSrc(rel.id)
+        const a = new Audio(local ?? rel.audio)
+        if (local) a.dataset.localDownload = rel.id
         audioRef.current = a
         wireAudio(a)
         void a.play().catch(() => {

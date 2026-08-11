@@ -43,6 +43,22 @@ export function shareOrigin(): string {
   return SITE_ORIGIN
 }
 
+/**
+ * Absolute URL for a registry media path that the NATIVE process fetches by
+ * itself — offline downloads (Java HttpURLConnection) and notification artwork.
+ *
+ * The registry stores relative paths (`/audio/x.mp3`). Resolving those against
+ * `location.origin` is correct in a browser but WRONG in the app: Capacitor
+ * serves the WebView from its own in-process origin (`https://localhost`),
+ * which no native code can connect to. Downloads failed 100% of the time for
+ * every release in the registry because of exactly that. Always resolve through
+ * a host that exists on the network.
+ */
+export function nativeFetchableUrl(path: string): string {
+  if (/^https?:/i.test(path)) return path
+  return new URL(path, shareOrigin()).href
+}
+
 export type RegistrySource = 'api' | 'file' | 'sample'
 
 export interface RegistryLoad {
