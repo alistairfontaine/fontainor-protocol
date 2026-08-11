@@ -94,7 +94,11 @@ try {
     }
     await plBtn.waitFor({ timeout: 5000 })
     await plBtn.click()
+    await menu.waitFor({ timeout: 3000 })
     await menu.locator('button', { hasText: 'Road Trip' }).click()
+    // Don't navigate until the membership toggle has actually landed — on slow
+    // CI runners an immediate goto raced the click and track B was never added.
+    await menu.locator('button[aria-pressed="true"]', { hasText: 'Road Trip' }).waitFor({ timeout: 3000 })
 
     // ---------- 3. playlist detail: order, play all, reorder ----------
     console.log('playlist detail + playback order')
