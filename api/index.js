@@ -577,7 +577,7 @@ app.post('/api/v1/auth/sovereign-login', async (req, res) => {
 
         const stale = signedMessageStaleness(message, LOGIN_FRESHNESS_MS);
         if (stale) {
-            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale });
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale, serverTime: Date.now() });
         }
 
         const nacl = await import('tweetnacl');
@@ -644,7 +644,7 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
         const expectedMessage = `Fontainor handle claim: @${bare} :: ${issuedAt}`;
         const stale = signedMessageStaleness(expectedMessage, LOGIN_FRESHNESS_MS);
         if (!Number.isSafeInteger(issuedAt) || stale) {
-            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale || 'Handle claim is missing its issue timestamp — update the app and try again.' });
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale || 'Handle claim is missing its issue timestamp — update the app and try again.', serverTime: Date.now() });
         }
 
         const nacl = await import('tweetnacl');
@@ -848,7 +848,7 @@ app.post('/api/v1/favorites', async (req, res) => {
 
         const stale = signedMessageStaleness(message, SESSION_TTL_MS);
         if (stale) {
-            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale });
+            return res.status(401).json({ success: false, code: 'SIGNATURE_STALE', message: stale, serverTime: Date.now() });
         }
 
         const nacl = await import('tweetnacl');

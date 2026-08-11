@@ -7,7 +7,7 @@ export const RELEASES_PAGE = 'https://github.com/alistairfontaine/fontainor-prot
 export const APK_URL = 'https://github.com/alistairfontaine/fontainor-protocol/releases/latest/download/fontainor-android.apk'
 
 /** Static fallbacks shown until (or if) the live release lookup resolves. */
-export const FALLBACK_VERSION = '4.2.0'
+export const FALLBACK_VERSION = '4.3.0'
 export const FALLBACK_SIZE_MB = 15
 
 const DISMISS_KEY = 'fontainor_android_banner_dismissed_v1'

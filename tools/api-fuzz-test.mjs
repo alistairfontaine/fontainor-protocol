@@ -102,7 +102,7 @@ const req = (method, p, { body, headers } = {}) => new Promise((resolve) => {
     const u = new URL(base + p);
     const r = http.request({ method, hostname: u.hostname, port: u.port, path: u.pathname + u.search, headers: { 'Content-Type': 'application/json', ...headers } }, (res) => {
         let data = ''; res.on('data', (c) => (data += c));
-        res.on('end', () => { let json = null; try { json = JSON.parse(data); } catch { /* non-json */ } resolve({ status: res.statusCode, json, text: data, ctype: res.headers['content-type'] || '' }); });
+        res.on('end', () => { let json = null; try { json = JSON.parse(data); } catch { /* non-json */ } resolve({ status: res.statusCode, json, text: data, ctype: res.headers['content-type'] || '', headers: res.headers }); });
     });
     if (body !== undefined) r.write(typeof body === 'string' ? body : JSON.stringify(body));
     r.end();
@@ -144,6 +144,16 @@ check('login without issue timestamp -> 401 SIGNATURE_STALE', r.status === 401 &
 m = loginMsg(Date.now() - 11 * 60 * 1000);
 r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
 check('login signed 11 min ago -> 401 SIGNATURE_STALE (replay window closed)', r.status === 401 && r.json?.code === 'SIGNATURE_STALE', String(r.status));
+// A skewed device clock must be recoverable, not a lockout: the rejection has
+// to carry the server's own time (and a Date header) so the client can realign.
+check('stale rejection reports serverTime so a skewed client can self-correct', Number.isFinite(r.json?.serverTime) && Math.abs(r.json.serverTime - Date.now()) < 60000, JSON.stringify(r.json?.serverTime));
+check('every response carries a parseable Date header (clock source)', Number.isFinite(Date.parse(r.headers?.date ?? '')), String(r.headers?.date));
+m = loginMsg(Date.now() + 30 * 60 * 1000);
+r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
+check('login timestamped 30 min in the FUTURE -> 401 with a clock-specific message', r.status === 401 && /device clock/i.test(r.json?.message ?? ''), JSON.stringify(r.json?.message));
+m = loginMsg(Date.now() + 60 * 1000);
+r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
+check('login 1 min in the future is tolerated (clock-skew allowance)', r.status === 200, String(r.status));
 
 // ============ 3. set-handle ============
 console.log('set-handle');

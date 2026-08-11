@@ -1,0 +1,148 @@
+name: Android APK
+
+# Builds the Capacitor Android app the same way docs/MOBILE.md builds it by
+# hand (npm ci -> vite build -> cap sync -> gradle assembleRelease), so a
+# release APK no longer depends on one laptop having the Android SDK.
+#
+# Signing: if the repo has the four ANDROID_KEYSTORE_* secrets, the release is
+# signed with the real upload key and the artifact can be installed as an
+# UPGRADE over an existing install. Without them android/app/build.gradle
+# falls back to debug signing — still installable, but Android refuses to
+# upgrade a release-signed install with a debug-signed one (users would have to
+# uninstall first), so treat unsigned output as test-only.
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Gradle build type'
+        type: choice
+        options: [release, debug]
+        default: release
+  push:
+    branches: ['mobile-v1', 'build/android-**']
+    paths-ignore: ['**.md', 'docs/**']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # docs/MOBILE.md pins JDK 21 for the AGP/Gradle combo in android/.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages (platform 36 / build-tools 36)
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck + build
+        run: npm run ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Start preview servers
+        run: |
+          npx vite preview --port 4173 --strictPort &
+          npx vite preview --port 4174 --strictPort &
+          for port in 4173 4174; do
+            for i in $(seq 1 30); do
+              curl -sf "http://localhost:$port/" > /dev/null && break
+              sleep 1
+            done
+          done
+
+      # A broken web bundle inside a signed APK is worse than no APK: the same
+      # verification gate CI runs on main also gates the mobile binary.
+      - name: Run verification suites
+        run: |
+          status=0
+          for t in handles plays share stats recovery publish-persist api-fuzz queue playlists mobile-wallet follows portable-profile real-flows header-search search-page; do
+            echo "::group::tools/$t-test.mjs"
+            if ! node "tools/$t-test.mjs"; then
+              echo "::error::tools/$t-test.mjs failed"
+              status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status
+
+      - name: Sync web build into the native project
+        run: npx cap sync android
+
+      # NOTE: the `secrets` context is NOT available in a step-level `if:`, so
+      # the emptiness check happens inside the script instead of the condition.
+      - name: Decode release keystore (if secrets are configured)
+        id: keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "No ANDROID_KEYSTORE_BASE64 secret set — release will fall back to debug signing."
+            exit 0
+          fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          # key.properties is gitignored; written at build time, never committed.
+          cat > android/key.properties <<EOF
+          storeFile=$RUNNER_TEMP/release.jks
+          storePassword=$STORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build APK
+        working-directory: android
+        run: ./gradlew --no-daemon :app:assemble${{ inputs.build_type == 'debug' && 'Debug' || 'Release' }}
+
+      - name: Report what was produced
+        run: |
+          set -e
+          find android/app/build/outputs/apk -name '*.apk' -printf '%f  %s bytes\n'
+          if [ "${{ steps.keystore.outputs.signed }}" = "true" ]; then
+            echo "APK is signed with the release upload key (installs as an upgrade)."
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — APK is DEBUG-signed. Installable, but not an upgrade over a release-signed install."
+          fi
+          # Fail loudly if the native bundle didn't pick up this commit's web build.
+          UNIVERSAL=$(find android/app/build/outputs/apk -name '*universal*.apk' | head -1)
+          [ -n "$UNIVERSAL" ] || UNIVERSAL=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          unzip -o -q "$UNIVERSAL" -d /tmp/apkcheck
+          grep -rql "fontainor-protocol.vercel.app" /tmp/apkcheck/assets/public/assets/*.js \
+            || { echo "::error::built APK has no deployed-origin API base — native build would show demo data only"; exit 1; }
+          echo "Verified: APK web bundle targets the deployed API origin."
+
+      - name: Cleanup signing material
+        if: always()
+        run: rm -f android/key.properties "$RUNNER_TEMP/release.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fontainor-android-apk
+          path: android/app/build/outputs/apk/**/*.apk
+          if-no-files-found: error
+          retention-days: 30

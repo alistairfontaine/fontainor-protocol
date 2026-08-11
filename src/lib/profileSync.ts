@@ -17,6 +17,7 @@
 import { getFavoritesState, mergeFavoritesState, subscribeFavorites } from '../state/collections'
 import { API_BASE } from './api'
 import { mergePurchases, type PurchaseReceipt } from './purchase'
+import { noteServerDate, syncedNow } from './serverClock'
 
 const SESSION_KEY = 'fontainor_session_v2' // v1 proofs had no expiry — abandoned
 const PUSH_DEBOUNCE_MS = 1500
@@ -48,7 +49,7 @@ export function loadSessionProof(): SessionProof | null {
     if (!p || typeof p.publicKey !== 'string' || typeof p.signature !== 'string' || typeof p.wallet !== 'string') return null
     // Expired (or legacy un-timestamped) proofs are useless — the server
     // rejects them. Drop so the caller falls back to read-only sync.
-    if (!Number.isFinite(p.issuedAt) || Date.now() - p.issuedAt > SESSION_TTL_MS) {
+    if (!Number.isFinite(p.issuedAt) || syncedNow() - p.issuedAt > SESSION_TTL_MS) {
       clearSessionProof()
       return null
     }
@@ -79,6 +80,7 @@ interface ServerPurchase {
 
 async function pullPurchases(wallet: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/purchases?wallet=${encodeURIComponent(wallet)}`)
+  noteServerDate(res)
   if (!res.ok) return
   const data = (await res.json().catch(() => null)) as { purchases?: ServerPurchase[] } | null
   if (!data || !Array.isArray(data.purchases)) return
@@ -145,6 +147,7 @@ async function pushFavoritesNow(proof: SessionProof): Promise<void> {
 
 async function pullFavorites(wallet: string): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/favorites?wallet=${encodeURIComponent(wallet)}`)
+  noteServerDate(res)
   if (!res.ok) return
   const data = (await res.json().catch(() => null)) as ServerFavorites | null
   if (!data || !Array.isArray(data.ids)) return
