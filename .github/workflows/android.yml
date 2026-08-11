@@ -105,6 +105,14 @@ jobs:
           sys.exit(1 if bad else 0)
           PY
 
+      # The demo MP3s stay on the WEB build (the site serves /audio/*) but do
+      # not ride inside the APK: they were 10.3 MB of a 13.5 MB artifact. The
+      # native app streams them from the deployed origin (streamableAudioUrl).
+      # Must run AFTER the browser suites (some stream from dist) and BEFORE
+      # cap sync.
+      - name: Strip bundled demo audio from the native web bundle
+        run: node tools/strip-demo-audio.mjs
+
       - name: Sync web build into the native project
         run: npx cap sync android
 
@@ -156,6 +164,13 @@ jobs:
           MAPS=$(find /tmp/apkcheck/assets/public -name '*.map' | wc -l)
           [ "$MAPS" = "0" ] || { echo "::error::$MAPS source maps packaged in the APK (should be excluded by ignoreAssetsPattern)"; exit 1; }
           echo "Verified: no source maps packaged."
+          # Demo MP3s stream from the site; if they sneak back in the APK
+          # quadruples in size. The size ceiling catches ANY future ballooning.
+          MP3S=$(find /tmp/apkcheck/assets/public -name '*.mp3' | wc -l)
+          [ "$MP3S" = "0" ] || { echo "::error::$MP3S demo mp3(s) packaged in the APK — strip-demo-audio.mjs did not run before cap sync"; exit 1; }
+          echo "Verified: no demo audio packaged."
+          SIZE=$(stat -c%s "$UNIVERSAL")
+          [ "$SIZE" -lt 6000000 ] || { echo "::error::APK is $SIZE bytes (ceiling 6 MB) — something heavy was packaged; inspect /tmp/apkcheck"; exit 1; }
           du -h "$UNIVERSAL" | awk '{print "Universal APK size: " $1}'
 
       - name: Cleanup signing material

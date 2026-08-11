@@ -94,6 +94,18 @@ window.androidBridge = {
   },
 };
 
+// Record every source handed to an <audio> element. The demo MP3s are not
+// packaged in the APK, so a relative registry path MUST resolve to the
+// deployed origin here — resolving against the WebView origin would 404.
+window.__audioSrcs = [];
+const RealAudio = window.Audio;
+window.Audio = function (src) {
+  const a = new RealAudio(src);
+  if (src) window.__audioSrcs.push(String(src));
+  return a;
+};
+window.Audio.prototype = RealAudio.prototype;
+
 // Deliver an appUrlOpen event the way the OS does after Phantom bounces back.
 window.__deliverUrl = (url) => {
   const cb = window.__listeners['App.appUrlOpen'];
@@ -157,6 +169,17 @@ try {
             type: 'single',
             audioUrl: `${BASE}/audio/aurora-drift.mp3`,
             coverUrl: `${BASE}/covers/aurora-drift.svg`,
+          },
+          {
+            // Relative audio path, like every bundled demo entry. The MP3s are
+            // stripped from the APK, so this must STREAM from the deployed
+            // origin — the WebView origin has no such file.
+            id: 'FONT-NATIVE02',
+            title: 'Relative Audio Probe',
+            artist: 'Test Artist',
+            type: 'single',
+            audioUrl: '/audio/genesis.mp3',
+            coverUrl: '/covers/genesis.svg',
           },
         ]),
       })
@@ -259,7 +282,20 @@ try {
   const storedKeys = await page.evaluate(() => Object.keys(JSON.parse(window.__prefs['fontainor_phantom_session_v1'] ?? '{}')))
   check('persisted session has the dapp keypair but no wallet yet', storedKeys.includes('dappPub') && storedKeys.includes('dappSec') && !storedKeys.includes('walletPubkey'), JSON.stringify(storedKeys))
 
-  // ---------- 8. no crashes anywhere in the native path ----------
+  // ---------- 8. REGRESSION: relative audio streams from the deployed origin ----------
+  // The demo MP3s are not packaged in the APK (they were 76% of its size), so
+  // playing a release whose audioUri is a relative path must hand the <audio>
+  // element a deployed-origin URL. A WebView-origin URL here means the strip
+  // regressed into "demo tracks silently don't play in the app".
+  await page.getByRole('button', { name: 'Play Relative Audio Probe' }).first().click()
+  await page.waitForFunction(() => (window.__audioSrcs || []).length > 0, null, { timeout: 8000 })
+  const audioSrcs = await page.evaluate(() => window.__audioSrcs)
+  const relSrc = audioSrcs[audioSrcs.length - 1]
+  check('relative audioUri streams from the DEPLOYED origin in the native shell', relSrc === `${DEPLOYED_ORIGIN}/audio/genesis.mp3`, relSrc)
+  const genesisSrcs = audioSrcs.filter((s) => s.includes('/audio/genesis'))
+  check('no audio element got the bare relative path or a device-origin URL', genesisSrcs.length > 0 && genesisSrcs.every((s) => s.startsWith(`${DEPLOYED_ORIGIN}/`)), JSON.stringify(genesisSrcs))
+
+  // ---------- 9. no crashes anywhere in the native path ----------
   const realErrors = errors.filter((e) => !/Failed to load resource|net::ERR|favicon/i.test(e))
   check('no uncaught errors in the native shell', realErrors.length === 0, realErrors.slice(0, 3).join(' | '))
 } finally {

@@ -43,15 +43,17 @@ release keystore referenced by `android/key.properties` (kept OUT of git).
 
 ```bash
 npm ci
-npm run build                 # produce dist/
-npx cap sync android          # copy web build + native plugins
+npm run build                     # produce dist/
+node tools/strip-demo-audio.mjs   # demo MP3s stream from the site; don't ship ~10 MB in the APK
+npx cap sync android              # copy web build + native plugins
 cd android
 ./gradlew :app:assembleDebug      # dev/sideload (debug-signed)
-./gradlew :app:assembleRelease    # signed + R8-shrunk, per-ABI + universal
+./gradlew :app:assembleRelease    # signed + R8-shrunk universal APK
 ```
 
-Outputs land in `android/app/build/outputs/apk/{debug,release}/`. The
-`app-universal-*.apk` is the one to sideload.
+Outputs land in `android/app/build/outputs/apk/{debug,release}/` as
+`app-release.apk` / `app-debug.apk` (no ABI splits — the shell has no native
+libraries to split).
 
 ### Signing
 

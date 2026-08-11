@@ -59,6 +59,22 @@ export function nativeFetchableUrl(path: string): string {
   return new URL(path, shareOrigin()).href
 }
 
+/**
+ * URL a WebView `<audio>` element should stream a registry path from.
+ *
+ * Web: the path untouched — the site serves its own /audio files, and staying
+ * relative keeps local previews (port 4173…) working.
+ *
+ * Native shell: the demo MP3s are NOT packaged in the APK any more (they were
+ * 10.3 MB of a 13.5 MB APK — 76% dead weight for a client of a network
+ * catalog), so a relative audio path must stream from the deployed site,
+ * exactly like every API call. Published releases carry absolute gateway URLs
+ * and pass through unchanged. Offline listening is what downloads are for.
+ */
+export function streamableAudioUrl(path: string): string {
+  return isNativeShell() ? nativeFetchableUrl(path) : path
+}
+
 export type RegistrySource = 'api' | 'file' | 'sample'
 
 // ── last-known-good registry cache ─────────────────────────────────────────

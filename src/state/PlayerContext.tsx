@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { Release } from '../lib/registry'
+import { streamableAudioUrl } from '../lib/api'
 import { dropBrokenDownload, localAudioSrc } from '../lib/downloads'
 import { markGatewayDown, markGatewayUp, mediaCandidates } from '../lib/gateways'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
@@ -392,7 +393,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nxt = peekNext()
     if (!nxt?.audio) return
     const nextLocal = localAudioSrc(nxt.id)
-    const b = new Audio(nextLocal ?? mediaCandidates(nxt.audio)[0] ?? nxt.audio)
+    const b = new Audio(nextLocal ?? mediaCandidates(streamableAudioUrl(nxt.audio))[0] ?? streamableAudioUrl(nxt.audio))
     if (nextLocal) b.dataset.localDownload = nxt.id
     b.preload = 'auto'
     b.volume = 0
@@ -433,7 +434,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // every gateway that serves the same permanent content. One unreachable
         // gateway must not make a permanent release unplayable.
         const local = localAudioSrc(rel.id)
-        const list = [...(local ? [local] : []), ...mediaCandidates(rel.audio)]
+        const list = [...(local ? [local] : []), ...mediaCandidates(streamableAudioUrl(rel.audio))]
         attemptsRef.current = { id: rel.id, list, idx: 0 }
         const a = new Audio(list[0])
         if (local) a.dataset.localDownload = rel.id
