@@ -397,6 +397,11 @@ export function clearDownloadError(id: string): void {
   if (progressMap[id]?.state === 'error') setProgress(id, null)
 }
 
+/** Delete every download (files + index). Cancels nothing in flight. */
+export async function removeAllDownloads(): Promise<void> {
+  for (const id of Object.keys(index)) await removeDownload(id)
+}
+
 export async function removeDownload(id: string): Promise<void> {
   const e = index[id]
   if (!e) return

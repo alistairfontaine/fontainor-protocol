@@ -4,7 +4,7 @@ import { FixedSizeGrid } from 'react-window'
 import { Cover } from '../components/Cover'
 import { ReleaseCard, ReleaseGrid } from '../components/ReleaseCard'
 import { IconClose, IconLibrary, IconSearch } from '../components/icons'
-import { clearDownloadError, dismissWaiting, downloadRelease, releaseFromDownload, removeDownload, useDownloads } from '../lib/downloads'
+import { clearDownloadError, dismissWaiting, downloadRelease, releaseFromDownload, removeAllDownloads, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { usePlayer } from '../state/PlayerContext'
@@ -142,10 +142,19 @@ function DownloadSettings() {
   )
 }
 
+function formatBytes(n: number): string {
+  if (n <= 0) return '0 MB'
+  if (n < 1024 * 1024) return `${Math.max(1, Math.round(n / 1024))} KB`
+  const mb = n / (1024 * 1024)
+  return mb >= 100 ? `${Math.round(mb)} MB` : `${mb.toFixed(1)} MB`
+}
+
 function DownloadsSection() {
   const { entries, progress } = useDownloads()
   const { music } = useRegistry()
   const { play } = usePlayer()
+  const [confirmClear, setConfirmClear] = useState(false)
+  const totalBytes = entries.reduce((sum, e) => sum + (e.bytes > 0 ? e.bytes : 0), 0)
   const byId = new Map(music.map((r) => [r.id, r]))
   // In-flight / failed downloads surface here too (YouTube-style: the shelf
   // shows what's downloading with live %, not only finished items).
@@ -162,7 +171,9 @@ function DownloadsSection() {
     <section className="mb-10" aria-label="Downloads">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-lg font-semibold text-ink">Downloads</h2>
-        <span className="text-[12px] text-faint">available offline</span>
+        <span className="text-[12px] tabular-nums text-faint">
+          {entries.length > 0 ? `${entries.length} · ${formatBytes(totalBytes)} on device` : 'available offline'}
+        </span>
       </div>
       <ul className="divide-y divide-line rounded-card border border-line bg-surface">
         {active.map(({ rel, p }) => (
@@ -237,7 +248,13 @@ function DownloadsSection() {
               </span>
               <span className="min-w-0">
                 <span className="block truncate text-sm font-medium text-ink">{rel.title}</span>
-                <span className="block truncate text-[12px] text-muted">{rel.artist}</span>
+                <span className="block truncate text-[12px] text-muted">
+                  {rel.artist}
+                  {(() => {
+                    const bytes = entries.find((e) => e.id === rel.id)?.bytes ?? 0
+                    return bytes > 0 ? <span className="tabular-nums text-faint"> · {formatBytes(bytes)}</span> : null
+                  })()}
+                </span>
               </span>
             </button>
             <button
@@ -253,6 +270,44 @@ function DownloadsSection() {
           </li>
         ))}
       </ul>
+      {entries.length > 1 && (
+        <div className="mt-3 flex items-center justify-end gap-3">
+          {confirmClear ? (
+            <>
+              <span className="text-[12px] text-muted">Delete all {entries.length} downloads ({formatBytes(totalBytes)})?</span>
+              <button
+                onClick={() => {
+                  hapticThump()
+                  setConfirmClear(false)
+                  void removeAllDownloads()
+                }}
+                className="cursor-pointer text-[12px] font-medium text-warn hover:underline"
+                aria-label="Confirm remove all downloads"
+              >
+                Delete all
+              </button>
+              <button
+                onClick={() => setConfirmClear(false)}
+                className="cursor-pointer text-[12px] font-medium text-muted hover:text-ink"
+                aria-label="Keep my downloads"
+              >
+                Keep
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => {
+                hapticTick()
+                setConfirmClear(true)
+              }}
+              className="cursor-pointer text-[12px] font-medium text-faint hover:text-warn"
+              aria-label="Remove all downloads"
+            >
+              Remove all
+            </button>
+          )}
+        </div>
+      )}
     </section>
   )
 }

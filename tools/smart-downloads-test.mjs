@@ -340,7 +340,31 @@ try {
   check('the filter shows every downloaded release', gridIds.includes('FONT-SMART2') && gridIds.includes('FONT-SMART3'), JSON.stringify(gridIds))
   check('the filter hides not-downloaded releases', !gridIds.includes('FONT-SMART1'), JSON.stringify(gridIds))
 
-  // ---------- 9. no crashes ----------
+  // ---------- 9. storage overview + Remove all ----------
+  console.log('smart-downloads: storage + remove all')
+  const shelf2 = page.locator('section[aria-label="Downloads"]')
+  await shelf2.waitFor({ timeout: 8000 })
+  const shelfHead = await shelf2.innerText()
+  check('the shelf shows a storage total', /\d+(\.\d+)? (KB|MB) on device/.test(shelfHead), shelfHead.split('\n')[0])
+  check('per-item sizes are shown', /Test Artist · \d+(\.\d+)? (KB|MB)/.test(shelfHead), shelfHead)
+  // Remove all is a two-step action: it must never fire on a single tap.
+  await shelf2.getByRole('button', { name: 'Remove all downloads' }).click()
+  await page.waitForTimeout(200)
+  check('remove-all asks before deleting', await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')).length >= 2))
+  await shelf2.getByRole('button', { name: 'Keep my downloads' }).click()
+  await page.waitForTimeout(200)
+  check('Keep aborts the deletion', await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')).length >= 2))
+  await shelf2.getByRole('button', { name: 'Remove all downloads' }).click()
+  await shelf2.getByRole('button', { name: 'Confirm remove all downloads' }).click()
+  await page.waitForTimeout(600)
+  const afterClear = await page.evaluate(() => ({
+    idx: Object.keys(JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')),
+    files: Object.keys(window.__files).filter((k) => k.includes('downloads/')),
+  }))
+  check('confirming deletes every download and its files', afterClear.idx.length === 0 && afterClear.files.length === 0, JSON.stringify(afterClear))
+  check('the Downloaded chip disappears with the last download', (await page.getByRole('button', { name: 'Downloaded', exact: true }).count()) === 0)
+
+  // ---------- 10. no crashes ----------
   const realErrors = errors.filter((e) => !/Failed to load resource|net::ERR|favicon|Autoplay|play\(\) failed/i.test(e))
   check('no uncaught errors during smart downloads', realErrors.length === 0, realErrors.slice(0, 3).join(' | '))
 } finally {
