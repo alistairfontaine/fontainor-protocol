@@ -68,10 +68,26 @@ try {
 
     // ---------- 2. release page dropdown: toggle + create-and-add ----------
     console.log('release page playlist menu')
-    await page.goto(BASE + '/#/', { waitUntil: 'networkidle' })
-    const cards = page.locator('article a[href^="#/release/"]')
+    // A hash-only goto does not reload the document, and `networkidle` resolves
+    // immediately — so the PREVIOUS route (a release page, whose "More like
+    // this" rail also renders release cards) can still be on screen when we
+    // start reading labels. On a slow CI runner that raced: a label was read
+    // from the old view and the click landed on the newly mounted home grid, so
+    // the test added a DIFFERENT release than it thought. Wait for the home
+    // heading, and click by label rather than by index.
+    const gotoHome = async () => {
+      await page.goto(BASE + '/#/', { waitUntil: 'networkidle' })
+      await page.getByRole('heading', { name: 'New on the registry' }).waitFor({ timeout: 8000 })
+      await page.locator('article a[aria-label]').first().waitFor({ timeout: 8000 })
+    }
+    const clickCard = async (label) => {
+      await page.locator(`article a[aria-label=${JSON.stringify(label)}]`).first().click()
+      await page.getByRole('heading', { name: label, exact: true }).first().waitFor({ timeout: 8000 })
+    }
+    await gotoHome()
+    const cards = page.locator('article a[aria-label]')
     const titleA = await cards.nth(0).getAttribute('aria-label')
-    await cards.nth(0).click()
+    await clickCard(titleA)
     const plBtn = page.locator('button[aria-label^="Save "][aria-label$=" to playlist"]')
     await plBtn.waitFor({ timeout: 5000 })
     await plBtn.click()
@@ -85,13 +101,14 @@ try {
     check('create-and-add from the menu', (await plBtn.innerText()).includes('In 2 playlists'))
 
     // add a SECOND (different) track to Road Trip
-    await page.goto(BASE + '/#/', { waitUntil: 'networkidle' })
+    await gotoHome()
     let titleB = ''
-    const n = await cards.count()
-    for (let i = 1; i < n; i++) {
-        const t = await cards.nth(i).getAttribute('aria-label')
-        if (t && t !== titleA) { titleB = t; await cards.nth(i).click(); break }
+    const labels = await cards.evaluateAll((els) => els.map((e) => e.getAttribute('aria-label')))
+    for (const t of labels) {
+        if (t && t !== titleA) { titleB = t; break }
     }
+    check('a second, different release is available to add', !!titleB, JSON.stringify(labels.slice(0, 4)))
+    await clickCard(titleB)
     await plBtn.waitFor({ timeout: 5000 })
     await plBtn.click()
     await menu.waitFor({ timeout: 3000 })

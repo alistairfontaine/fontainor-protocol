@@ -18,6 +18,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // Custom in-app plugins must be registered before the bridge boots.
         registerPlugin(MwaPlugin.class);
+        registerPlugin(DownloaderPlugin.class);
         super.onCreate(savedInstanceState);
 
         // Android 13+: the media playback notification (lock-screen player

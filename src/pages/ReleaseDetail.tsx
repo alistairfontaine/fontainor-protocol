@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom'
 import { Cover } from '../components/Cover'
 import { ReleaseCard } from '../components/ReleaseCard'
 import { IconArweave, IconBack, IconCheck, IconDownload, IconExternal, IconHeart, IconPause, IconPlay, IconPlus, IconQueue, IconSpinner, IconTag } from '../components/icons'
-import { clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
+import { canCancelDownloads, cancelDownload, clearDownloadError, downloadRelease, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
@@ -437,9 +437,17 @@ function DownloadButton({ rel }: { rel: Release }) {
   const failed = prog?.state === 'error'
   if (!rel.audio) return null
 
+  // Tapping while downloading cancels — but only where cancellation is real
+  // (the foreground download service); an older shell cannot interrupt a
+  // transfer, so it must not pretend to.
+  const cancellable = downloading && canCancelDownloads()
+
   const onClick = async () => {
     hapticTick()
-    if (downloading) return
+    if (downloading) {
+      if (cancellable) await cancelDownload(rel.id)
+      return
+    }
     if (failed) clearDownloadError(rel.id)
     if (has) {
       await removeDownload(rel.id)
@@ -453,7 +461,13 @@ function DownloadButton({ rel }: { rel: Release }) {
       size="lg"
       onClick={() => void onClick()}
       aria-pressed={has}
-      aria-label={has ? `Remove ${rel.title} from downloads` : `Download ${rel.title}`}
+      aria-label={
+        cancellable
+          ? `Cancel download of ${rel.title}`
+          : has
+            ? `Remove ${rel.title} from downloads`
+            : `Download ${rel.title}`
+      }
     >
       {downloading ? <IconSpinner size={18} /> : has ? <IconCheck size={18} className="text-accent" /> : <IconDownload size={18} />}
       {downloading

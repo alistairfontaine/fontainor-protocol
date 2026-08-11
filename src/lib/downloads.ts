@@ -18,6 +18,7 @@ import { Directory, Filesystem } from '@capacitor/filesystem'
 import { useSyncExternalStore } from 'react'
 import { nativeFetchableUrl } from './api'
 import { markGatewayDown, markGatewayUp, mediaCandidates } from './gateways'
+import { cancelServiceDownload, hasDownloadService, isCancellation, serviceDownload } from './nativeDownloader'
 import { IS_NATIVE } from './platform'
 import type { Release } from './registry'
 
@@ -214,17 +215,28 @@ export async function downloadRelease(rel: Release): Promise<void> {
   // One gateway being unreachable must not mean "this release cannot be saved":
   // the same permanent bytes are served by every gateway that knows the id.
   const urls = mediaCandidates(rel.audio).map(remoteUrl)
-  setProgress(rel.id, { state: 'downloading', pct: 0 })
+  // pct null ⇒ "Downloading…". Zero bytes have moved yet, and "Downloading 0%"
+  // reads like a stuck transfer.
+  setProgress(rel.id, { state: 'downloading', pct: null })
 
   /** Download + verify from ONE url. Throws (and leaves no audio file) on failure. */
   const attempt = async (url: string): Promise<{ bytes: number; localSrc: string }> => {
     inflightByUrl.set(url, rel.id)
     try {
-      // Native-side streaming download — nothing crosses the JS bridge.
-      await Filesystem.downloadFile({ url, directory: DIR, path: audioPath, progress: true, recursive: true })
       let bytes = 0
+      if (hasDownloadService()) {
+        // Foreground service: the transfer survives the app being backgrounded
+        // or the screen locking, shows a progress notification and can be
+        // cancelled for real.
+        bytes = await serviceDownload({ id: rel.id, url, path: audioPath, title: rel.title }, (got, total) => {
+          setProgress(rel.id, { state: 'downloading', pct: total > 0 ? Math.min(100, Math.round((got / total) * 100)) : null })
+        })
+      } else {
+        // Older shell: in-process streaming download (nothing crosses the bridge).
+        await Filesystem.downloadFile({ url, directory: DIR, path: audioPath, progress: true, recursive: true })
+      }
       try {
-        bytes = (await Filesystem.stat({ directory: DIR, path: audioPath })).size
+        bytes = (await Filesystem.stat({ directory: DIR, path: audioPath })).size || bytes
       } catch {
         /* size is cosmetic */
       }
@@ -237,7 +249,7 @@ export async function downloadRelease(rel: Release): Promise<void> {
       markGatewayUp(url)
       return { bytes, localSrc }
     } catch (err) {
-      markGatewayDown(url)
+      if (!isCancellation(err)) markGatewayDown(url)
       try {
         await Filesystem.deleteFile({ directory: DIR, path: audioPath })
       } catch {
@@ -257,6 +269,12 @@ export async function downloadRelease(rel: Release): Promise<void> {
         saved = await attempt(url)
         break
       } catch (err) {
+        // The user cancelling is a decision, not a failure: do not try the next
+        // gateway and do not leave an error badge behind.
+        if (isCancellation(err)) {
+          setProgress(rel.id, null)
+          return
+        }
         lastErr = err
       }
     }
@@ -318,6 +336,21 @@ export async function downloadRelease(rel: Release): Promise<void> {
  */
 export async function dropBrokenDownload(id: string): Promise<void> {
   await removeDownload(id)
+}
+
+/**
+ * Stop an in-flight download. Real cancellation exists only with the download
+ * service; without it the transfer cannot be interrupted, so the UI keeps the
+ * button in its downloading state rather than lying about having stopped.
+ */
+export async function cancelDownload(id: string): Promise<void> {
+  if (!hasDownloadService()) return
+  await cancelServiceDownload(id)
+}
+
+/** Whether the UI can offer a Cancel action for an in-flight download. */
+export function canCancelDownloads(): boolean {
+  return hasDownloadService()
 }
 
 /** Clear an error state (dismiss / before retry). */
