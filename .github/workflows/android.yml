@@ -20,7 +20,7 @@ on:
         options: [release, debug]
         default: release
   push:
-    branches: ['mobile-v1', 'build/android-**']
+    branches: ['main', 'mobile-v1', 'build/android-**']
     paths-ignore: ['**.md', 'docs/**']
 
 permissions:
