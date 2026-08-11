@@ -138,9 +138,17 @@ export interface RegistryLoad {
   data: unknown
   source: RegistrySource
   repaired: boolean
+  /**
+   * Why a non-'api' source was used. 'api-empty' is the expected demo mode
+   * (live registry reachable but empty) and should stay silent; 'api-down'
+   * means the network/API failed and the user is looking at stale data, which
+   * the UI should say out loud.
+   */
+  fallbackReason?: 'api-empty' | 'api-down'
 }
 
 export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
+  let fallbackReason: 'api-empty' | 'api-down' = 'api-down'
   try {
     const res = await fetch(API_BASE + '/registry', { cache: 'no-store' })
     if (res.ok) {
@@ -153,6 +161,8 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
         writeCache(merged)
         return { data: merged, source: 'api', repaired: out.repaired }
       }
+      // Reached the API fine — the registry is just empty. Demo mode.
+      fallbackReason = 'api-empty'
     }
   } catch {
     /* fall through */
@@ -164,15 +174,15 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
       if (out.data != null) {
         // Bundled snapshot + everything this device has already seen live, so a
         // dropped connection never makes the user's saved releases vanish.
-        return { data: unionSeen(asList(out.data), readCache()), source: 'file', repaired: out.repaired }
+        return { data: unionSeen(asList(out.data), readCache()), source: 'file', repaired: out.repaired, fallbackReason }
       }
     }
   } catch {
     /* fall through */
   }
   const seen = readCache()
-  if (seen.length) return { data: unionSeen(asList(fallback), seen), source: 'file', repaired: false }
-  return { data: fallback, source: 'sample', repaired: false }
+  if (seen.length) return { data: unionSeen(asList(fallback), seen), source: 'file', repaired: false, fallbackReason }
+  return { data: fallback, source: 'sample', repaired: false, fallbackReason }
 }
 
 /** Fetch the raw live registry array (for appending a new publication). */

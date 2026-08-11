@@ -102,10 +102,13 @@ function MadeForYou() {
 }
 
 function SourceBanner() {
-  const { source, repaired } = useRegistry()
+  const { source, repaired, fallbackReason } = useRegistry()
   if (source === 'api') return null
-  {/* 'file' source is the expected demo mode — no banner, it should feel like the product */}
   if (source === 'sample') return <Banner tone="warn">Could not reach the registry — showing sample data.</Banner>
+  {/* 'file' + 'api-empty' is the expected demo mode — silent, it should feel like the product.
+      'file' + 'api-down' means the API/network failed: say so instead of silently showing stale data. */}
+  if (source === 'file' && fallbackReason === 'api-down')
+    return <Banner tone="warn">Offline — showing your last saved copy of the registry. It refreshes automatically when you reconnect.</Banner>
   if (repaired) return <Banner tone="info">Registry contained a formatting glitch that was auto-repaired.</Banner>
   return null
 }
