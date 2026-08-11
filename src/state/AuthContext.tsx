@@ -138,6 +138,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       })
       void syncProfile(address)
       return { success: true }
+    } catch (e) {
+      // Never let a network failure escape as an unhandled rejection — every
+      // caller treats { success:false } as the inline-error path.
+      return {
+        success: false,
+        error: 'Could not reach the registry to verify the signature (' + String((e as Error)?.message || e) + '). Check your connection and try again.',
+      }
     } finally {
       setConnecting(false)
     }

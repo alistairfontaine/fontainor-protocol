@@ -326,8 +326,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       return
     }
     const p = stepFrom(-1)
-    if (p) play(p)
-  }, [cur, playing, play, startSim])
+    // playNow (via ref), NOT the public play(): play() clears the playlist
+    // context, so one Prev press inside a playlist would silently dump the
+    // rest of the session back into catalog order.
+    if (p) playRef.current(p)
+  }, [cur, playing, startSim])
 
   const seek = useCallback(
     (fraction: number) => {
