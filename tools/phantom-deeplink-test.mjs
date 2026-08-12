@@ -28,6 +28,7 @@ function check(name, ok, extra = '') {
 
 // ---- build the module under test with capacitor stubs ----------------------
 const outDir = mkdtempSync(join(root, 'tools', '.pdl-')) // inside repo so the bundle resolves node_modules
+process.on('exit', () => { try { rmSync(outDir, { recursive: true, force: true }) } catch {} })
 const outFile = join(outDir, 'phantomDeeplink.bundle.mjs')
 execSync(
   [

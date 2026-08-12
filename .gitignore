@@ -18,3 +18,4 @@ android/key.properties
 
 # Local serverless registry pointer
 api/pointer.json
+tools/.pdl-*
