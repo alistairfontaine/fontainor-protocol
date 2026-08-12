@@ -258,6 +258,14 @@ try {
   await page.getByRole('button', { name: 'Remove Relative Path Release from downloads' }).waitFor({ timeout: 8000 })
   check('button flips to the downloaded state', /Downloaded/.test(await page.getByRole('button', { name: /Remove Relative Path Release/ }).innerText()))
   check('downloaded state is exposed to assistive tech', (await page.getByRole('button', { name: /Remove Relative/ }).getAttribute('aria-pressed')) === 'true')
+  // Completion is ANNOUNCED, not just painted: the global polite live region
+  // (#sr-announcer) must carry the message so screen readers hear it even if
+  // the user navigated away while the transfer ran.
+  await page.waitForTimeout(200) // announce() sets text on a short delay to force re-announcement
+  const announced = await page.evaluate(() => document.getElementById('sr-announcer')?.textContent ?? '')
+  check('completion is announced to screen readers', /Downloaded Relative Path Release/.test(announced), JSON.stringify(announced))
+  const announcerLive = await page.evaluate(() => document.getElementById('sr-announcer')?.getAttribute('aria-live'))
+  check('the announcer is a polite live region', announcerLive === 'polite', String(announcerLive))
   const idx = await page.evaluate(() => JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}'))
   check('release is recorded in the download index', !!idx['FONT-RELATIVE1'], JSON.stringify(Object.keys(idx)))
   check('recorded entry has a real byte size', (idx['FONT-RELATIVE1']?.bytes ?? 0) > 1000, String(idx['FONT-RELATIVE1']?.bytes))

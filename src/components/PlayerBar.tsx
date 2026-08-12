@@ -218,7 +218,9 @@ export function PlayerBar() {
             <div className="min-w-0 flex-1">
               <span className="block truncate text-[13.5px] font-semibold text-ink">{current.title}</span>
               {stalled ? (
-                <span className="flex items-center gap-2 text-[12px] text-warn">
+                /* role=alert: playback dying mid-listen is exactly the interruption
+                   a screen reader should hear about without hunting for it. */
+                <span role="alert" className="flex items-center gap-2 text-[12px] text-warn">
                   <span className="truncate">Can’t reach the audio</span>
                   <button
                     onClick={(e) => {
@@ -296,7 +298,7 @@ export function PlayerBar() {
                 {current.title}
               </Link>
               {stalled ? (
-                <span className="flex items-center gap-2 text-[13px] text-warn">
+                <span role="alert" className="flex items-center gap-2 text-[13px] text-warn">
                   <span className="truncate">Can’t reach the audio</span>
                   <button onClick={retry} className="shrink-0 cursor-pointer font-semibold text-accent underline decoration-dotted">
                     Retry

@@ -105,7 +105,13 @@ export function Banner({ tone, children }: { tone: 'ok' | 'warn' | 'info'; child
     info: 'bg-raised text-muted ring-line',
   }
   return (
-    <div className={`mb-5 flex items-center gap-2.5 rounded-btn px-3.5 py-2.5 text-[13px] ring-1 ${tones[tone]}`}>
+    /* role: banners appear in response to state changes (went offline, data
+       repaired) — without a live-region role a screen reader never hears them.
+       warn interrupts (alert); ok/info wait their turn (status). */
+    <div
+      role={tone === 'warn' ? 'alert' : 'status'}
+      className={`mb-5 flex items-center gap-2.5 rounded-btn px-3.5 py-2.5 text-[13px] ring-1 ${tones[tone]}`}
+    >
       {tone === 'ok' ? <IconCheck size={15} /> : tone === 'warn' ? <IconAlert size={15} /> : null}
       <span className="text-body">{children}</span>
     </div>

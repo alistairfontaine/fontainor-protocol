@@ -52,6 +52,10 @@ async function main() {
     await page.goto(BASE + '/#/', { waitUntil: 'networkidle' })
     await page.waitForTimeout(800)
     check('api-down shows offline banner', await bannerVisible(page))
+    // The banner must also be HEARD: warn banners carry role=alert so screen
+    // readers announce the offline state instead of silently painting it.
+    const alertText = await page.getByRole('alert').innerText().catch(() => '')
+    check('offline banner is a live region (role=alert)', alertText.includes(BANNER_TEXT), alertText)
     // stale content still usable: bundled snapshot rendered
     const cards = await page.locator('main a[href*="#/"]').count()
     check('api-down still renders the saved snapshot', cards > 0, `links=${cards}`)

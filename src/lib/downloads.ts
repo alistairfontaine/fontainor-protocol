@@ -16,6 +16,7 @@
 import { Capacitor } from '@capacitor/core'
 import { Directory, Filesystem } from '@capacitor/filesystem'
 import { useSyncExternalStore } from 'react'
+import { announce } from './announce'
 import { nativeFetchableUrl } from './api'
 import { markGatewayDown, markGatewayUp, mediaCandidates } from './gateways'
 import { cancelServiceDownload, hasDownloadService, isCancellation, isMeteredConnection, onNetworkChange, serviceDownload } from './nativeDownloader'
@@ -246,6 +247,7 @@ export async function downloadRelease(rel: Release, opts: { force?: boolean } = 
     waitingQueue.set(rel.id, rel)
     armNetworkWatcher()
     setProgress(rel.id, { state: 'waiting' })
+    announce(`${rel.title} will download when Wi-Fi is available`)
     return
   }
   waitingQueue.delete(rel.id)
@@ -354,6 +356,9 @@ export async function downloadRelease(rel: Release, opts: { force?: boolean } = 
     }
     setProgress(rel.id, null)
     persist()
+    // The transfer often finishes while the user is elsewhere in the app —
+    // sighted users see the check mark appear; announce it for everyone else.
+    announce(`Downloaded ${rel.title}`)
   } catch (e) {
     // Failed / cancelled / unplayable: clean up BOTH files so a retry starts
     // clean, and surface a retryable error state.
@@ -365,6 +370,7 @@ export async function downloadRelease(rel: Release, opts: { force?: boolean } = 
       }
     }
     setProgress(rel.id, { state: 'error', message: e instanceof Error ? e.message : String(e) })
+    announce(`Download failed for ${rel.title}`)
   }
 }
 

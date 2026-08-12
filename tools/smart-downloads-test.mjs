@@ -249,6 +249,11 @@ try {
   check('on mobile data the download WAITS instead of starting', /Waiting for Wi-Fi/.test(await page.getByRole('button', { name: 'Download Metered Release now' }).innerText()))
   check('no bytes were requested from the service', (await page.evaluate(() => window.__svcCalls.length)) === 0)
   check('the metered state was actually consulted', (await page.evaluate(() => window.__meteredAsks)) > 0)
+  // Queuing is announced: a silent "nothing happened" after tapping Download
+  // is indistinguishable from a broken button for a screen-reader user.
+  await page.waitForTimeout(200)
+  const queuedMsg = await page.evaluate(() => document.getElementById('sr-announcer')?.textContent ?? '')
+  check('the Wi-Fi wait is announced to screen readers', /Metered Release will download when Wi-Fi is available/.test(queuedMsg), JSON.stringify(queuedMsg))
 
   // ---------- 3. Wi-Fi arrives ⇒ the queue drains by itself ----------
   console.log('smart-downloads: auto-resume on Wi-Fi')
