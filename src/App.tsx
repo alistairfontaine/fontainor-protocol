@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react'
+import React, { useEffect, useRef } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import { AppShell } from './components/AppShell'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -61,12 +61,37 @@ function ScrollToTop() {
   return null
 }
 
+function FocusOnNavigate() {
+  const { pathname } = useLocation()
+  const first = useRef(true)
+  // Without this, a screen-reader/keyboard user who activates a nav link stays
+  // focused on that link in the old context — nothing tells them the page
+  // changed. Moving focus to <main> announces the new content and puts the
+  // next Tab inside it.
+  useEffect(() => {
+    if (first.current) {
+      // initial load: leave focus at the document start so the tab order
+      // begins at the skip link, not past it
+      first.current = false
+      return
+    }
+    const active = document.activeElement as HTMLElement | null
+    // Never steal focus from a text field: the header search navigates to
+    // /library on every debounced keystroke — yanking focus mid-word would
+    // make search unusable.
+    if (active && /^(input|textarea|select)$/i.test(active.tagName)) return
+    document.getElementById('main')?.focus()
+  }, [pathname])
+  return null
+}
+
 export default function App() {
   return (
     <AuthProvider>
       <RegistryProvider>
         <PlayerProvider>
           <ScrollToTop />
+          <FocusOnNavigate />
           <AutoDownloadLikes />
           <AppShell walletSlot={<WalletButton />}>
             <ErrorBoundary>

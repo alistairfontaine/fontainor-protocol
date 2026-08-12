@@ -43,6 +43,43 @@ for (const route of ROUTES) {
   check(`${route} has no serious/critical WCAG A/AA violations`, serious.length === 0, detail);
 }
 
+// ── keyboard navigation ─────────────────────────────────────
+// A hash router turns a classic <a href="#main"> skip link into a ROUTE
+// CHANGE, so the app uses a focus-moving button instead. These checks pin
+// that down plus route-change focus management.
+{
+  await page.goto(BASE + '/#/');
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForTimeout(600);
+
+  // first Tab reaches the skip link
+  await page.keyboard.press('Tab');
+  const firstStop = await page.evaluate(() => document.activeElement?.textContent?.trim());
+  check('first Tab stop is the skip link', firstStop === 'Skip to content', String(firstStop));
+
+  // activating it moves focus into <main>
+  await page.keyboard.press('Enter');
+  const afterSkip = await page.evaluate(() => document.activeElement?.id);
+  check('skip link moves focus to main', afterSkip === 'main', String(afterSkip));
+
+  // and the URL did not change (the hash-router trap)
+  check('skip link does not navigate', await page.evaluate(() => location.hash) === '#/');
+
+  // navigating by link moves focus to the new page's main
+  await page.getByRole('link', { name: /Library/ }).first().click();
+  await page.waitForTimeout(400);
+  const afterNav = await page.evaluate(() => ({ id: document.activeElement?.id, hash: location.hash }));
+  check('route change moves focus to main', afterNav.id === 'main', JSON.stringify(afterNav));
+
+  // typing in the header search (which navigates per keystroke) keeps focus
+  const search = page.getByRole('banner').getByLabel('Search the registry');
+  await search.click();
+  await search.pressSequentially('genesis', { delay: 40 });
+  await page.waitForTimeout(500); // debounce fires a navigation to /library?q=…
+  const whileTyping = await page.evaluate(() => document.activeElement?.tagName);
+  check('search keeps focus while its navigation fires', whileTyping === 'INPUT', String(whileTyping));
+}
+
 await browser.close();
 console.log(`${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

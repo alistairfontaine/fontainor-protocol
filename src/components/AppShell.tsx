@@ -317,6 +317,17 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
   const { current } = usePlayer()
   return (
     <div className="min-h-screen">
+      {/* Skip link: keyboard users otherwise re-tab through header + sidebar on
+          every page. NOT an <a href="#main"> — under the hash router that IS a
+          route change (it would navigate to /main). A button that moves focus
+          imperatively does the same job with zero router interference. */}
+      <button
+        type="button"
+        onClick={() => document.getElementById('main')?.focus()}
+        className="fixed left-3 top-3 z-50 -translate-y-20 rounded-btn bg-accent px-4 py-2 text-sm font-semibold text-black transition-transform focus:translate-y-0"
+      >
+        Skip to content
+      </button>
       {IS_NATIVE ? (
         <NativeTopBar walletSlot={walletSlot} />
       ) : (
@@ -336,7 +347,11 @@ export function AppShell({ children, walletSlot }: { children: ReactNode; wallet
 
       <div className="mx-auto flex max-w-[1360px] gap-6 px-4 sm:px-6">
         <Sidebar />
-        <main className={`min-w-0 flex-1 ${IS_NATIVE ? 'py-5' : 'py-7'} ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}>
+        <main
+          id="main"
+          tabIndex={-1}
+          className={`min-w-0 flex-1 outline-none ${IS_NATIVE ? 'py-5' : 'py-7'} ${current ? 'pb-40 lg:pb-28' : 'pb-24 lg:pb-8'}`}
+        >
           <SupportNudge />
           {children}
           {/* footers are a website pattern — the app ends at its content */}
