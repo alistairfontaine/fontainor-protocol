@@ -88,6 +88,8 @@ const GATEWAY = process.env.AR_GATEWAY || 'https://arweave.net';
 const REGISTRY_KEY = 'fontainor:registry:v1';
 const PURCHASES_KEY = 'fontainor:purchases:v1';
 const PURCHASE_SIGS_KEY = 'fontainor:purchases:sigs:v1'; // replay guard: signatures already receipted
+const EDITIONS_MINTED_KEY = 'fontainor:editions:minted:v1'; // track id -> durable verified sale count
+const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const favoritesKey = (wallet) => `fontainor:favorites:v1:${wallet}`;
 let redis = null;
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
@@ -119,6 +121,36 @@ async function writeDurableRegistry(manifestArray) {
     } catch (e) {
         console.error('Redis write error:', e.message);
         return false;
+    }
+}
+
+/**
+ * Overlay mutable sale counts onto the immutable append-only registry.
+ *
+ * An Arweave manifest cannot be edited after each purchase, so `editions.minted`
+ * lives in Redis and is merged into responses. The original edition limit and
+ * all provenance stay permanent; only the live verified-sale counter changes.
+ */
+async function withMintedCounts(manifestArray) {
+    if (!redis || !Array.isArray(manifestArray) || manifestArray.length === 0) return manifestArray;
+    const ids = manifestArray
+        .filter((entry) => entry && entry.type !== 'editorial' && typeof entry.id === 'string')
+        .map((entry) => entry.id);
+    if (ids.length === 0) return manifestArray;
+    try {
+        const raw = await redis.hmget(EDITIONS_MINTED_KEY, ...ids);
+        const counts = raw && typeof raw === 'object' ? raw : {};
+        return manifestArray.map((entry) => {
+            if (!entry || typeof entry.id !== 'string') return entry;
+            const n = Number(counts[entry.id]);
+            if (!Number.isSafeInteger(n) || n < 1) return entry;
+            return { ...entry, editions: { ...(entry.editions || {}), minted: n } };
+        });
+    } catch (e) {
+        // Availability beats a missing counter: verification still fail-closes
+        // if its atomic sale write cannot reach Redis.
+        console.error('Edition-count read error:', e.message);
+        return manifestArray;
     }
 }
 
@@ -375,7 +407,7 @@ app.get('/registry', async (req, res) => {
     try {
         // durable store first — survives redeploys, no gateway round-trip
         const durable = await readDurableRegistry();
-        if (durable && durable.length > 0) return res.json(durable);
+        if (durable && durable.length > 0) return res.json(await withMintedCounts(durable));
 
         const txId = readManifestPointer();
         if (txId) {
@@ -383,7 +415,7 @@ app.get('/registry', async (req, res) => {
             // backfill the durable store so the next read skips the gateway
             if (Array.isArray(data) && data.length > 0) {
                 await writeDurableRegistry(data);
-                return res.json(data);
+                return res.json(await withMintedCounts(data));
             }
         }
 
@@ -391,7 +423,7 @@ app.get('/registry', async (req, res) => {
         const recovered = await recoverLatestManifestFromIrys();
         if (recovered) {
             await writeDurableRegistry(recovered);
-            return res.json(recovered);
+            return res.json(await withMintedCounts(recovered));
         }
         return res.json([]);
     } catch (error) {
@@ -399,7 +431,7 @@ app.get('/registry', async (req, res) => {
         // even on pointer/gateway errors, attempt permanent-record recovery
         try {
             const recovered = await recoverLatestManifestFromIrys();
-            if (recovered) return res.status(200).json(recovered);
+            if (recovered) return res.status(200).json(await withMintedCounts(recovered));
         } catch { /* fall through */ }
         return res.status(200).json([]);
     }
@@ -558,6 +590,10 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         if (Number(amountLamports) < floor) {
             return res.status(400).json({ success: false, code: 'UNDERPAID', message: 'amountLamports is below the listed price for this release.' });
         }
+        const editionTotal = Number(listed.editions?.total);
+        if (!Number.isSafeInteger(editionTotal) || editionTotal < 0) {
+            return res.status(400).json({ success: false, code: 'INVALID_EDITION', message: 'This release has an invalid edition limit.' });
+        }
 
         // Verify the 98/2 split actually happened on the Solana ledger, and —
         // that the claimed buyer SIGNED and paid in that transaction (otherwise
@@ -569,31 +605,95 @@ app.post('/api/v1/verify-payment', async (req, res) => {
             return res.status(400).json({ success: false, message: 'On-chain payment verification failed.' });
         }
 
-        // Durable purchase receipt (best-effort; requires Upstash env vars).
-        let receiptStored = false;
-        if (redis) {
-            try {
-                // Replay guard: one on-chain signature = at most one receipt.
-                const firstSeen = await redis.sadd(PURCHASE_SIGS_KEY, signature);
-                if (!firstSeen) {
-                    return res.json({ success: true, verified: true, receiptStored: false, duplicate: true, signature });
-                }
-                await redis.lpush(PURCHASES_KEY, JSON.stringify({
-                    trackId,
-                    signature,
-                    artistWallet,
-                    buyerWallet: buyerWallet || null,
-                    amountLamports: Number(amountLamports),
-                    currency: currency || 'SOL',
-                    verifiedAt: new Date().toISOString(),
-                }));
-                receiptStored = true;
-            } catch (e) {
-                console.error('Purchase receipt write failed:', e.message);
-            }
+        // Verification is only useful if the receipt and scarcity counter are
+        // durably committed. One Redis Lua script makes replay claim + capacity
+        // check + receipt append + minted increment a single atomic operation:
+        // no LPUSH failure can burn a signature, and parallel last-copy buyers
+        // cannot both mint past the edition limit. total=0 means unlimited.
+        if (!redis) {
+            return res.status(503).json({
+                success: false,
+                code: 'RECEIPT_STORE_UNAVAILABLE',
+                message: 'The receipt store is unavailable — the on-chain payment is real; retry verification without paying again.',
+                signature,
+            });
         }
-
-        return res.json({ success: true, verified: true, receiptStored, signature });
+        const receipt = JSON.stringify({
+            trackId,
+            signature,
+            artistWallet,
+            buyerWallet,
+            amountLamports: Number(amountLamports),
+            currency: currency || 'SOL',
+            verifiedAt: new Date().toISOString(),
+        });
+        let outcome;
+        try {
+            outcome = await redis.eval(
+                `local sigs=KEYS[1]
+                 local receipts=KEYS[2]
+                 local minted=KEYS[3]
+                 local signature=ARGV[1]
+                 local receipt=ARGV[2]
+                 local track=ARGV[3]
+                 local total=tonumber(ARGV[4]) or 0
+                 if redis.call('SISMEMBER', sigs, signature) == 1 then return {'DUPLICATE', redis.call('HGET', minted, track) or '0'} end
+                 local count=tonumber(redis.call('HGET', minted, track) or '0')
+                 if total > 0 and count >= total then return {'SOLD_OUT', tostring(count)} end
+                 local pushed=redis.pcall('LPUSH', receipts, receipt)
+                 if type(pushed) == 'table' and pushed.err then return {'STORE_ERROR', tostring(count)} end
+                 local added=redis.pcall('SADD', sigs, signature)
+                 if (type(added) == 'table' and added.err) or added ~= 1 then
+                   redis.call('LPOP', receipts)
+                   return {'STORE_ERROR', tostring(count)}
+                 end
+                 local incremented=redis.pcall('HINCRBY', minted, track, 1)
+                 if type(incremented) == 'table' and incremented.err then
+                   redis.call('SREM', sigs, signature)
+                   redis.call('LPOP', receipts)
+                   return {'STORE_ERROR', tostring(count)}
+                 end
+                 count=incremented
+                 return {'STORED', tostring(count)}`,
+                [PURCHASE_SIGS_KEY, PURCHASES_KEY, EDITIONS_MINTED_KEY],
+                [signature, receipt, trackId, String(editionTotal)],
+            );
+        } catch (e) {
+            console.error('Purchase receipt write failed:', e.message);
+            return res.status(503).json({
+                success: false,
+                code: 'RECEIPT_STORE_UNAVAILABLE',
+                message: 'The receipt store is unavailable — the on-chain payment is real; retry verification without paying again.',
+                signature,
+            });
+        }
+        const state = Array.isArray(outcome) ? String(outcome[0]) : '';
+        const minted = Array.isArray(outcome) ? Number(outcome[1]) || 0 : 0;
+        if (state === 'DUPLICATE') {
+            return res.json({ success: true, verified: true, receiptStored: true, duplicate: true, signature, minted });
+        }
+        if (state === 'SOLD_OUT') {
+            return res.status(409).json({
+                success: false,
+                verified: true,
+                code: 'SOLD_OUT',
+                message: 'This edition sold out before this payment was receipted. Contact support with the transaction signature for a refund.',
+                signature,
+                minted,
+            });
+        }
+        if (state === 'STORE_ERROR') {
+            return res.status(503).json({
+                success: false,
+                code: 'RECEIPT_STORE_UNAVAILABLE',
+                message: 'The receipt store is unavailable — the on-chain payment is real; retry verification without paying again.',
+                signature,
+            });
+        }
+        if (state !== 'STORED') {
+            return res.status(503).json({ success: false, code: 'RECEIPT_STORE_UNAVAILABLE', message: 'The receipt store returned an invalid response.', signature });
+        }
+        return res.json({ success: true, verified: true, receiptStored: true, signature, minted });
     } catch (err) {
         console.error('Payment verification endpoint crashed:', err.message);
         return res.status(500).json({ success: false, error: 'SETTLEMENT_CRASH', message: err.message });
@@ -781,8 +881,6 @@ app.post('/api/v1/auth/set-handle', async (req, res) => {
 // 6. Wallet-Portable Profile — purchases + favorites follow the wallet across devices.
 //    Reads are public (everything here is already public on-chain / low-stakes);
 //    favorites writes require the same TweetNaCl signature the sovereign login uses.
-
-const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 function profileCors(req, res) {
     res.setHeader('Access-Control-Allow-Origin', '*');

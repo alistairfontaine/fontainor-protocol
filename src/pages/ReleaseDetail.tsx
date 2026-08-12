@@ -20,7 +20,7 @@ import { useRegistry } from '../state/RegistryContext'
 
 export default function ReleaseDetail() {
   const { id } = useParams()
-  const { releases, loading } = useRegistry()
+  const { releases, loading, reload } = useRegistry()
   const { play, toggle, current, playing } = usePlayer()
   const { ids, toggle: toggleFav } = useFavorites()
   const { toggle: toggleFollow, isFollowing } = useFollows()
@@ -146,7 +146,7 @@ export default function ReleaseDetail() {
             {IS_NATIVE && <DownloadButton rel={rel} />}
             <PlaylistButton rel={rel} />
             <ShareButton id={rel.id} />
-            <CollectCta rel={rel} sold={sold} />
+            <CollectCta rel={rel} sold={sold} refreshRegistry={reload} />
           </div>
 
           {rel.desc && <p className="mt-8 max-w-xl text-[15px] leading-relaxed text-body">{rel.desc}</p>}
@@ -203,7 +203,7 @@ export default function ReleaseDetail() {
 }
 
 /** F28: real edition purchase — 98% to the artist, 2% treasury, paid in SOL via Phantom. */
-function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
+function CollectCta({ rel, sold, refreshRegistry }: { rel: Release; sold: boolean; refreshRegistry: () => Promise<void> }) {
   const { user, connect, connecting } = useAuth()
   type St =
     | { phase: 'idle' }
@@ -246,7 +246,10 @@ function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
   const pay = async (quote: PurchaseQuote) => {
     setSt({ phase: 'paying' })
     const res = await purchase(rel, quote)
-    if (res.ok && res.receipt) setSt({ phase: 'done', signature: res.receipt.signature })
+    if (res.ok && res.receipt) {
+      setSt({ phase: 'done', signature: res.receipt.signature })
+      void refreshRegistry()
+    }
     else setSt({ phase: 'error', message: res.msg })
   }
 

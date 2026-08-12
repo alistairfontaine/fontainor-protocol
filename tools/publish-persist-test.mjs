@@ -62,11 +62,12 @@ global.fetch = async (url, opts) => {
 };
 
 // ---- minimal Upstash REST stub (SET/GET on the registry key) ----
-const kv = new Map();
+const kv = new Map(); const hashes = new Map();
 const run = ([op, key, ...args]) => {
     switch (String(op).toUpperCase()) {
         case 'SET': kv.set(key, args[0]); return 'OK';
         case 'GET': return kv.get(key) ?? null;
+        case 'HMGET': { const h = hashes.get(key) || {}; return args.map((field) => h[field] ?? null); }
         default: return null;
     }
 };

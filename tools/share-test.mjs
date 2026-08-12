@@ -28,6 +28,7 @@ function runCommand(cmd) {
     const [op, ...args] = cmd;
     switch (String(op).toUpperCase()) {
         case 'GET': return args[0] === 'fontainor:registry:v1' ? JSON.stringify(DURABLE) : null;
+        case 'HMGET': return args.slice(1).map(() => null);
         default: return null;
     }
 }

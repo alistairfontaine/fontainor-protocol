@@ -76,6 +76,7 @@ const run = (cmd) => {
         case 'HSETNX': { const h = hashes.get(key) || {}; if (h[args[0]] !== undefined) return 0; h[args[0]] = args[1]; hashes.set(key, h); return 1; }
         case 'HSET': { const h = hashes.get(key) || {}; for (let i = 0; i < args.length; i += 2) h[args[i]] = args[i + 1]; hashes.set(key, h); return 'OK'; }
         case 'HGET': { const h = hashes.get(key) || {}; return h[args[0]] ?? null; }
+        case 'HMGET': { const h = hashes.get(key) || {}; return args.map((field) => h[field] ?? null); }
         case 'HDEL': { const h = hashes.get(key) || {}; delete h[args[0]]; return 1; }
         case 'SADD': { const s = sets.get(key) || new Set(); const had = s.has(args[0]); s.add(args[0]); sets.set(key, s); return had ? 0 : 1; }
         case 'ZINCRBY': { const z = zsets.get(key) || new Map(); const m = String(args[1]); z.set(m, (z.get(m) || 0) + Number(args[0])); zsets.set(key, z); return z.get(m); }

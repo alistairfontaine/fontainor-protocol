@@ -39,6 +39,7 @@ function upstashStub() {
         switch (String(op).toUpperCase()) {
           case 'SET': kv.set(key, args[0]); return 'OK'
           case 'GET': return kv.get(key) ?? null
+          case 'HMGET': return args.map(() => null)
           case 'LPUSH': { const l = kv.get(key) ?? []; l.unshift(...args); kv.set(key, l); return l.length }
           case 'LRANGE': { const l = kv.get(key) ?? []; const s = Number(args[0]); const e = Number(args[1]); return l.slice(s, e === -1 ? undefined : e + 1) }
           default: return null

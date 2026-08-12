@@ -81,6 +81,7 @@ function runCommand(cmd) {
         case 'GET': return store.kv.has(args[0]) ? store.kv.get(args[0]) : null;
         case 'SET': store.kv.set(args[0], args[1]); return 'OK';
         case 'HGET': return store.hashes.get(args[0])?.get(args[1]) ?? null;
+        case 'HMGET': return args.slice(1).map((field) => store.hashes.get(args[0])?.get(field) ?? null);
         case 'HSET': {
             if (!store.hashes.has(args[0])) store.hashes.set(args[0], new Map());
             const h = store.hashes.get(args[0]);

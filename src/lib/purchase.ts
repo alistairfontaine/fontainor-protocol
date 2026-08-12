@@ -178,7 +178,10 @@ export async function purchase(rel: Release, quote: PurchaseQuote): Promise<Purc
       }
     }
 
-    // Server-side re-verification + durable receipt (best-effort).
+    // Server-side re-verification + durable receipt. The chain transfer has
+    // already happened, so a storage/sold-out response must be surfaced
+    // honestly with the signature — never claim collection ownership from an
+    // unreceipted local row and never tell the user to pay again.
     let serverVerified = false
     try {
       const res = await fetch(API_BASE + '/api/v1/verify-payment', {
@@ -193,9 +196,21 @@ export async function purchase(rel: Release, quote: PurchaseQuote): Promise<Purc
           trackId: rel.id,
         }),
       })
-      serverVerified = res.ok && ((await res.json().catch(() => ({}))) as { verified?: boolean }).verified === true
+      const verify = (await res.json().catch(() => ({}))) as { verified?: boolean; message?: string; code?: string }
+      serverVerified = res.ok && verify.verified === true
+      if (!serverVerified) {
+        return {
+          ok: false,
+          msg:
+            (verify.message || 'The payment confirmed but the collection receipt could not be saved.') +
+            ` Do not pay again; keep this transaction: ${solscanTx(signature)}`,
+        }
+      }
     } catch {
-      /* the on-chain signature remains the source of truth */
+      return {
+        ok: false,
+        msg: `The payment confirmed but the receipt service could not be reached. Do not pay again; retry verification with this transaction: ${solscanTx(signature)}`,
+      }
     }
 
     const receipt: PurchaseReceipt = {

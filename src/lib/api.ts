@@ -124,7 +124,13 @@ function writeCache(list: unknown[]): void {
   }
 }
 
-/** `primary` order wins; previously-seen releases missing from it are appended. */
+/**
+ * `primary` order wins; previously-seen releases missing from it are appended.
+ * For matching ids, refresh the cached object from primary as well. The
+ * registry's immutable fields never change, but the API overlays the live
+ * verified `editions.minted` count; keeping a stale cached object here could
+ * make a sold-out release look purchasable offline or after reconnect.
+ */
 function unionSeen(primary: unknown[], seen: unknown[]): unknown[] {
   const have = new Set(primary.map(rawId).filter((v): v is string => !!v))
   const extra = seen.filter((x) => {
