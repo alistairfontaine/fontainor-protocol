@@ -174,7 +174,12 @@ try {
     await playRelease(page, 'FONT-GW2')
     await page.waitForTimeout(2500)
     check('the demoted gateway is no longer tried first', mediaLog[0] === `${ARWEAVE}/${TX2}`, mediaLog.join(' | '))
-    check('the demoted gateway is still kept as a last resort', mediaLog.includes(`${IRYS}/${TX2}`) || mediaLog.length === 1, mediaLog.join(' | '))
+    // Scope to THIS track's content id: gapless preload (F60) legitimately adds
+    // a request for the NEXT track's audio to the log, so raw length is no
+    // longer "requests for TX2". Intent unchanged: either the demoted gateway
+    // was retried for TX2, or the promoted one answered on the first try.
+    const tx2Reqs = mediaLog.filter((u) => u.includes(TX2))
+    check('the demoted gateway is still kept as a last resort', tx2Reqs.includes(`${IRYS}/${TX2}`) || tx2Reqs.length === 1, mediaLog.join(' | '))
     const dur2 = (await durText(page).innerText()).trim()
     check('the second track plays without a stall', dur2 === '1:30', `dur=${dur2}`)
     await ctx.close()

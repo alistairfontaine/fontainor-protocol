@@ -68,6 +68,7 @@ const Ctx = createContext<PlayerState | null>(null)
 const ProgressCtx = createContext<PlayerProgress>({ pos: 0, cur: 0, dur: 0 })
 
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
+const PRELOAD_EAGER_SECONDS = 12 // fully buffer the next track when this close to the end (F60)
 const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
 
 // ── Media session (lock-screen / notification controls) ─────────────────────
@@ -150,6 +151,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   }, [])
   // Active crossfade: the incoming element + its release + the volume ramp.
   const xfadeRef = useRef<{ b: HTMLAudioElement; rel: Release; timer: ReturnType<typeof setInterval> } | null>(null)
+  // Gapless preload (F60): the NEXT track's element, warmed before the current
+  // one ends so the transition needs no network round-trip. `url` is the exact
+  // source string it was created with (element .src is absolutized by the
+  // browser, so we compare against this instead).
+  const preloadRef = useRef<{ id: string; url: string; el: HTMLAudioElement } | null>(null)
   // Playlist context (F39): when set, the base play order is this explicit
   // list instead of the full catalog. Reset by plain play() and close().
   const [context, setContext] = useState<Release[] | null>(null)
@@ -203,10 +209,78 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     if (restore && audioRef.current) audioRef.current.volume = 1
   }
 
+  const clearPreload = () => {
+    const p = preloadRef.current
+    if (!p) return
+    preloadRef.current = null
+    p.el.pause()
+    p.el.removeAttribute('src') // release the media resource without firing 'error'
+    p.el.load()
+  }
+
   const clearAudio = () => {
     cancelXfade(false)
     audioRef.current?.pause()
     audioRef.current = null
+  }
+
+  /**
+   * Best playable source for a release (mirrors playNow's list head): the
+   * downloaded copy first, then the strongest gateway.
+   */
+  const bestSourceFor = (rel: Release): string | null => {
+    const local = localAudioSrc(rel.id)
+    if (local) return local
+    if (!rel.audio) return null
+    return mediaCandidates(streamableAudioUrl(rel.audio))[0] ?? streamableAudioUrl(rel.audio)
+  }
+
+  /**
+   * Gapless preload (F60). Warm the upcoming track so the transition is
+   * instant instead of a full network round-trip of silence:
+   *   - eager=false → metadata only (headers + first chunk; cheap)
+   *   - eager=true  → full buffering (called when the current track nears its end)
+   * Re-invoked freely: it no-ops when the right element already exists and
+   * quietly replaces it when the queue changed mid-track.
+   */
+  const preloadNext = (eager = false) => {
+    if (sleepRef.current === 'track') return clearPreload() // stopping after this one
+    const nxt = peekNext()
+    // repeat-one replays the SAME element via playNow; nothing to warm.
+    if (!nxt || !nxt.audio || nxt.id === currentRef.current?.id) return clearPreload()
+    const url = bestSourceFor(nxt)
+    if (!url) return clearPreload()
+    const have = preloadRef.current
+    if (have && have.id === nxt.id && have.url === url) {
+      if (eager && have.el.preload !== 'auto') {
+        have.el.preload = 'auto'
+        have.el.load()
+      }
+      return
+    }
+    clearPreload()
+    const el = new Audio()
+    el.preload = eager ? 'auto' : 'metadata'
+    if (url === localAudioSrc(nxt.id)) el.dataset.localDownload = nxt.id
+    el.src = url
+    preloadRef.current = { id: nxt.id, url, el }
+  }
+
+  /**
+   * Hand over the warmed element for `rel` if it is usable. Consumes the slot
+   * either way; a preload whose gateway died mid-flight (el.error) is discarded
+   * so playNow's source-walk can try the alternatives.
+   */
+  const takePreloaded = (rel: Release, expectedUrl: string): HTMLAudioElement | null => {
+    const p = preloadRef.current
+    if (!p || p.id !== rel.id) return null
+    preloadRef.current = null
+    if (p.url !== expectedUrl || p.el.error) {
+      p.el.removeAttribute('src')
+      p.el.load()
+      return null
+    }
+    return p.el
   }
 
   /** What would play after the current track ends — WITHOUT consuming anything. */
@@ -283,7 +357,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
   /** Wire the standard listeners onto an audio element (used for fresh and adopted elements). */
   const wireAudio = (a: HTMLAudioElement) => {
-    a.addEventListener('loadedmetadata', () => {
+    const onMeta = () => {
       setDur(a.duration || 0)
       setMediaPosition(a.duration || 0, 0)
       // This source answered: clear any stall and un-demote its gateway.
@@ -296,13 +370,23 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
           if (id) markSettled(id)
         }
       }
-    })
+    }
+    a.addEventListener('loadedmetadata', onMeta)
+    // A preloaded element (F60) may have loaded its metadata BEFORE being
+    // adopted — the event already fired, so run the handler now.
+    if (a.readyState >= 1) onMeta()
     a.addEventListener('timeupdate', () => {
       if (audioRef.current !== a) return // stale element after a swap
       setCur(a.currentTime)
       setDur(a.duration || 0)
       setPos(a.duration ? a.currentTime / a.duration : 0)
       setMediaPosition(a.duration || 0, a.currentTime)
+      // Gapless (F60): keep the warmed next-track element in sync with the
+      // queue, and buffer it fully once the end is near.
+      if (playingRef.current) {
+        const rem = isFinite(a.duration) ? a.duration - a.currentTime : Infinity
+        preloadNext(rem <= PRELOAD_EAGER_SECONDS)
+      }
       maybeBeginXfade(a)
     })
     a.addEventListener('ended', () => {
@@ -398,7 +482,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const nxt = peekNext()
     if (!nxt?.audio) return
     const nextLocal = localAudioSrc(nxt.id)
-    const b = new Audio(nextLocal ?? mediaCandidates(streamableAudioUrl(nxt.audio))[0] ?? streamableAudioUrl(nxt.audio))
+    const url = nextLocal ?? mediaCandidates(streamableAudioUrl(nxt.audio))[0] ?? streamableAudioUrl(nxt.audio)
+    // Gapless (F60): the warmed element already holds buffered data — starting
+    // it is instant, which is exactly what a crossfade needs.
+    const b = takePreloaded(nxt, url) ?? new Audio(url)
     if (nextLocal) b.dataset.localDownload = nxt.id
     b.preload = 'auto'
     b.volume = 0
@@ -444,7 +531,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // Learn (in the background, throttled) whether this content is settled
         // on arweave.net — its immutable cache-control makes replays free.
         probeSettled(streamableAudioUrl(rel.audio))
-        const a = new Audio(list[0])
+        // Gapless (F60): adopt the element preloadNext() warmed for this track;
+        // its buffer makes the transition instant. Fresh element otherwise.
+        const warmed = takePreloaded(rel, list[0])
+        const a = warmed ?? new Audio(list[0])
         if (local) a.dataset.localDownload = rel.id
         audioRef.current = a
         wireAudio(a)
@@ -457,6 +547,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         startSim(0)
       }
       setPlaying(true)
+      // Start warming whatever follows this track (metadata-only for now).
+      queueMicrotask(() => preloadNext(false))
     },
     [pushHistory, startSim],
   )
@@ -580,6 +672,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => {
     stopSim()
     clearAudio()
+    clearPreload()
     msClear()
     setCurrent(null)
     currentRef.current = null
@@ -595,6 +688,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   useEffect(() => () => {
     stopSim()
     clearAudio()
+    clearPreload()
   }, [])
 
   // media notification play/pause state mirrors ours
