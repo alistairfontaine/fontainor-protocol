@@ -121,6 +121,9 @@ function openAndAwait(method: string, url: string): Promise<URLSearchParams> {
     const timeout = setTimeout(() => {
       if (pending.has(method)) {
         pending.delete(method)
+        // Close the stuck popover too — otherwise the dead Phantom sheet
+        // stays on screen after we've already given up on it.
+        void Browser.close().catch(() => {})
         reject(new Error('Phantom did not respond. Reopen the app after approving in Phantom, or try again.'))
       }
     }, 180_000)
@@ -140,10 +143,16 @@ function openAndAwait(method: string, url: string): Promise<URLSearchParams> {
     // up, the user taps Connect again, and the ORIGINAL await (the one the
     // button's spinner is tied to) never settles — the UI looks frozen and
     // retrying is impossible. Settle the superseded waiter immediately.
+    // Superseded is BENIGN (the newer tap now drives the UI). It must reject
+    // as a user-class error: rejecting with PhantomSessionError made
+    // withFreshSessionRetry() treat the double-tap as a broken session —
+    // clearSession() wiped the shared secret the SECOND (live) request needed
+    // to decrypt its reply, then the retry opened a third deeplink that
+    // superseded the second. Ping-pong until timeout.
     const superseded = pending.get(method)
     if (superseded) {
       pending.delete(method)
-      superseded.reject(new PhantomSessionError('Request superseded by a newer one — try again.'))
+      superseded.reject(new PhantomSupersededError('Request superseded by a newer one — try again.'))
     }
     pending.set(method, wrapped)
     void Browser.open({ url, presentationStyle: 'popover' }).catch((e) => {
@@ -182,6 +191,13 @@ function handleRedirect(rawUrl: string): void {
 export class PhantomUserError extends Error {}
 /** Session/protocol failure (stale session token, decrypt mismatch, ...). */
 export class PhantomSessionError extends Error {}
+/**
+ * An identical request replaced this one (double-tap). Extends
+ * PhantomUserError so BOTH consumers do the right thing for free:
+ * withFreshSessionRetry rethrows instead of nuking the live session, and
+ * AuthContext reads it as a benign cancel.
+ */
+export class PhantomSupersededError extends PhantomUserError {}
 
 let listenerRegistered = false
 function ensureListener(): void {
@@ -257,8 +273,12 @@ async function clearSession(): Promise<void> {
 async function signMessage(message: Bytes, _display: string = 'utf8'): Promise<{ signature: Bytes }> {
   return withFreshSessionRetry(async () => {
     const s = await ensureConnected()
+    // Capture NOW: `s` is the same object clearSession() mutates in place, so
+    // a concurrent logout/reset would turn the decode below into a bogus
+    // bs58.decode(undefined) crash instead of a clean session error.
+    const shared = s.sharedSecret
     const payload = { session: s.session, message: bs58.encode(message) }
-    const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
+    const [nonce, data] = encryptPayload(payload, shared)
     const params = new URLSearchParams({
       dapp_encryption_public_key: s.dappPub,
       nonce,
@@ -266,7 +286,7 @@ async function signMessage(message: Bytes, _display: string = 'utf8'): Promise<{
       payload: data,
     })
     const res = await openAndAwait('signMessage', `${PHANTOM_BASE}/signMessage?${params.toString()}`)
-    const decoded = decodeResponse(res, s.sharedSecret!)
+    const decoded = decodeResponse(res, shared)
     return { signature: bs58.decode(String(decoded.signature)) }
   })
 }
@@ -291,8 +311,10 @@ async function signAndSendTransaction(tx: unknown): Promise<{ signature: string 
   const serialized = serializeTransaction(tx)
   return withFreshSessionRetry(async () => {
     const s = await ensureConnected()
+    // Same in-place-mutation guard as signMessage above.
+    const shared = s.sharedSecret
     const payload = { session: s.session, transaction: bs58.encode(serialized) }
-    const [nonce, data] = encryptPayload(payload, s.sharedSecret!)
+    const [nonce, data] = encryptPayload(payload, shared)
     const params = new URLSearchParams({
       dapp_encryption_public_key: s.dappPub,
       nonce,
@@ -300,7 +322,7 @@ async function signAndSendTransaction(tx: unknown): Promise<{ signature: string 
       payload: data,
     })
     const res = await openAndAwait('signAndSendTransaction', `${PHANTOM_BASE}/signAndSendTransaction?${params.toString()}`)
-    const decoded = decodeResponse(res, s.sharedSecret!)
+    const decoded = decodeResponse(res, shared)
     return { signature: String(decoded.signature) }
   })
 }
