@@ -86,8 +86,12 @@ async function warmUriCache(): Promise<void> {
       }
     }
   }
-  uriCache = next
-  coverCache = nextCover
+  // MERGE, don't clobber: a download that completed while this loop was
+  // still awaiting already put its freshly-resolved URL into the cache —
+  // overwriting wholesale wiped it and playback fell back to streaming a
+  // file that was sitting on disk.
+  uriCache = { ...next, ...uriCache }
+  coverCache = { ...nextCover, ...coverCache }
   emit()
 }
 void warmUriCache()
@@ -239,11 +243,28 @@ export function waitingRelease(id: string): Release | null {
   return waitingQueue.get(id) ?? null
 }
 
+// Synchronous re-entrancy guard. The progressMap check alone leaves a window:
+// the metered check below is ASYNC, so a second call (double-tap, or the
+// queue drain racing a user tap) entered before the first one ever set a
+// progress state — two concurrent transfers to the same file path and a
+// doubled index write.
+const inFlightIds = new Set<string>()
+
 export async function downloadRelease(rel: Release, opts: { force?: boolean } = {}): Promise<void> {
   if (!IS_NATIVE || !rel.audio || isDownloaded(rel.id)) return
   if (progressMap[rel.id]?.state === 'downloading') return // already in flight
+  if (inFlightIds.has(rel.id)) return
+  inFlightIds.add(rel.id)
+  try {
+    await downloadReleaseInner(rel, opts)
+  } finally {
+    inFlightIds.delete(rel.id)
+  }
+}
+
+async function downloadReleaseInner(rel: Release, opts: { force?: boolean } = {}): Promise<void> {
+  if (!rel.audio) return // narrowing for tsc; the outer guard already returned
   if (!opts.force && getSetting('wifiOnlyDownloads') && (await isMeteredConnection())) {
-    if (progressMap[rel.id]?.state === 'downloading') return // metered check is async — recheck
     waitingQueue.set(rel.id, rel)
     armNetworkWatcher()
     setProgress(rel.id, { state: 'waiting' })

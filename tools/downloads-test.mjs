@@ -319,17 +319,33 @@ try {
   check('no partial file is left on disk', (await page.evaluate(() => Object.keys(window.__files).filter((k) => k.includes('FONT-MISSING1')).length)) === 0)
 
   // ---------- 7. double-tap must not start two downloads ----------
+  // Wi-Fi only is switched ON first: the setting makes downloadRelease await
+  // an ASYNC metered check before it publishes any progress state, so without
+  // a synchronous in-flight guard BOTH taps slip past the progress check and
+  // start two concurrent transfers to the same file (F70). On this legacy
+  // shell (no download service) isMetered fails open, so the download still
+  // proceeds — through the race window.
   console.log('downloads: double-tap')
+  await page.evaluate(() => {
+    localStorage.setItem('fontainor_settings_v1', JSON.stringify({ wifiOnlyDownloads: true }))
+  })
+  await page.reload({ waitUntil: 'networkidle' }) // settings cache loads at module init
   await gotoRelease('FONT-RELATIVE1')
   await page.evaluate(() => {
     window.__downloadCalls.length = 0
   })
-  const btn = page.getByRole('button', { name: 'Download Relative Path Release' })
-  await btn.click()
-  await btn.click({ force: true }).catch(() => {})
+  // Two synchronous DOM clicks in one task — guaranteed inside the window.
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => x.getAttribute('aria-label') === 'Download Relative Path Release')
+    b.click()
+    b.click()
+  })
   await page.getByRole('button', { name: /Remove Relative Path Release/ }).waitFor({ timeout: 8000 })
   const audioCalls = await page.evaluate(() => window.__downloadCalls.filter((u) => u.endsWith('.mp3')).length)
   check('double-tap starts exactly one audio download', audioCalls === 1, `${audioCalls} calls`)
+  await page.evaluate(() => {
+    localStorage.setItem('fontainor_settings_v1', JSON.stringify({ wifiOnlyDownloads: false }))
+  })
 
   // ---------- 9. a download must not depend on the loaded registry ----------
   // Offline, loadRegistry() falls back to the BUNDLED demo snapshot, which does

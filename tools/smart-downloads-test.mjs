@@ -85,7 +85,7 @@ window.androidBridge = {
     if (pluginId === 'Mwa' && methodName === 'isWalletAvailable') return reply({ available: false });
 
     if (pluginId === 'FontainorDownloads') {
-      if (methodName === 'isMetered') { window.__meteredAsks++; return reply({ connected: window.__net.connected, metered: window.__net.metered }); }
+      if (methodName === 'isMetered') { window.__meteredAsks++; const st = { connected: window.__net.connected, metered: window.__net.metered }; if (window.__meteredDelay) { setTimeout(() => reply(st), window.__meteredDelay); return; } return reply(st); }
       if (methodName === 'download') {
         const { id, url, path } = options;
         window.__svcCalls.push({ id, url, path, netAtStart: { ...window.__net } });
@@ -368,6 +368,61 @@ try {
   }))
   check('confirming deletes every download and its files', afterClear.idx.length === 0 && afterClear.files.length === 0, JSON.stringify(afterClear))
   check('the Downloaded chip disappears with the last download', (await page.getByRole('button', { name: 'Downloaded', exact: true }).count()) === 0)
+
+  // ---------- 9b. a double-tap cannot start two transfers ----------
+  // The metered check is async: before the sync in-flight guard, a second
+  // tap that landed while the first was still awaiting isMetered() started a
+  // SECOND concurrent transfer to the same file path (F70). The shim's
+  // __meteredDelay holds the check open so the race window is deterministic.
+  console.log('smart-downloads: double-tap race')
+  await page.evaluate(() => window.__setNetwork(true, false)) // drain any leftover queue
+  await page.waitForTimeout(800)
+  await page.goto(`${BASE}/#/release/FONT-SMART1`, { waitUntil: 'networkidle' })
+  await page.reload({ waitUntil: 'networkidle' })
+  const removeLeft = page.getByRole('button', { name: /Remove Metered Release from downloads/ })
+  if (await removeLeft.count()) {
+    await removeLeft.click()
+    await page.getByRole('button', { name: 'Download Metered Release', exact: true }).waitFor({ timeout: 8000 })
+  }
+  // The reload re-ran the init script, which resets __net to MOBILE DATA —
+  // flip to Wi-Fi again or the tap under test just parks in the waiting queue.
+  await page.evaluate(() => window.__setNetwork(true, false))
+  const raceBase = await page.evaluate(() => window.__svcCalls.filter((c) => c.id === 'FONT-SMART1').length)
+  await page.evaluate(() => { window.__meteredDelay = 600 })
+  const raceBtn = page.getByRole('button', { name: 'Download Metered Release', exact: true })
+  await raceBtn.waitFor({ timeout: 8000 })
+  // Two synchronous DOM clicks in ONE task: guaranteed both land before the
+  // (600ms-delayed) metered check resolves — Playwright's sequential clicks
+  // were too slow/uncertain to sit reliably inside the race window.
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Download Metered Release')
+    btn.click()
+    btn.click()
+  })
+  try {
+    await page.getByRole('button', { name: /Remove Metered Release/ }).waitFor({ timeout: 15000 })
+  } catch (e) {
+    console.log('DEBUG body:', (await page.evaluate(() => document.body.innerText)).slice(0, 1200))
+    console.log('DEBUG svcCalls:', await page.evaluate(() => JSON.stringify(window.__svcCalls)))
+    console.log('DEBUG meteredAsks:', await page.evaluate(() => window.__meteredAsks))
+    console.log('DEBUG dlcalls:', await page.evaluate(() => JSON.stringify(window.__downloadCalls)))
+    console.log('DEBUG idx:', await page.evaluate(() => localStorage.getItem('fontainor.downloads.v1')))
+    throw e
+  }
+  await page.waitForTimeout(800)
+  const raceCalls = await page.evaluate(() => window.__svcCalls.filter((c) => c.id === 'FONT-SMART1').length)
+  check('a double-tap starts exactly one transfer', raceCalls - raceBase === 1, `calls ${raceBase} -> ${raceCalls}`)
+  // Pre-fix, the second entry raced past the async metered check, then died in
+  // serviceDownload's own dedupe — whose catch DELETED the file the first
+  // transfer was writing and left an error badge over a successful download.
+  const raceState = await page.evaluate(() => ({
+    idx: 'FONT-SMART1' in JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}'),
+    file: Object.keys(window.__files).some((k) => k.includes('downloads/FONT-SMART1.mp3')),
+    body: document.body.innerText,
+  }))
+  check('the surviving transfer is recorded with its file intact', raceState.idx && raceState.file, JSON.stringify({ idx: raceState.idx, file: raceState.file }))
+  check('no error badge is left over the successful download', !/already running|Retry download/i.test(raceState.body))
+  await page.evaluate(() => { window.__meteredDelay = 0 })
 
   // ---------- 10. no crashes ----------
   const realErrors = errors.filter((e) => !/Failed to load resource|net::ERR|favicon|Autoplay|play\(\) failed/i.test(e))
