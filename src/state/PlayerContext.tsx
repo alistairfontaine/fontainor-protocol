@@ -360,7 +360,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const wireAudio = (a: HTMLAudioElement) => {
     const onMeta = () => {
       setDur(a.duration || 0)
-      setMediaPosition(a.duration || 0, 0)
+      // Report the real position: after a failover resume the element starts
+      // mid-track, and hardcoding 0 briefly lied to the OS media session.
+      setMediaPosition(a.duration || 0, a.currentTime || 0)
       // This source answered: clear any stall and un-demote its gateway.
       if (audioRef.current === a) {
         setStalled(false)

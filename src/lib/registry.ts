@@ -111,6 +111,27 @@ export function parseRegistryText(text: string): { data: unknown; repaired: bool
   return { data: null, repaired: false }
 }
 
+/**
+ * Release id: FONT- + 12 uppercase base-32-ish chars from crypto randomness.
+ * The old `Math.random().toString(36).slice(2, 8)` had two real bugs:
+ *  - ~31 bits of entropy → ≈2% birthday-collision odds at just 10k releases,
+ *    and a colliding id silently cross-wires purchases/plays/favorites;
+ *  - toString(36) on a short mantissa can yield FEWER than 6 chars
+ *    (0.5 → "0.i" → id "FONT-I").
+ * 12 chars of [0-9A-Z] ≈ 62 bits — collisions are no longer a lifetime concern.
+ * Charset stays inside both the share route (/^[A-Za-z0-9-]{4,64}$/) and the
+ * plays endpoint (/^[A-Za-z0-9_-]{1,64}$/) validators.
+ */
+const ID_ALPHABET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+export function makeReleaseId(): string {
+  const bytes = new Uint8Array(12)
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) crypto.getRandomValues(bytes)
+  else for (let i = 0; i < bytes.length; i++) bytes[i] = Math.floor(Math.random() * 256)
+  let s = ''
+  for (const b of bytes) s += ID_ALPHABET[b % ID_ALPHABET.length]
+  return 'FONT-' + s
+}
+
 /** Build a new asset EXACTLY matching the backend registrySchema (validator.js). */
 export function buildAsset(input: {
   type?: AssetType
@@ -126,7 +147,7 @@ export function buildAsset(input: {
 }) {
   return {
     type: input.type ?? 'release',
-    id: 'FONT-' + Math.random().toString(36).slice(2, 8).toUpperCase(),
+    id: makeReleaseId(),
     title: input.title,
     artist: input.artist,
     price: { amount: Number(input.price) || 0, currency: input.currency || 'USD' },
