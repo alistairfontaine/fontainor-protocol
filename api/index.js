@@ -511,8 +511,8 @@ app.post('/api/v1/verify-payment', async (req, res) => {
     try {
         const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body || {};
 
-        if (!signature || !artistWallet || !trackId || !(Number(amountLamports) > 0)) {
-            return res.status(400).json({ success: false, message: 'Missing signature, artistWallet, trackId or amountLamports.' });
+        if (!signature || !artistWallet || !buyerWallet || !trackId || !(Number(amountLamports) > 0)) {
+            return res.status(400).json({ success: false, code: 'BUYER_REQUIRED', message: 'Missing signature, artistWallet, buyerWallet, trackId or amountLamports.' });
         }
         // Validate shapes up front so a malformed request is a clean 400 rather
         // than a downstream PublicKey throw, and so junk is never written into a
@@ -528,7 +528,7 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         if (!WALLET_RE.test(String(artistWallet))) {
             return res.status(400).json({ success: false, message: 'Invalid artistWallet address.' });
         }
-        if (buyerWallet != null && !WALLET_RE.test(String(buyerWallet))) {
+        if (!WALLET_RE.test(String(buyerWallet))) {
             return res.status(400).json({ success: false, message: 'Invalid buyerWallet address.' });
         }
         if (typeof trackId !== 'string' || trackId.length < 1 || trackId.length > 64) {
@@ -560,11 +560,11 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         }
 
         // Verify the 98/2 split actually happened on the Solana ledger, and —
-        // when a buyer is claimed — that the claimed buyer actually paid in
-        // that transaction (otherwise anyone who sees a signature on-chain
-        // could attach someone else's purchase to their own wallet).
+        // that the claimed buyer SIGNED and paid in that transaction (otherwise
+        // anyone who sees a signature on-chain could attach someone else's
+        // purchase to their own wallet, or race the owner with a null buyer).
         const { verifySolanaPayment } = await import('./paymentBridge.js');
-        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL', buyerWallet || null);
+        const isVerified = await verifySolanaPayment(signature, artistWallet, Number(amountLamports), currency || 'SOL', buyerWallet);
         if (!isVerified) {
             return res.status(400).json({ success: false, message: 'On-chain payment verification failed.' });
         }
@@ -1198,4 +1198,3 @@ app.get('/manifest', (req, res) => {
 // 🔒 VERCEL SERVERLESS FUNCTION HANDSHAKE PASS 🔒
 // We export the app instance cleanly, allowing Vercel to route incoming web requests natively.
 export default app;
-

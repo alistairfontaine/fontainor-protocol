@@ -18,20 +18,21 @@ export const PROTOCOL_FEE_RATE = 0.02;
  * Confirms the transaction exists, did not fail, and that the artist and
  * treasury balances increased by at least their share of the expected amount.
  *
- * When `buyerWalletStr` is provided, additionally confirms that wallet is a
- * payer in the transaction (its balance decreased by at least the price), so
- * a third party cannot claim someone else's on-chain purchase as their own.
+ * `buyerWalletStr` is required and must be one of the transaction's SIGNERS,
+ * in addition to losing at least the price. Balance movement alone is not
+ * identity proof: a non-signer account may legitimately lose lamports during
+ * another instruction, and could otherwise claim somebody else's receipt.
  *
  * @param {string} signature - Transaction signature from the buyer's wallet.
  * @param {string} artistWalletStr - Artist's public key (base58).
  * @param {number} expectedAmountLamports - Total price in lamports.
  * @param {string} [currency]
- * @param {string|null} [buyerWalletStr] - Claimed buyer wallet (base58), verified as payer when given.
+ * @param {string} buyerWalletStr - Claimed buyer wallet (base58), verified as signer + payer.
  * @returns {Promise<boolean>}
  */
 export async function verifySolanaPayment(signature, artistWalletStr, expectedAmountLamports, currency = 'SOL', buyerWalletStr = null) {
     try {
-        if (!signature || !artistWalletStr || !(expectedAmountLamports > 0)) return false;
+        if (!signature || !artistWalletStr || !buyerWalletStr || !(expectedAmountLamports > 0)) return false;
         if (currency !== 'SOL') return false; // v1: native SOL transfers only
 
         let txInfo = null;
@@ -70,14 +71,14 @@ export async function verifySolanaPayment(signature, artistWalletStr, expectedAm
         // Small tolerance: client rounds the split with integer lamports.
         if (!(artistReceived >= expectedArtist - 10 && treasuryReceived >= expectedTreasury - 10)) return false;
 
-        if (buyerWalletStr) {
-            const buyerPubKey = new PublicKey(buyerWalletStr);
-            const buyerIdx = accountKeys.findIndex((key) => key.equals(buyerPubKey));
-            if (buyerIdx === -1) return false;
-            const buyerPaid = txInfo.meta.preBalances[buyerIdx] - txInfo.meta.postBalances[buyerIdx];
-            // The claimed buyer must have paid at least the price (fees make it more).
-            if (buyerPaid < expectedAmountLamports - 10) return false;
-        }
+        const buyerPubKey = new PublicKey(buyerWalletStr);
+        const buyerIdx = accountKeys.findIndex((key) => key.equals(buyerPubKey));
+        if (buyerIdx === -1) return false;
+        const requiredSigners = Number(txInfo.transaction.message.header?.numRequiredSignatures) || 0;
+        if (buyerIdx >= requiredSigners) return false;
+        const buyerPaid = txInfo.meta.preBalances[buyerIdx] - txInfo.meta.postBalances[buyerIdx];
+        // The claimed buyer must have paid at least the price (fees make it more).
+        if (buyerPaid < expectedAmountLamports - 10) return false;
 
         return true;
     } catch (err) {

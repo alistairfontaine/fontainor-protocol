@@ -232,13 +232,15 @@ check('plays/top non-numeric n -> 200 (defaulted)', r.status === 200 && Array.is
 console.log('verify-payment');
 r = await req('POST', '/api/v1/verify-payment', { body: {} });
 check('verify-payment missing fields -> 400', r.status === 400, String(r.status));
-r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, amountLamports: 1e309, trackId: 'FONT-BASE0001' } });
+r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, amountLamports: 1000, trackId: 'FONT-BASE0001' } });
+check('verify-payment missing buyerWallet -> 400 BUYER_REQUIRED', r.status === 400 && r.json?.code === 'BUYER_REQUIRED', JSON.stringify(r.json));
+r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, buyerWallet: wallet, amountLamports: 1e309, trackId: 'FONT-BASE0001' } });
 check('verify-payment Infinity amount -> 400 (not passed downstream)', r.status === 400, String(r.status));
-r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: 'not-a-wallet!!!', amountLamports: 1000, trackId: 'FONT-BASE0001' } });
+r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: 'not-a-wallet!!!', buyerWallet: wallet, amountLamports: 1000, trackId: 'FONT-BASE0001' } });
 check('verify-payment bad artistWallet -> 400', r.status === 400, String(r.status));
 r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, buyerWallet: 'garbage', amountLamports: 1000, trackId: 'FONT-BASE0001' } });
 check('verify-payment bad buyerWallet -> 400', r.status === 400, String(r.status));
-r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, amountLamports: 1000, trackId: 'y'.repeat(65) } });
+r = await req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), artistWallet: wallet, buyerWallet: wallet, amountLamports: 1000, trackId: 'y'.repeat(65) } });
 check('verify-payment overlong trackId -> 400', r.status === 400, String(r.status));
 
 // ============ 7. publish + tamper + XSS share ============
@@ -281,7 +283,7 @@ console.log('verify-payment price binding');
     r = await req('POST', '/api/v1/publish', { body: { txId: 'TXPRICED000000000000000000000000000000000004' } });
     check('publish priced releases -> 200', r.status === 200 && r.json?.success === true, JSON.stringify(r.json));
 
-    const vp = (body) => req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), currency: 'SOL', ...body } });
+    const vp = (body) => req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), buyerWallet: wallet, currency: 'SOL', ...body } });
     r = await vp({ artistWallet: wallet, amountLamports: 5_000_000_000, trackId: 'FONT-NOPE99999' });
     check('unknown trackId -> 400 UNKNOWN_TRACK', r.status === 400 && r.json?.code === 'UNKNOWN_TRACK', JSON.stringify(r.json));
     r = await vp({ artistWallet: otherWallet, amountLamports: 5_000_000_000, trackId: 'FONT-PRICEDSOL1' });
