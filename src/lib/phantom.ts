@@ -86,14 +86,19 @@ export const SOLANA_RPC_ENDPOINTS: string[] = [
 export const SOLANA_RPC = SOLANA_RPC_ENDPOINTS[0]
 
 let workingRpc: string | null = null
+let workingRpcAt = 0
+/** Re-probe after this long so a cached endpoint that DIED mid-session
+ *  (previously cached forever -> every purchase/tip failed until a page
+ *  refresh) heals itself on the next call. */
+const WORKING_RPC_TTL_MS = 5 * 60_000
 
 /**
  * Resolve a mainnet RPC that actually answers from this browser by probing
- * `getLatestBlockhash` down the endpoint list. Result is cached for the
- * session; cache is cleared on failure by the caller retrying.
+ * `getLatestBlockhash` down the endpoint list. Result is cached for
+ * WORKING_RPC_TTL_MS, then revalidated.
  */
 export async function getWorkingRpc(): Promise<string> {
-  if (workingRpc) return workingRpc
+  if (workingRpc && Date.now() - workingRpcAt < WORKING_RPC_TTL_MS) return workingRpc
   for (const url of SOLANA_RPC_ENDPOINTS) {
     try {
       const res = await fetch(url, {
@@ -105,6 +110,7 @@ export async function getWorkingRpc(): Promise<string> {
       const d = (await res.json()) as { result?: { value?: { blockhash?: string } } }
       if (d.result?.value?.blockhash) {
         workingRpc = url
+        workingRpcAt = Date.now()
         return url
       }
     } catch {

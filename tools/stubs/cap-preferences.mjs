@@ -1,4 +1,4 @@
-const store = new Map()
+const store = (globalThis.__prefStore ??= new Map()) // shared across bundle copies
 export const Preferences = {
   get({ key }) { return Promise.resolve({ value: store.has(key) ? store.get(key) : null }) },
   set({ key, value }) { store.set(key, value); return Promise.resolve() },

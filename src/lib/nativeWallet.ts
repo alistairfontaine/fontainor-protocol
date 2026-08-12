@@ -21,7 +21,7 @@ import {
   type PhantomProviderShim,
   type PublicKeyLike,
 } from './phantomDeeplink'
-import { mwaAddress, mwaAvailable, mwaConnect, mwaDisconnect, mwaSignAndSendTransaction, mwaSignMessage, mwaStoredSession } from './mwa'
+import { mwaAddress, mwaAvailable, mwaConnect, mwaDisconnect, MwaUserDeclinedError, mwaSignAndSendTransaction, mwaSignMessage, mwaStoredSession } from './mwa'
 
 type Backend = 'mwa' | 'phantom'
 const BACKEND_KEY = 'fontainor_wallet_backend_v1'
@@ -66,11 +66,16 @@ async function connect(): Promise<{ publicKey: PublicKeyLike }> {
       await saveBackend('mwa')
       return res
     } catch (e) {
-      // User declined or wallet errored — surface decline, fall back only
-      // when MWA itself is unusable.
+      // User declined — surface it (falling through would nag the user with
+      // a SECOND wallet sheet via the Phantom deeplink). mwaConnect maps
+      // decline-class rejection codes (USER_DECLINED / AUTH_INVALID on a
+      // fresh authorize) to MwaUserDeclinedError, so this is wallet- and
+      // locale-agnostic; the message regex stays as belt-and-braces.
+      if (e instanceof MwaUserDeclinedError) throw e
       const msg = e instanceof Error ? e.message : String(e)
       if (/declined|reject|cancel/i.test(msg)) throw e instanceof Error ? e : new Error(msg)
-      // else: fall through to Phantom deeplink
+      // else (NO_WALLET / WALLET_ERROR / association timeout): fall through
+      // to the Phantom deeplink backend.
     }
   }
   if (!phantom) throw new Error('No wallet available on this device.')

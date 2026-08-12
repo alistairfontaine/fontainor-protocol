@@ -101,10 +101,40 @@ export async function mwaStoredSession(): Promise<{ address: string } | null> {
 
 export async function mwaConnect(): Promise<{ publicKey: PublicKeyLike }> {
   const existing = await loadSession()
-  const res = await Mwa.connect({ ...IDENTITY, cluster: CLUSTER, authToken: existing?.authToken })
+  try {
+    return await connectOnce(existing?.authToken)
+  } catch (e) {
+    const code = rejectionCode(e)
+    // Stale/revoked token (user cleared the app inside their wallet, or a
+    // token from a previous install): self-heal with ONE fresh authorize.
+    // Without this, every reconnect re-sent the dead token and failed the
+    // same way — login was bricked until the user cleared app data.
+    if (code === 'AUTH_INVALID' && existing?.authToken) {
+      await saveSession(null)
+      try {
+        return await connectOnce()
+      } catch (e2) {
+        throw asDecline(e2) ?? e2
+      }
+    }
+    // On a FRESH authorize, AUTH_INVALID (ERROR_AUTHORIZATION_FAILED) means
+    // the user declined the approve sheet — benign, same as USER_DECLINED.
+    throw asDecline(e) ?? e
+  }
+}
+
+async function connectOnce(authToken?: string): Promise<{ publicKey: PublicKeyLike }> {
+  const res = await Mwa.connect({ ...IDENTITY, cluster: CLUSTER, authToken })
   const address = bs58.encode(b64ToBytes(res.publicKey))
   await saveSession({ authToken: res.authToken, address, accountLabel: res.accountLabel || undefined })
   return { publicKey: makePublicKey(address) }
+}
+
+/** Map decline-class rejection codes to MwaUserDeclinedError (else null). */
+function asDecline(e: unknown): MwaUserDeclinedError | null {
+  const code = rejectionCode(e)
+  if (code !== 'USER_DECLINED' && code !== 'AUTH_INVALID') return null
+  return new MwaUserDeclinedError(e instanceof Error ? e.message : 'Request declined in wallet.')
 }
 
 export async function mwaDisconnect(): Promise<void> {
