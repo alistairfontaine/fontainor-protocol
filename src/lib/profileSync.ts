@@ -60,11 +60,28 @@ export function loadSessionProof(): SessionProof | null {
 }
 
 export function clearSessionProof(): void {
+  // Any in-flight sync belongs to the identity being discarded — its
+  // responses must not merge into (or be pushed as) whoever comes next.
+  syncEpoch++
   try {
     localStorage.removeItem(SESSION_KEY)
   } catch {
     /* noop */
   }
+}
+
+// --- sync epoch --------------------------------------------------------------
+//
+// A wallet switch (accountChanged → clearSessionProof → new syncProfile) can
+// happen while a previous wallet's pulls are still in flight. Without a
+// guard, wallet A's favorites/purchases merge into the store now belonging to
+// wallet B — and the polluted replica may then be *pushed* to the server
+// under B's proof. Every async continuation checks the epoch it started with.
+
+let syncEpoch = 0
+
+function currentEpoch(): number {
+  return syncEpoch
 }
 
 // --- purchases -------------------------------------------------------------
@@ -78,11 +95,13 @@ interface ServerPurchase {
   verifiedAt?: string
 }
 
-async function pullPurchases(wallet: string): Promise<void> {
+async function pullPurchases(wallet: string, epoch: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/purchases?wallet=${encodeURIComponent(wallet)}`)
   noteServerDate(res)
+  if (epoch !== currentEpoch()) return // identity changed mid-flight — discard
   if (!res.ok) return
   const data = (await res.json().catch(() => null)) as { purchases?: ServerPurchase[] } | null
+  if (epoch !== currentEpoch()) return
   if (!data || !Array.isArray(data.purchases)) return
   const receipts: PurchaseReceipt[] = data.purchases
     .filter((p) => typeof p.signature === 'string' && typeof p.trackId === 'string')
@@ -106,12 +125,14 @@ async function pullPurchases(wallet: string): Promise<void> {
 let pushTimer: ReturnType<typeof setTimeout> | null = null
 
 function pushFavoritesSoon(): void {
-  const proof = loadSessionProof()
-  if (!proof) return
+  if (!loadSessionProof()) return
   if (pushTimer) clearTimeout(pushTimer)
   pushTimer = setTimeout(() => {
     pushTimer = null
-    void pushFavoritesNow(proof)
+    // Re-load at fire time: the proof captured at schedule time may belong to
+    // a wallet that disconnected during the debounce window.
+    const proof = loadSessionProof()
+    if (proof) void pushFavoritesNow(proof)
   }, PUSH_DEBOUNCE_MS)
 }
 
@@ -136,6 +157,13 @@ async function pushFavoritesNow(proof: SessionProof): Promise<void> {
         unlikedAt: state.unlikedAt,
       }),
     })
+    // A rejected signature (expired/stale proof) will never succeed again —
+    // drop it now instead of retrying a dead credential on every like for
+    // days. The next login produces a fresh one.
+    if (res.status === 401 || res.status === 403) {
+      clearSessionProof()
+      return
+    }
     // The server answers with the canonical merged replica — adopt it so this
     // device also learns about likes/unlikes merged in from elsewhere.
     const data = (await res.json().catch(() => null)) as ServerFavorites | null
@@ -145,18 +173,32 @@ async function pushFavoritesNow(proof: SessionProof): Promise<void> {
   }
 }
 
-async function pullFavorites(wallet: string): Promise<void> {
+/** True if the merged local replica knows anything the server replica doesn't. */
+function replicaHasNews(merged: { ids: string[]; likedAt: Record<string, number>; unlikedAt: Record<string, number> }, server: ServerFavorites): boolean {
+  const sIds = new Set((server.ids ?? []).map(String))
+  if (merged.ids.some((id) => !sIds.has(id))) return true
+  const sLiked = server.likedAt ?? {}
+  const sUnliked = server.unlikedAt ?? {}
+  for (const [id, ts] of Object.entries(merged.likedAt)) if (ts > (Number(sLiked[id]) || 0)) return true
+  for (const [id, ts] of Object.entries(merged.unlikedAt)) if (ts > (Number(sUnliked[id]) || 0)) return true
+  return false
+}
+
+async function pullFavorites(wallet: string, epoch: number): Promise<void> {
   const res = await fetch(`${API_BASE}/api/v1/favorites?wallet=${encodeURIComponent(wallet)}`)
   noteServerDate(res)
+  if (epoch !== currentEpoch()) return // identity changed mid-flight — discard
   if (!res.ok) return
   const data = (await res.json().catch(() => null)) as ServerFavorites | null
+  if (epoch !== currentEpoch()) return
   if (!data || !Array.isArray(data.ids)) return
-  const before = JSON.stringify(data.ids)
   const merged = mergeFavoritesState(data)
-  // Local actions the server hasn't seen? Push the merged replica back.
-  if (JSON.stringify(merged.ids) !== before || Object.keys(merged.unlikedAt).length > 0) {
+  // Push back only when the merge produced something the server doesn't know.
+  // (The old check fired whenever *any* tombstone existed — tombstones live
+  // 90 days, so every app start did a pointless authenticated write.)
+  if (replicaHasNews(merged, data)) {
     const proof = loadSessionProof()
-    if (proof) void pushFavoritesNow(proof)
+    if (proof && proof.wallet === wallet) void pushFavoritesNow(proof)
   }
 }
 
@@ -171,7 +213,9 @@ export function startFavoritesAutoPush(): void {
   subscribeFavorites(pushFavoritesSoon)
 }
 
-/** Pull purchases + favorites for the wallet. Safe to call repeatedly; best-effort. */
+/** Pull purchases + favorites for the wallet. Safe to call repeatedly; best-effort.
+ *  Starting a new sync invalidates any still-running sync for a previous wallet. */
 export async function syncProfile(wallet: string): Promise<void> {
-  await Promise.allSettled([pullPurchases(wallet), pullFavorites(wallet)])
+  const epoch = ++syncEpoch
+  await Promise.allSettled([pullPurchases(wallet, epoch), pullFavorites(wallet, epoch)])
 }

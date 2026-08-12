@@ -34,13 +34,19 @@ function liveRegion(): HTMLElement | null {
   return region
 }
 
+let pending: number | null = null
+
 export function announce(message: string): void {
   const el = liveRegion()
   if (!el) return
   // Clear first so a repeated message (downloading the same track twice)
   // announces again — assistive tech ignores unchanged textContent.
+  // Cancel any not-yet-fired announcement: two calls inside the 30 ms window
+  // used to write the OLDER message into the region after the newer clear.
+  if (pending !== null) window.clearTimeout(pending)
   el.textContent = ''
-  window.setTimeout(() => {
+  pending = window.setTimeout(() => {
+    pending = null
     if (el.isConnected) el.textContent = message
   }, 30)
 }

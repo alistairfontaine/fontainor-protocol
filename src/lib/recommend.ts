@@ -103,8 +103,11 @@ export function similarTo(rel: Release, all: Release[], limit = 5): Recommendati
     if (c.type !== 'release' || c.id === rel.id) continue
     const shared = c.tags.filter((t) => mine.has(t))
     const sameArtist = c.artist === rel.artist ? 1.5 : 0
+    // Freshness is a tiebreaker, never a qualifier: without a shared tag or
+    // the same artist, a brand-new but unrelated release used to sneak into
+    // "More like this" on a 0.001 score with an empty reason label.
+    if (!shared.length && !sameArtist) continue
     const score = shared.length * 1.2 + sameArtist + freshness(c) * 0.3
-    if (score <= 0) continue
     const reason = sameArtist ? `Also by ${c.artist}` : shared.length ? `#${shared[0]}` : ''
     out.push({ rel: c, score, reason })
   }

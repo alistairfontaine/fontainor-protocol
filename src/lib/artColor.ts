@@ -30,7 +30,12 @@ function clampTone([r, g, b]: RGB): RGB {
 
 export async function dominantColor(rel: Release): Promise<RGB | null> {
   if (!rel.coverUrl) return null
-  const hit = cache.get(rel.id)
+  // Key on id AND url: covers are re-pointed at healthier gateways after
+  // settlement (gateway failover / arweave.net promotion). Keyed on id alone,
+  // a null from one failing gateway was cached for the whole session and the
+  // tint never recovered after the URL healed.
+  const key = `${rel.id}|${rel.coverUrl}`
+  const hit = cache.get(key)
   if (hit !== undefined) return hit
 
   const out = await new Promise<RGB | null>((resolve) => {
@@ -72,7 +77,7 @@ export async function dominantColor(rel: Release): Promise<RGB | null> {
     img.src = rel.coverUrl!
   })
 
-  cache.set(rel.id, out)
+  cache.set(key, out)
   return out
 }
 
@@ -91,6 +96,6 @@ export function useArtTint(rel: Release | null): RGB {
     return () => {
       alive = false
     }
-  }, [rel?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [rel?.id, rel?.coverUrl]) // eslint-disable-line react-hooks/exhaustive-deps
   return tint
 }
