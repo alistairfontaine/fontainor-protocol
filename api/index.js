@@ -453,6 +453,60 @@ app.post('/upload', validateUpload, async (req, res) => {
 // the real publish path is musician-pays Irys (src/lib/irysPublish.ts).
 
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
+// --- Purchase price binding helpers ---------------------------------------
+// Server-side SOL/USD quote (CoinGecko → Jupiter fallback), cached 5 minutes,
+// with a stale last-known value (≤24h) accepted before giving up: a flaky
+// price API should delay verification, not silently reopen the underpay hole.
+let solUsdCache = { usd: 0, at: 0 };
+async function serverSolUsd() {
+    const now = Date.now();
+    if (solUsdCache.usd > 0 && now - solUsdCache.at < 5 * 60_000) return solUsdCache.usd;
+    const sources = [
+        async () => {
+            const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const j = await r.json();
+            const usd = j?.solana?.usd;
+            return typeof usd === 'number' && usd > 0 ? usd : null;
+        },
+        async () => {
+            const r = await fetch('https://lite-api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', { signal: AbortSignal.timeout(8000) });
+            if (!r.ok) return null;
+            const j = await r.json();
+            const p = Number(j?.data?.So11111111111111111111111111111111111111112?.price);
+            return Number.isFinite(p) && p > 0 ? p : null;
+        },
+    ];
+    for (const src of sources) {
+        try {
+            const usd = await src();
+            if (usd) { solUsdCache = { usd, at: now }; return usd; }
+        } catch { /* try next */ }
+    }
+    // stale-but-known beats unavailable, within reason
+    if (solUsdCache.usd > 0 && now - solUsdCache.at < 24 * 3600_000) return solUsdCache.usd;
+    return null;
+}
+
+/**
+ * Minimum lamports a purchase of `price` must have moved.
+ * SOL listings convert exactly (minus 10 lamports rounding slack); USD-pegged
+ * listings convert at the server's live quote with a 10% drift allowance
+ * (client quoted at ITS rate moments earlier). Returns:
+ *   number  → enforce this floor
+ *   null    → no rate available right now (caller should 503, not fail open)
+ *   0       → release has no positive price (not purchasable)
+ */
+async function lamportsFloorForPrice(price) {
+    const amount = Number(price?.amount);
+    if (!(amount > 0)) return 0;
+    const cur = String(price?.currency || 'USD').toUpperCase();
+    if (cur === 'SOL') return Math.max(0, Math.round(amount * 1e9) - 10);
+    const usd = await serverSolUsd();
+    if (!usd) return null;
+    return Math.floor((amount / usd) * 1e9 * 0.9);
+}
+
 app.post('/api/v1/verify-payment', async (req, res) => {
     try {
         const { signature, artistWallet, amountLamports, buyerWallet, currency, trackId } = req.body || {};
@@ -479,6 +533,30 @@ app.post('/api/v1/verify-payment', async (req, res) => {
         }
         if (typeof trackId !== 'string' || trackId.length < 1 || trackId.length > 64) {
             return res.status(400).json({ success: false, message: 'Invalid trackId.' });
+        }
+
+        // Price/artist binding: the client claims artistWallet + amountLamports,
+        // and the chain check below only proves that THAT amount moved to THAT
+        // wallet. Without binding trackId → the registry's listed price and
+        // payout wallet, anyone could self-pay 100 lamports and mint a
+        // "verified" receipt for a $29.99 edition (or pocket the 98% by naming
+        // themselves artistWallet). Unknown trackIds are rejected outright.
+        const listed = await findShareRelease(req, trackId); // durable registry first, bundled demo catalog fallback
+        if (!listed) {
+            return res.status(400).json({ success: false, code: 'UNKNOWN_TRACK', message: 'trackId is not a listed release.' });
+        }
+        if (listed.artistWallet && listed.artistWallet !== artistWallet) {
+            return res.status(400).json({ success: false, code: 'ARTIST_MISMATCH', message: 'artistWallet does not match the payout wallet on record for this release.' });
+        }
+        const floor = await lamportsFloorForPrice(listed.price);
+        if (floor === null) {
+            return res.status(503).json({ success: false, code: 'PRICE_UNAVAILABLE', message: 'Live SOL price unavailable — retry verification in a moment.' });
+        }
+        if (floor === 0) {
+            return res.status(400).json({ success: false, code: 'NOT_FOR_SALE', message: 'This release has no listed price — nothing to purchase.' });
+        }
+        if (Number(amountLamports) < floor) {
+            return res.status(400).json({ success: false, code: 'UNDERPAID', message: 'amountLamports is below the listed price for this release.' });
         }
 
         // Verify the 98/2 split actually happened on the Solana ledger, and —

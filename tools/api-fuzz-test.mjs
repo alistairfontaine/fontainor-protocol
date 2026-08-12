@@ -43,6 +43,20 @@ const manifestsByTx = new Map([
 const realFetch = global.fetch;
 global.fetch = async (url, opts) => {
     const u = String(url);
+    if (u.includes('api.coingecko.com/')) {
+        // Deterministic SOL/USD quote for the verify-payment price-floor tests.
+        return { ok: true, status: 200, json: async () => ({ solana: { usd: 200 } }), text: async () => '{"solana":{"usd":200}}' };
+    }
+    if (u.includes('api.mainnet-beta.solana.com')) {
+        // Fast deterministic failure for the on-chain lookup: proves a request
+        // that clears the price gate still reaches (and fails) chain verification
+        // without a live RPC round-trip.
+        return {
+            ok: true, status: 200,
+            json: async () => ({ jsonrpc: '2.0', error: { code: -32602, message: 'stubbed rpc' }, id: 1 }),
+            text: async () => JSON.stringify({ jsonrpc: '2.0', error: { code: -32602, message: 'stubbed rpc' }, id: 1 }),
+        };
+    }
     if (u.includes('arweave.net/') || u.includes('gateway.irys.xyz/')) {
         const seg = u.split('/').pop();
         if (manifestsByTx.has(seg)) return { ok: true, status: 200, json: async () => manifestsByTx.get(seg), text: async () => JSON.stringify(manifestsByTx.get(seg)) };
@@ -241,6 +255,50 @@ r = await req('GET', '/share/FONT-XSS00001');
 check('share renders and HTML-escapes a script-injection title', r.status === 200 && !r.text.includes('<script>alert(1)</script>') && r.text.includes('&lt;script&gt;'), 'unescaped!');
 r = await req('GET', '/share/..%2F..%2Fetc%2Fpasswd');
 check('share path-traversal id -> 302 redirect (no file read)', r.status === 302, String(r.status));
+
+// ============ 7b. verify-payment price/artist binding (C23) ============
+// The server must bind trackId → the registry's listed price + payout wallet:
+// without it, a 100-lamport self-payment minted a "verified" receipt for a
+// $29.99 edition, and a forged artistWallet pocketed the 98% share.
+console.log('verify-payment price binding');
+{
+    const kp2 = nacl.sign.keyPair();
+    const otherWallet = bs58.encode(Buffer.from(kp2.publicKey));
+    const relPriced = (id, amount, currency) => ({
+        type: 'release', id, title: `Priced ${id}`, artist: 'Price Artist',
+        price: { amount, currency }, editions: { total: 10 },
+        status: 'REGISTERED_ON_FONTAINOR', date: '2026-08-12T00:00:00.000Z',
+        audioUri: `https://gateway.irys.xyz/a-${id}`, coverUri: null, artistWallet: wallet,
+    });
+    // Append-only extension of what the durable registry already holds.
+    manifestsByTx.set('TXPRICED000000000000000000000000000000000004', [
+        rel('FONT-BASE0001', 'Base Track', 'Base Artist', 'WalletBASE111111111111111111111111111111111'),
+        XSS,
+        relPriced('FONT-PRICEDSOL1', 5, 'SOL'),
+        relPriced('FONT-PRICEDUSD1', 29.99, 'USDC'),
+        relPriced('FONT-FREEBIE001', 0, 'USD'),
+    ]);
+    r = await req('POST', '/api/v1/publish', { body: { txId: 'TXPRICED000000000000000000000000000000000004' } });
+    check('publish priced releases -> 200', r.status === 200 && r.json?.success === true, JSON.stringify(r.json));
+
+    const vp = (body) => req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), currency: 'SOL', ...body } });
+    r = await vp({ artistWallet: wallet, amountLamports: 5_000_000_000, trackId: 'FONT-NOPE99999' });
+    check('unknown trackId -> 400 UNKNOWN_TRACK', r.status === 400 && r.json?.code === 'UNKNOWN_TRACK', JSON.stringify(r.json));
+    r = await vp({ artistWallet: otherWallet, amountLamports: 5_000_000_000, trackId: 'FONT-PRICEDSOL1' });
+    check('forged artistWallet -> 400 ARTIST_MISMATCH', r.status === 400 && r.json?.code === 'ARTIST_MISMATCH', JSON.stringify(r.json));
+    r = await vp({ artistWallet: wallet, amountLamports: 1000, trackId: 'FONT-PRICEDSOL1' });
+    check('100-lamport "purchase" of a 5 SOL edition -> 400 UNDERPAID', r.status === 400 && r.json?.code === 'UNDERPAID', JSON.stringify(r.json));
+    // $29.99 at the stubbed $200/SOL quote → floor ≈ 0.135 SOL; 0.001 SOL must fail.
+    r = await vp({ artistWallet: wallet, amountLamports: 1_000_000, trackId: 'FONT-PRICEDUSD1' });
+    check('underpaid USD-pegged edition -> 400 UNDERPAID', r.status === 400 && r.json?.code === 'UNDERPAID', JSON.stringify(r.json));
+    r = await vp({ artistWallet: wallet, amountLamports: 1_000_000, trackId: 'FONT-FREEBIE001' });
+    check('zero-priced release -> 400 NOT_FOR_SALE', r.status === 400 && r.json?.code === 'NOT_FOR_SALE', JSON.stringify(r.json));
+    // Full price clears the gate and proceeds to (stub-failed) chain verification —
+    // proves the floor accepts legit amounts rather than rejecting everything.
+    r = await vp({ artistWallet: wallet, amountLamports: 5_000_000_000, trackId: 'FONT-PRICEDSOL1' });
+    check('full-price purchase clears the price gate (fails only at chain check)',
+        r.status === 400 && !r.json?.code && /on-chain/i.test(String(r.json?.message)), JSON.stringify(r.json));
+}
 
 // ============ 8. stats shape ============
 console.log('stats');
