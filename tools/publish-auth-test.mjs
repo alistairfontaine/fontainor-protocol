@@ -138,6 +138,14 @@ check('unsigned permanent entry -> 403 ENTRY_AUTH_INVALID', out.status === 403 &
 out = await post('/upload', [A]);
 check('retired direct-array bypass -> 410 UPLOAD_RETIRED', out.status === 410 && out.body.code === 'UPLOAD_RETIRED', JSON.stringify(out));
 
+// Retirement must not depend on payload shape: a malformed body used to hit the
+// upload validator first and answer 400, which reads like "fix your payload and
+// it will be stored".
+out = await post('/upload', {});
+check('retired upload rejects an empty body with 410, not 400', out.status === 410 && out.body.code === 'UPLOAD_RETIRED', JSON.stringify(out));
+out = await post('/upload', { registry: [A], token: 'whatever' });
+check('retired upload rejects a plausible payload with 410', out.status === 410 && out.body.code === 'UPLOAD_RETIRED', JSON.stringify(out));
+
 server.close();
 upstash.close();
 try { fs.rmSync(pointer, { force: true }); } catch { /* noop */ }

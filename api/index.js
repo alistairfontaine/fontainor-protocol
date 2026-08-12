@@ -532,7 +532,11 @@ app.get('/registry', async (req, res) => {
 });
 
 // 2. Upload (Manifest)
-app.post('/upload', validateUpload, (_req, res) => {
+app.post('/upload', (_req, res) => {
+    // Unconditional: the route no longer validates a payload it will never
+    // accept — an unauthenticated caller must always see the retirement, not a
+    // shape complaint that implies a valid payload would be stored.
+
     // The real client already uploads the permanent manifest before listing.
     // Accepting a caller-supplied full array here was an unauthenticated bypass
     // of txId-bound publish authorization and could inject non-permanent rows.
