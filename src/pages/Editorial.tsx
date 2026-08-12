@@ -66,7 +66,9 @@ export function EditorialArticle() {
   const { id } = useParams()
   const { releases, loading } = useRegistry()
   const navigate = useNavigate()
-  const article = releases.find((r) => r.id === id)
+  // Only editorial entries render as articles — a music release id pasted
+  // into /editorial/:id must 404 to the empty state, not render as prose.
+  const article = releases.find((r) => r.id === id && r.type === 'editorial')
 
   if (loading) {
     return (

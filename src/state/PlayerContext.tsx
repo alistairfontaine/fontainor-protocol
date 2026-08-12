@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import type { Release } from '../lib/registry'
 import { streamableAudioUrl } from '../lib/api'
 import { dropBrokenDownload, localAudioSrc } from '../lib/downloads'
+import { cachedStreamUrl, stashStream, warmStreamCache } from '../lib/streamCache'
 import { contentIdOf, markGatewayDown, markGatewayUp, markSettled, mediaCandidates, probeSettled } from '../lib/gateways'
 import { msBindActions, msClear, msSetMetadata, msSetPlaybackState, msSetPosition } from '../lib/mediaSession'
 import { postPlay } from '../lib/plays'
@@ -233,6 +234,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const local = localAudioSrc(rel.id)
     if (local) return local
     if (!rel.audio) return null
+    // Session stream cache (C40): a recently streamed copy beats the network.
+    const cached = cachedStreamUrl(rel.audio)
+    if (cached) return cached
+    // Materialise any CacheStorage hit so the eager pass / play() gets it.
+    warmStreamCache(rel.audio)
     return mediaCandidates(streamableAudioUrl(rel.audio))[0] ?? streamableAudioUrl(rel.audio)
   }
 
@@ -394,6 +400,11 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     })
     a.addEventListener('ended', () => {
       if (audioRef.current !== a) return
+      // Session stream cache (C40): a track streamed to the end from the
+      // network is a strong replay candidate — stash it. The bytes were just
+      // streamed, so this usually resolves from the browser's HTTP cache.
+      const rel = currentRef.current
+      if (rel?.audio && !a.dataset.localDownload && !a.src.startsWith('blob:')) stashStream(rel.audio, a.src)
       if (xfadeRef.current) {
         finishXfade() // the next track is already audible — just complete the swap
         return
@@ -560,7 +571,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
         // every gateway that serves the same permanent content. One unreachable
         // gateway must not make a permanent release unplayable.
         const local = localAudioSrc(rel.id)
-        const list = [...(local ? [local] : []), ...mediaCandidates(streamableAudioUrl(rel.audio))]
+        // Session stream cache (C40) slots between the real download and the
+        // gateways: instant replays, and a dead blob URL simply fails over.
+        const cached = local ? null : cachedStreamUrl(rel.audio)
+        if (!local && !cached) warmStreamCache(rel.audio)
+        const list = [
+          ...(local ? [local] : []),
+          ...(cached ? [cached] : []),
+          ...mediaCandidates(streamableAudioUrl(rel.audio)),
+        ]
         attemptsRef.current = { id: rel.id, list, idx: 0 }
         // Learn (in the background, throttled) whether this content is settled
         // on arweave.net — its immutable cache-control makes replays free.

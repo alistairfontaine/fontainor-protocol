@@ -163,13 +163,16 @@ check('the following track is warmed after the transition', gap3Binds.length >= 
 
 console.log('gapless: queue change re-targets the preload')
 // Queue Gap One (so it should play next instead of Gap Three).
+const preQueue = (await audioLog()).length
 await page.getByRole('button', { name: 'Add Gap One to queue' }).click()
 await page.waitForTimeout(1200)
 log = await audioLog()
-const lastGap1 = log.filter((e) => e.url && e.url.includes('genesis.mp3'))
-const lastGap1Bind = lastGap1[lastGap1.length - 1]
-const gap3Last = log.filter((e) => e.url && e.url.includes('fieldnotes.mp3'))
-check('queued track becomes the warmed one', !!lastGap1Bind && lastGap1Bind.t > gap3Binds[gap3Binds.length - 1].t, JSON.stringify({ lastGap1Bind }))
+const postQueue = log.slice(preQueue)
+// Gap One already streamed to its end earlier in this test, so the session
+// stream cache (C40) may serve the re-warm as a blob: URL instead of a fresh
+// network bind. Either form proves the preload re-targeted to the queued track.
+const retargetBinds = postQueue.filter((e) => e.url && (e.url.includes('genesis.mp3') || e.url.startsWith('blob:')))
+check('queued track becomes the warmed one', retargetBinds.length >= 1, JSON.stringify({ postQueue }))
 
 console.log('gapless: close() drops the preload')
 const beforeClose = (await audioLog()).length

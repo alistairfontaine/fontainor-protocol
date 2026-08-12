@@ -139,11 +139,19 @@ try {
       Object.defineProperty(el, 'currentTime', { get: () => frozen, set: () => {}, configurable: true })
       el.dispatchEvent(new Event('waiting'))
     }`)
-    // Watchdog window is 12s; give it 15.
+    // Watchdog window is 12s; give it 20. The arweave element appears
+    // synchronously when attachNextSource assigns src (and its currentTime is
+    // instantly the resume position), which beats the intercepted media GET
+    // reaching the Node-side route handler — poll mediaLog ITSELF, on the
+    // Node side, so the assertion waits for the request, not the element.
     await page.waitForFunction((ar) => {
       const els = window.__els.filter((e) => e.src.startsWith(ar))
       return els.length > 0
-    }, ARWEAVE, { timeout: 15000 }).catch(() => {})
+    }, ARWEAVE, { timeout: 20000 }).catch(() => {})
+    const deadline = Date.now() + 20000
+    while (Date.now() < deadline && !mediaLog.some((u) => u.startsWith(ARWEAVE))) {
+      await new Promise((r) => setTimeout(r, 250))
+    }
     check('watchdog failed over to the alternate gateway', mediaLog.some((u) => u.startsWith(ARWEAVE)), mediaLog.join(' | '))
     const playing = await page.evaluate((ar) => {
       const els = window.__els.filter((e) => e.src.startsWith(ar))

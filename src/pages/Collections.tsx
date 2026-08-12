@@ -11,7 +11,12 @@ import { useRegistry } from '../state/RegistryContext'
 export function Favorites() {
   const { releases, loading } = useRegistry()
   const { ids } = useFavorites()
-  const items = releases.filter((r) => ids.includes(r.id))
+  // The store keeps ids in like order (oldest first); render newest first so
+  // the heart you just tapped is visible at the top, matching History.
+  const items = [...ids]
+    .reverse()
+    .map((id) => releases.find((r) => r.id === id))
+    .filter((r): r is NonNullable<typeof r> => Boolean(r))
 
   return (
     <>

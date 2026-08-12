@@ -52,8 +52,10 @@ export default function Profile() {
     )
   }
 
+  // Handle match only when a handle exists — `r.artist === ''` must never
+  // claim registry entries with a blank artist field for this profile.
   const mine = releases.filter(
-    (r) => r.artistWallet === user.address || r.artist === (user.handle ?? '') || r.artist === user.address,
+    (r) => r.artistWallet === user.address || (!!user.handle && r.artist === user.handle) || r.artist === user.address,
   )
   // Receipts recovered from the durable server record carry no title/artist —
   // resolve them from the registry by trackId.
