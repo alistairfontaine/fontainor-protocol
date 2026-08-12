@@ -51,9 +51,26 @@ const manifestsByTx = new Map([
 const realFetch = global.fetch;
 global.fetch = async (url, opts) => {
     const u = String(url);
+    // Deterministic SOL/USD quotes for the verify-payment price-floor tests.
+    // CoinGecko is deliberately ROGUE (100x): the server takes a median of
+    // agreeing sources, so a single broken price API must not be able to lower
+    // the underpay floor. The three honest sources quote $200.
     if (u.includes('api.coingecko.com/')) {
-        // Deterministic SOL/USD quote for the verify-payment price-floor tests.
-        return { ok: true, status: 200, json: async () => ({ solana: { usd: 200 } }), text: async () => '{"solana":{"usd":200}}' };
+        const body = { solana: { usd: 20_000 } };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+    }
+    if (u.includes('lite-api.jup.ag/')) {
+        if (u.includes('/price/v2')) return { ok: false, status: 404, json: async () => ({}), text: async () => 'Route not found' };
+        const body = { So11111111111111111111111111111111111111112: { usdPrice: 200 } };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+    }
+    if (u.includes('api.coinbase.com/')) {
+        const body = { data: { amount: '200', base: 'SOL', currency: 'USD' } };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
+    }
+    if (u.includes('api.kraken.com/')) {
+        const body = { error: [], result: { SOLUSD: { c: ['200', '1'] } } };
+        return { ok: true, status: 200, json: async () => body, text: async () => JSON.stringify(body) };
     }
     if (u.includes('api.mainnet-beta.solana.com')) {
         // Fast deterministic failure for the on-chain lookup: proves a request
@@ -317,6 +334,16 @@ console.log('verify-payment price binding');
     // $29.99 at the stubbed $200/SOL quote → floor ≈ 0.135 SOL; 0.001 SOL must fail.
     r = await vp({ artistWallet: wallet, amountLamports: 1_000_000, trackId: 'FONT-PRICEDUSD1' });
     check('underpaid USD-pegged edition -> 400 UNDERPAID', r.status === 400 && r.json?.code === 'UNDERPAID', JSON.stringify(r.json));
+    // The rogue $20,000 CoinGecko quote would put the floor for a $29.99
+    // listing at ~1.35M lamports. At the honest $200 median the floor is
+    // ~135M, so this amount must still be rejected — one broken price source
+    // cannot open an underpayment hole.
+    r = await vp({ artistWallet: wallet, amountLamports: 1_400_000, trackId: 'FONT-PRICEDUSD1' });
+    check('a single rogue 100x price source cannot lower the underpay floor', r.status === 400 && r.json?.code === 'UNDERPAID', JSON.stringify(r.json));
+    // ...and a correct amount at the honest quote still clears the gate.
+    r = await vp({ artistWallet: wallet, amountLamports: 140_000_000, trackId: 'FONT-PRICEDUSD1' });
+    check('USD-pegged purchase at the honest quote clears the price gate',
+        r.status === 400 && !r.json?.code && /on-chain/i.test(String(r.json?.message)), JSON.stringify(r.json));
     r = await vp({ artistWallet: wallet, amountLamports: 1_000_000, trackId: 'FONT-FREEBIE001' });
     check('zero-priced release -> 400 NOT_FOR_SALE', r.status === 400 && r.json?.code === 'NOT_FOR_SALE', JSON.stringify(r.json));
     // Full price clears the gate and proceeds to (stub-failed) chain verification —

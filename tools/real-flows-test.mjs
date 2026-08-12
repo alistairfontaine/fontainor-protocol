@@ -35,10 +35,19 @@ async function main() {
     verifyPayload = r.request().postDataJSON()
     await r.fulfill({ json: { success: true, verified: true, receiptStored: false } })
   })
+  // The quote is multi-source with a median + outlier rule, so EVERY price
+  // source must be pinned — stubbing only CoinGecko let the live Coinbase and
+  // Kraken quotes outvote the fixture and moved the displayed USD figure.
+  const CORS = { 'access-control-allow-origin': '*' }
+  const PINNED_USD = 200
   await page.route('https://api.coingecko.com/**', (r) =>
-    r.fulfill({ json: { solana: { usd: 200 } }, headers: { 'access-control-allow-origin': '*' } }))
+    r.fulfill({ json: { solana: { usd: PINNED_USD } }, headers: CORS }))
   await page.route('https://lite-api.jup.ag/**', (r) =>
-    r.fulfill({ json: { data: {} }, headers: { 'access-control-allow-origin': '*' } }))
+    r.fulfill({ json: { So11111111111111111111111111111111111111112: { usdPrice: PINNED_USD } }, headers: CORS }))
+  await page.route('https://api.coinbase.com/**', (r) =>
+    r.fulfill({ json: { data: { amount: String(PINNED_USD), base: 'SOL', currency: 'USD' } }, headers: CORS }))
+  await page.route('https://api.kraken.com/**', (r) =>
+    r.fulfill({ json: { error: [], result: { SOLUSD: { c: [String(PINNED_USD), '1'] } } }, headers: CORS }))
   // simulated Solana JSON-RPC
   // The app resolves a working RPC at runtime (publicnode first, mainnet-beta
   // fallback) — stub BOTH so the simulated chain always answers.

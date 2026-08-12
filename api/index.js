@@ -554,35 +554,81 @@ app.post('/upload', (_req, res) => {
 
 // 4. Solana On-Chain Payment Settlement & Token Minting Gate
 // --- Purchase price binding helpers ---------------------------------------
-// Server-side SOL/USD quote (CoinGecko → Jupiter fallback), cached 5 minutes,
-// with a stale last-known value (≤24h) accepted before giving up: a flaky
-// price API should delay verification, not silently reopen the underpay hole.
+// Server-side SOL/USD quote for the underpay floor. A too-HIGH quote lowers the
+// floor, so a single broken price API is an underpayment hole: the quote is
+// taken from four independent sources (CoinGecko, Jupiter v3, Coinbase, Kraken
+// — Jupiter's v2 endpoint is retired and used to fail silently), and only a
+// median of agreeing sources is trusted. Cached 5 minutes, with a stale
+// last-known value (<=24h) accepted before giving up: a flaky price API should
+// delay verification, not reopen the hole.
+const PRICE_MIN_USD = 1;
+const PRICE_MAX_USD = 100_000;
+const PRICE_MAX_DIVERGENCE = 0.2;
+const PRICE_MAX_SOLO_DRIFT = 0.35;
 let solUsdCache = { usd: 0, at: 0 };
+
+const plausibleUsd = (n) => {
+    const v = Number(n);
+    return Number.isFinite(v) && v >= PRICE_MIN_USD && v <= PRICE_MAX_USD ? v : null;
+};
+
+const medianOf = (values) => {
+    const sorted = [...values].sort((a, b) => a - b);
+    const mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+};
+
+async function priceJson(url) {
+    const r = await fetch(url, { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return r.json();
+}
+
+const WSOL = 'So11111111111111111111111111111111111111112';
+const PRICE_SOURCES = [
+    async () => plausibleUsd((await priceJson('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd'))?.solana?.usd),
+    async () => {
+        const j = await priceJson(`https://lite-api.jup.ag/price/v3?ids=${WSOL}`);
+        const row = j?.data?.[WSOL] ?? j?.[WSOL];
+        return plausibleUsd(row?.usdPrice ?? row?.price);
+    },
+    async () => plausibleUsd((await priceJson('https://api.coinbase.com/v2/prices/SOL-USD/spot'))?.data?.amount),
+    async () => {
+        const j = await priceJson('https://api.kraken.com/0/public/Ticker?pair=SOLUSD');
+        const row = j?.result ? Object.values(j.result)[0] : undefined;
+        return plausibleUsd(row?.c?.[0]);
+    },
+];
+
 async function serverSolUsd() {
     const now = Date.now();
     if (solUsdCache.usd > 0 && now - solUsdCache.at < 5 * 60_000) return solUsdCache.usd;
-    const sources = [
-        async () => {
-            const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd', { signal: AbortSignal.timeout(8000) });
-            if (!r.ok) return null;
-            const j = await r.json();
-            const usd = j?.solana?.usd;
-            return typeof usd === 'number' && usd > 0 ? usd : null;
-        },
-        async () => {
-            const r = await fetch('https://lite-api.jup.ag/price/v2?ids=So11111111111111111111111111111111111111112', { signal: AbortSignal.timeout(8000) });
-            if (!r.ok) return null;
-            const j = await r.json();
-            const p = Number(j?.data?.So11111111111111111111111111111111111111112?.price);
-            return Number.isFinite(p) && p > 0 ? p : null;
-        },
-    ];
-    for (const src of sources) {
+
+    const answers = [];
+    await Promise.all(PRICE_SOURCES.map(async (src) => {
         try {
             const usd = await src();
-            if (usd) { solUsdCache = { usd, at: now }; return usd; }
-        } catch { /* try next */ }
+            if (usd) answers.push(usd);
+        } catch { /* source unavailable */ }
+    }));
+
+    if (answers.length >= 2) {
+        const mid = medianOf(answers);
+        const agreeing = answers.filter((a) => Math.abs(a - mid) / mid <= PRICE_MAX_DIVERGENCE);
+        if (agreeing.length >= 2) {
+            const usd = medianOf(agreeing);
+            solUsdCache = { usd, at: now };
+            return usd;
+        }
+    } else if (answers.length === 1) {
+        const only = answers[0];
+        const drifted = solUsdCache.usd > 0 && Math.abs(only - solUsdCache.usd) / solUsdCache.usd > PRICE_MAX_SOLO_DRIFT;
+        if (!drifted) {
+            solUsdCache = { usd: only, at: now };
+            return only;
+        }
     }
+
     // stale-but-known beats unavailable, within reason
     if (solUsdCache.usd > 0 && now - solUsdCache.at < 24 * 3600_000) return solUsdCache.usd;
     return null;
