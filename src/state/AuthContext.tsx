@@ -23,6 +23,9 @@ interface PhantomProvider {
   connect(): Promise<{ publicKey: { toString(): string; toBytes(): Uint8Array } }>
   disconnect?(): Promise<void>
   signMessage(msg: Uint8Array, encoding: string): Promise<{ signature: Uint8Array }>
+  on?(event: 'accountChanged' | 'disconnect', listener: (publicKey?: { toString(): string } | null) => void): void
+  off?(event: 'accountChanged' | 'disconnect', listener: (publicKey?: { toString(): string } | null) => void): void
+  removeListener?(event: 'accountChanged' | 'disconnect', listener: (publicKey?: { toString(): string } | null) => void): void
 }
 
 declare global {
@@ -183,6 +186,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     startFavoritesAutoPush()
     if (user?.address) void syncProfile(user.address)
     // eslint-disable-next-line react-hooks/exhaustive-deps -- run once on mount
+  }, [])
+
+  // Desktop Phantom can change accounts (or disconnect) while the SPA stays
+  // open. A restored `user` is only valid for the address that signed it; if
+  // the provider moves to another wallet, retaining that user lets the new
+  // account operate behind the old profile/collection/publisher identity.
+  // Clear the authenticated session immediately and require one fresh sign-in.
+  useEffect(() => {
+    let provider: PhantomProvider | null = null
+    let disposed = false
+    let retry: ReturnType<typeof setTimeout> | null = null
+
+    const clearIdentity = () => {
+      setUser(null)
+      clearSessionProof()
+      try {
+        localStorage.removeItem(USER_KEY)
+      } catch {
+        /* noop */
+      }
+    }
+    const accountChanged = (publicKey?: { toString(): string } | null) => {
+      setUser((current) => {
+        if (!current || publicKey?.toString() === current.address) return current
+        clearSessionProof()
+        try {
+          localStorage.removeItem(USER_KEY)
+        } catch {
+          /* noop */
+        }
+        return null
+      })
+    }
+    const disconnected = () => clearIdentity()
+
+    const attach = () => {
+      if (disposed) return
+      provider = window.solana ?? window.phantom?.solana ?? null
+      if (!provider?.on) {
+        // Extensions inject after React sometimes; retry briefly without
+        // blocking render. Native provider shims have no account event API.
+        retry = setTimeout(attach, 250)
+        return
+      }
+      provider.on('accountChanged', accountChanged)
+      provider.on('disconnect', disconnected)
+    }
+    attach()
+    return () => {
+      disposed = true
+      if (retry) clearTimeout(retry)
+      const remove = provider?.off ?? provider?.removeListener
+      if (remove && provider) {
+        remove.call(provider, 'accountChanged', accountChanged)
+        remove.call(provider, 'disconnect', disconnected)
+      }
+    }
   }, [])
 
   const updateHandle = useCallback(

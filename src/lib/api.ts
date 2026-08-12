@@ -193,6 +193,7 @@ export async function loadRegistry(fallback: unknown): Promise<RegistryLoad> {
 
 /** Fetch the raw live registry array (for appending a new publication). */
 export async function loadRawRegistryArray(): Promise<unknown[]> {
+  let failure = 'The live registry did not return a usable array.'
   try {
     const res = await fetch(API_BASE + '/registry', { cache: 'no-store' })
     if (res.ok) {
@@ -201,11 +202,17 @@ export async function loadRawRegistryArray(): Promise<unknown[]> {
       const o = out.data as Record<string, unknown> | null
       if (o && Array.isArray(o.releases)) return o.releases as unknown[]
       if (o && typeof o === 'object') return [o]
+      failure = 'The live registry response was malformed.'
+    } else {
+      failure = `The live registry returned HTTP ${res.status}.`
     }
-  } catch {
-    /* empty registry is a valid starting point */
+  } catch (e) {
+    failure = String((e as Error)?.message || e)
   }
-  return []
+  // Publishing an empty replacement after a transient read failure would fund
+  // permanent uploads that the append-only backend must reject. Empty is valid
+  // only when the API explicitly answered with [] above; failures fail closed.
+  throw new Error(`Could not load the current live registry: ${failure} Publishing has not started and nothing was charged.`)
 }
 
 export type PublishFailure = 'validation' | 'write' | 'timeout' | 'network'

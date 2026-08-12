@@ -39,14 +39,17 @@ function check(name, cond, detail = '') {
 }
 
 const NATIVE_SHIM = `
+const __durableFiles = window.__fontainorTestDurable?.files || {};
+const __durableSvcCompleted = window.__fontainorTestDurable?.completed || {};
 window.__nativeLog = [];
 window.__prefs = {};
 window.__listeners = {};
-window.__files = {};
+window.__files = __durableFiles;
 window.__downloadCalls = [];   // Filesystem.downloadFile (the LEGACY path)
 window.__svcCalls = [];        // FontainorDownloads.download
 window.__svcCancels = [];      // FontainorDownloads.cancel
 window.__svcActive = {};
+window.__svcCompleted = __durableSvcCompleted;
 window.__svcTicks = 3;         // progress ticks before completion
 
 const PLUGIN_METHODS = {
@@ -59,7 +62,7 @@ const PLUGIN_METHODS = {
   Haptics: ['impact', 'notification', 'vibrate', 'selectionStart', 'selectionChanged', 'selectionEnd'],
   Filesystem: ['readFile', 'writeFile', 'appendFile', 'deleteFile', 'mkdir', 'rmdir', 'readdir', 'getUri', 'stat', 'rename', 'copy', 'downloadFile', 'requestPermissions', 'checkPermissions', 'addListener', 'removeAllListeners'],
   MediaSession: ['setMetadata', 'setPlaybackState', 'setPositionState', 'setActionHandler', 'addListener', 'removeAllListeners'],
-  FontainorDownloads: ['download', 'cancel', 'addListener', 'removeAllListeners'],
+  FontainorDownloads: ['download', 'cancel', 'isMetered', 'takeCompleted', 'acknowledgeCompleted', 'addListener', 'removeAllListeners'],
 };
 window.Capacitor = {
   PluginHeaders: Object.keys(PLUGIN_METHODS).map((name) => ({
@@ -117,6 +120,7 @@ window.androidBridge = {
           }
           window.__noteWritten(path, url);
           window.__files['DATA/' + path] = { size: total, source: url };
+          window.__svcCompleted[id] = { id, path, bytes: total };
           delete window.__svcActive[id];
           svcEmit('downloadComplete', { id, path, bytes: total });
         });
@@ -128,6 +132,16 @@ window.androidBridge = {
         ids.forEach((i) => { if (window.__svcActive[i]) window.__svcActive[i].cancelled = true; });
         return reply({});
       }
+      if (methodName === 'takeCompleted') {
+        window.__takeDurableCompleted().then((entries) => reply({ entries }));
+        return;
+      }
+      if (methodName === 'acknowledgeCompleted') {
+        (options.ids || []).forEach((id) => delete window.__svcCompleted[id]);
+        window.__ackDurableCompleted(options.ids || []).then(() => reply({}));
+        return;
+      }
+      if (methodName === 'isMetered') return reply({ connected: true, metered: false });
     }
 
     if (pluginId === 'Filesystem') {
@@ -181,12 +195,18 @@ await new Promise((resolve, reject) => {
 const browser = await chromium.launch()
 const serviceAttempts = []
 const writtenFiles = new Map()
+const durableCompleted = {}
 try {
   const ctx = await browser.newContext({
     viewport: { width: 390, height: 844 },
     userAgent: 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36',
   })
   await ctx.exposeFunction('__noteWritten', (path, url) => writtenFiles.set(path, url))
+  await ctx.exposeFunction('__takeDurableCompleted', () => Object.values(durableCompleted))
+  await ctx.exposeFunction('__ackDurableCompleted', (ids) => {
+    for (const id of ids || []) delete durableCompleted[id]
+    return true
+  })
   await ctx.exposeFunction('__nativeDownload', async (url) => {
     let u
     try {
@@ -292,6 +312,31 @@ try {
   const idx = await page.evaluate(() => JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}'))
   check('the download is recorded with real bytes', (idx['FONT-SVC1']?.bytes ?? 0) > 10000, JSON.stringify(idx['FONT-SVC1'] ?? {}))
   check('no uncaught errors', errors.length === 0, errors.join(' | '))
+
+  // ---------- 2b. process death: native completion journal self-heals ----------
+  console.log('download service: WebView process-death recovery')
+  await page.evaluate(() => {
+    // Simulate Android killing the renderer after the service finalized bytes
+    // but before JS received/committed downloadComplete.
+    const existing = JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')
+    delete existing['FONT-SVC1']
+    localStorage.setItem('fontainor.downloads.v1', JSON.stringify(existing))
+  })
+  // Native SharedPreferences and disk survive the renderer. The durable
+  // completion store lives outside the page, just like Android's prefs.
+  durableCompleted['FONT-SVC1'] = {
+    id: 'FONT-SVC1',
+    path: 'downloads/FONT-SVC1.mp3',
+    bytes: 772547,
+  }
+  await page.addInitScript(() => {
+    window.__files['DATA/downloads/FONT-SVC1.mp3'] = { size: 772547, source: 'recovered' }
+  })
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.getByRole('button', { name: 'Remove Service Release from downloads' }).waitFor({ timeout: 15000 })
+  const recovered = await page.evaluate(() => JSON.parse(localStorage.getItem('fontainor.downloads.v1') ?? '{}')['FONT-SVC1'])
+  check('a native completion missed by the old WebView is re-indexed after relaunch', !!recovered, JSON.stringify(recovered))
+  check('recovered completion retains real bytes', (recovered?.bytes ?? 0) > 10000, JSON.stringify(recovered))
 
   // ---------- 3. cancellation is real ----------
   console.log('download service: cancel')

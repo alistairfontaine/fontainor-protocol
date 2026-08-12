@@ -19,6 +19,10 @@ on:
         type: choice
         options: [release, debug]
         default: release
+      publishable:
+        description: 'Intended for a GitHub release: fail unless signed with the real upload key'
+        type: boolean
+        default: false
   push:
     branches: ['main', 'mobile-v1', 'build/android-**']
     paths-ignore: ['**.md', 'docs/**']
@@ -78,7 +82,7 @@ jobs:
       - name: Run verification suites
         run: |
           status=0
-          for t in handles plays share stats recovery publish-persist api-fuzz payment-bridge edition-scarcity queue playlists mobile-wallet follows portable-profile real-flows header-search search-page native-shell downloads gateway download-service smart-downloads csp a11y offline-banner gapless stall-failover release-id phantom-deeplink wallet-router; do
+          for t in handles plays share stats recovery publish-persist publish-auth publish-registry-read api-fuzz payment-bridge edition-scarcity queue playlists mobile-wallet wallet-account-change follows portable-profile real-flows header-search search-page native-shell downloads gateway download-service smart-downloads csp a11y offline-banner gapless stall-failover release-id phantom-deeplink wallet-router; do
             echo "::group::tools/$t-test.mjs"
             if ! node "tools/$t-test.mjs"; then
               echo "::error::tools/$t-test.mjs failed"
@@ -172,6 +176,25 @@ jobs:
           SIZE=$(stat -c%s "$UNIVERSAL")
           [ "$SIZE" -lt 6000000 ] || { echo "::error::APK is $SIZE bytes (ceiling 6 MB) — something heavy was packaged; inspect /tmp/apkcheck"; exit 1; }
           du -h "$UNIVERSAL" | awk '{print "Universal APK size: " $1}'
+
+      # Which key actually signed the bytes, read out of the APK Signing Block.
+      # `assembleRelease` falls back to the DEBUG key when no keystore is present,
+      # and a debug-signed APK cannot upgrade the release-signed v4.2.0 installs
+      # people already have (they would have to uninstall, losing their library
+      # and offline downloads). Always report; enforce for publishable runs.
+      # Expected cert = the key that signed the published v4.2.0 release APK.
+      - name: Verify APK signer
+        env:
+          EXPECTED_RELEASE_SIGNER: 0BE20D5DC5D35FEF653265C64E11E8013C0CDCF98B4DB2003AAFF890208ED007
+        run: |
+          APK=$(find android/app/build/outputs/apk -name '*universal*.apk' | head -1)
+          [ -n "$APK" ] || APK=$(find android/app/build/outputs/apk -name '*.apk' | head -1)
+          if [ "${{ inputs.publishable }}" = "true" ]; then
+            python3 tools/verify-apk-signer.py "$APK" \
+              --expect "$EXPECTED_RELEASE_SIGNER" --reject-debug
+          else
+            python3 tools/verify-apk-signer.py "$APK"
+          fi
 
       - name: Cleanup signing material
         if: always()

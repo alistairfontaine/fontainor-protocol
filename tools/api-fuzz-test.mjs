@@ -16,6 +16,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
+import { authorizeEntry } from './entry-proof.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const POINTER_FILE = path.join(__dirname, '..', 'api', 'pointer.json');
@@ -28,17 +29,24 @@ const check = (name, cond, detail = '') => {
 };
 
 // ---- gateway stub for /api/v1/publish manifest fetch ----
+// Use one real Ed25519 publisher identity in the fixture so the manifest's
+// artistWallet can be cryptographically bound to each publish request.
+const publisherKp = nacl.sign.keyPair();
+const publisherWallet = bs58.encode(Buffer.from(publisherKp.publicKey));
 const rel = (id, title, artist, wallet) => ({
     type: 'release', id, title, artist,
     price: { amount: 5, currency: 'SOL' }, editions: { total: 10 },
     status: 'REGISTERED_ON_FONTAINOR', date: '2026-08-11T00:00:00.000Z',
     audioUri: `https://gateway.irys.xyz/a-${id}`, coverUri: null, artistWallet: wallet,
 });
-const XSS = rel('FONT-XSS00001', '"><script>alert(1)</script>', 'Evil', 'WalletZZ9999999999999999999999999999999999999');
+const signedRel = (id, title, artist = 'Fixture Artist') =>
+    authorizeEntry(rel(id, title, artist, publisherWallet), publisherKp);
+const XSS = signedRel('FONT-XSS00001', '"><script>alert(1)</script>', 'Evil');
+const BASE_REL = signedRel('FONT-BASE0001', 'Base Track', 'Base Artist');
 const manifestsByTx = new Map([
-    ['TXBASE0000000000000000000000000000000000001', [rel('FONT-BASE0001', 'Base Track', 'Base Artist', 'WalletBASE111111111111111111111111111111111')]],
-    ['TXXSS00000000000000000000000000000000000002', [rel('FONT-BASE0001', 'Base Track', 'Base Artist', 'WalletBASE111111111111111111111111111111111'), XSS]],
-    ['TXTAMPER000000000000000000000000000000000003', [rel('FONT-BASE0001', 'HIJACKED', 'Base Artist', 'WalletBASE111111111111111111111111111111111')]],
+    ['TXBASE0000000000000000000000000000000000001', [BASE_REL]],
+    ['TXXSS00000000000000000000000000000000000002', [BASE_REL, XSS]],
+    ['TXTAMPER000000000000000000000000000000000003', [{ ...BASE_REL, title: 'HIJACKED' }]],
 ]);
 const realFetch = global.fetch;
 global.fetch = async (url, opts) => {
@@ -149,6 +157,17 @@ const wallet = bs58.encode(Buffer.from(kp.publicKey));
 const sign = (msg) => JSON.stringify(Array.from(nacl.sign.detached(new TextEncoder().encode(msg), kp.secretKey)));
 const pkArr = JSON.stringify(Array.from(kp.publicKey));
 const loginMsg = (ts = Date.now()) => `Authenticate Fontainor Sovereign Session :: ${ts}`;
+const publishBody = (txId, keypair = publisherKp, extra = {}) => {
+    const issuedAt = Date.now();
+    const message = `Fontainor publish manifest: ${txId} :: ${issuedAt}`;
+    return {
+        txId,
+        issuedAt,
+        publicKey: JSON.stringify(Array.from(keypair.publicKey)),
+        signature: JSON.stringify(Array.from(nacl.sign.detached(new TextEncoder().encode(message), keypair.secretKey))),
+        ...extra,
+    };
+};
 let m = loginMsg();
 r = await req('POST', '/api/v1/auth/sovereign-login', { body: { publicKey: pkArr, signature: sign(m), message: m } });
 check('login valid signature -> 200 with derived base58 wallet', r.status === 200 && r.json?.wallet === wallet, JSON.stringify(r.json));
@@ -249,10 +268,12 @@ console.log('publish + share');
 r = await req('POST', '/api/v1/publish', { body: { txId: 'short' } });
 check('publish bad txId -> 400', r.status === 400, String(r.status));
 r = await req('POST', '/api/v1/publish', { body: { txId: 'TXBASE0000000000000000000000000000000000001' } });
+check('publish without wallet authorization -> 401', r.status === 401 && r.json?.code === 'PUBLISH_AUTH_REQUIRED', JSON.stringify(r.json));
+r = await req('POST', '/api/v1/publish', { body: publishBody('TXBASE0000000000000000000000000000000000001') });
 check('publish base manifest -> 200 durable', r.status === 200 && r.json?.durable === true, JSON.stringify(r.json));
-r = await req('POST', '/api/v1/publish', { body: { txId: 'TXTAMPER000000000000000000000000000000000003' } });
+r = await req('POST', '/api/v1/publish', { body: publishBody('TXTAMPER000000000000000000000000000000000003') });
 check('publish that edits an existing entry -> 403 REGISTRY_TAMPER', r.status === 403 && r.json?.code === 'REGISTRY_TAMPER', JSON.stringify(r.json));
-r = await req('POST', '/api/v1/publish', { body: { txId: 'TXXSS00000000000000000000000000000000000002' } });
+r = await req('POST', '/api/v1/publish', { body: publishBody('TXXSS00000000000000000000000000000000000002') });
 check('publish appending a new entry -> 200', r.status === 200 && r.json?.success === true, JSON.stringify(r.json));
 r = await req('GET', '/share/FONT-XSS00001');
 check('share renders and HTML-escapes a script-injection title', r.status === 200 && !r.text.includes('<script>alert(1)</script>') && r.text.includes('&lt;script&gt;'), 'unescaped!');
@@ -275,13 +296,15 @@ console.log('verify-payment price binding');
     });
     // Append-only extension of what the durable registry already holds.
     manifestsByTx.set('TXPRICED000000000000000000000000000000000004', [
-        rel('FONT-BASE0001', 'Base Track', 'Base Artist', 'WalletBASE111111111111111111111111111111111'),
+        BASE_REL,
         XSS,
-        relPriced('FONT-PRICEDSOL1', 5, 'SOL'),
-        relPriced('FONT-PRICEDUSD1', 29.99, 'USDC'),
-        relPriced('FONT-FREEBIE001', 0, 'USD'),
+        authorizeEntry(relPriced('FONT-PRICEDSOL1', 5, 'SOL'), kp),
+        authorizeEntry(relPriced('FONT-PRICEDUSD1', 29.99, 'USDC'), kp),
+        authorizeEntry(relPriced('FONT-FREEBIE001', 0, 'USD'), kp),
     ]);
-    r = await req('POST', '/api/v1/publish', { body: { txId: 'TXPRICED000000000000000000000000000000000004' } });
+    // The newly appended priced rows name `wallet`, so that wallet must sign
+    // this manifest rather than the separate fixture publisher.
+    r = await req('POST', '/api/v1/publish', { body: publishBody('TXPRICED000000000000000000000000000000000004', kp) });
     check('publish priced releases -> 200', r.status === 200 && r.json?.success === true, JSON.stringify(r.json));
 
     const vp = (body) => req('POST', '/api/v1/verify-payment', { body: { signature: 'x'.repeat(88), buyerWallet: wallet, currency: 'SOL', ...body } });

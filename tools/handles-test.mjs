@@ -12,6 +12,7 @@ import http from 'http';
 import nacl from 'tweetnacl';
 import bs58 from 'bs58';
 import { canonical, checkAppendOnly, findHandleConflicts, getProtectedOwner, normalizeHandle } from '../api/registryGuard.js';
+import { authorizeEntry } from './entry-proof.mjs';
 
 let passed = 0;
 let failed = 0;
@@ -148,10 +149,6 @@ await new Promise((resolve) => fakeUpstash.listen(8799, '127.0.0.1', resolve));
 process.env.UPSTASH_REDIS_REST_URL = 'http://127.0.0.1:8799';
 process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
 
-const { default: app } = await import('../api/index.js');
-const server = await new Promise((resolve) => { const s = app.listen(8798, '127.0.0.1', () => resolve(s)); });
-const BASE = 'http://127.0.0.1:8798';
-
 const A = nacl.sign.keyPair();
 const B = nacl.sign.keyPair();
 const T = nacl.sign.keyPair(); // stands in for the treasury wallet
@@ -159,6 +156,29 @@ const walletA = bs58.encode(A.publicKey);
 const walletB = bs58.encode(B.publicKey);
 const walletT = bs58.encode(T.publicKey);
 process.env.TREASURY_WALLET = walletT;
+
+// /api/v1/publish fetches the permanent manifest from a public gateway before
+// accepting it. Keep that path real and stub only the gateway payloads.
+const manifestsByTx = new Map();
+const realFetch = global.fetch;
+global.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u.includes('arweave.net/') || u.includes('gateway.irys.xyz/')) {
+        const txId = u.split('/').pop();
+        const manifest = manifestsByTx.get(txId);
+        return {
+            ok: Boolean(manifest),
+            status: manifest ? 200 : 404,
+            json: async () => manifest ?? {},
+            text: async () => JSON.stringify(manifest ?? {}),
+        };
+    }
+    return realFetch(url, opts);
+};
+
+const { default: app } = await import('../api/index.js');
+const server = await new Promise((resolve) => { const s = app.listen(8798, '127.0.0.1', () => resolve(s)); });
+const BASE = 'http://127.0.0.1:8798';
 
 const loginMsg = () => `Authenticate Fontainor Sovereign Session :: ${Date.now()}`;
 function claimPayload(kp, handle, extra = {}) {
@@ -180,6 +200,15 @@ async function post(pathname, body) {
         body: JSON.stringify(body),
     });
     return { status: res.status, data: await res.json().catch(() => ({})) };
+}
+async function publish(kp, txId, manifest) {
+    manifestsByTx.set(txId, manifest);
+    const issuedAt = Date.now();
+    return post('/api/v1/publish', signedPayload(
+        kp,
+        `Fontainor publish manifest: ${txId} :: ${issuedAt}`,
+        { txId, issuedAt },
+    ));
 }
 
 // login before any claim -> address-derived fallback
@@ -218,38 +247,47 @@ check('set-handle: non-treasury wallet claiming @fontainor -> 403 HANDLE_PROTECT
 out = await post('/api/v1/auth/set-handle', claimPayload(T, 'fontainor', { handle: '@Fontainor' }));
 check('set-handle: treasury wallet claims @fontainor', out.status === 200 && out.data.handle === '@fontainor', JSON.stringify(out));
 
-// seed the registry via /upload with A's legit release
-const relA = { type: 'release', id: 'FONT-TESTA1', title: 'Anthem', artist: '@tapiwa_music', price: { amount: 1, currency: 'USD' }, editions: { total: 10 }, status: 'REGISTERED_ON_FONTAINOR', date: new Date().toISOString(), desc: '', audioUri: null, coverUri: null, artistWallet: walletA };
+// The old direct-array route was an unauthenticated listing bypass and must
+// stay retired; all successful cases below use a txId-bound wallet signature.
+const relA = authorizeEntry({ type: 'release', id: 'FONT-TESTA1', title: 'Anthem', artist: '@tapiwa_music', price: { amount: 1, currency: 'USD' }, editions: { total: 10 }, status: 'REGISTERED_ON_FONTAINOR', date: new Date().toISOString(), desc: '', audioUri: null, coverUri: null, artistWallet: walletA }, A);
 out = await post('/upload', [relA]);
-check('upload: owner publishing under own claimed handle succeeds', out.status === 200 && out.data.success && out.data.durable === true, JSON.stringify(out));
+check('upload: direct registry writes are retired -> 410 UPLOAD_RETIRED', out.status === 410 && out.data.code === 'UPLOAD_RETIRED', JSON.stringify(out));
+
+out = await publish(A, 'TXHANDLEA000000000000000000000000000000000001', [relA]);
+check('publish: owner signing own claimed-handle release succeeds', out.status === 200 && out.data.success && out.data.durable === true, JSON.stringify(out));
 
 // wallet B publishing under A's claimed handle -> 403 HANDLE_OWNED
-const fakeB = { ...relA, id: 'FONT-TESTB1', title: 'Impostor', artistWallet: walletB };
-out = await post('/upload', [relA, fakeB]);
-check('upload: impersonating claimed handle -> 403 HANDLE_OWNED', out.status === 403 && out.data.code === 'HANDLE_OWNED', JSON.stringify(out));
+const fakeB = authorizeEntry((({ artistProof: _proof, ...entry }) => ({ ...entry, id: 'FONT-TESTB1', title: 'Impostor', artistWallet: walletB }))(relA), B);
+out = await publish(B, 'TXHANDLEB000000000000000000000000000000000002', [relA, fakeB]);
+check('publish: impersonating claimed handle -> 403 HANDLE_OWNED', out.status === 403 && out.data.code === 'HANDLE_OWNED', JSON.stringify(out));
+
+// A valid signature from B cannot list a new entry whose payout identity says A.
+out = await publish(B, 'TXMISMATCH0000000000000000000000000000000003', [relA, authorizeEntry((({ artistProof: _proof, ...entry }) => ({ ...entry, id: 'FONT-MISMAT', title: 'Foreign row' }))(relA), A)]);
+check('publish: signer/artistWallet mismatch -> 403 PUBLISHER_MISMATCH', out.status === 403 && out.data.code === 'PUBLISHER_MISMATCH', JSON.stringify(out));
 
 // tampering with A's existing entry (hijack payouts) -> 403 REGISTRY_TAMPER
-out = await post('/upload', [{ ...relA, artistWallet: walletB }]);
-check('upload: rewriting existing entry -> 403 REGISTRY_TAMPER', out.status === 403 && out.data.code === 'REGISTRY_TAMPER', JSON.stringify(out));
+out = await publish(B, 'TXTAMPERH000000000000000000000000000000000004', [{ ...relA, artistWallet: walletB }]);
+check('publish: rewriting existing entry -> 403 REGISTRY_TAMPER', out.status === 403 && out.data.code === 'REGISTRY_TAMPER', JSON.stringify(out));
 
 // dropping A's entry -> 403 REGISTRY_TAMPER
-out = await post('/upload', [{ ...relA, id: 'FONT-OTHER9', artist: 'someone else', artistWallet: walletB }]);
-check('upload: dropping existing entry -> 403 REGISTRY_TAMPER', out.status === 403 && out.data.code === 'REGISTRY_TAMPER', JSON.stringify(out));
+out = await publish(B, 'TXDROPH0000000000000000000000000000000000005', [{ ...relA, id: 'FONT-OTHER9', artist: 'someone else', artistWallet: walletB }]);
+check('publish: dropping existing entry -> 403 REGISTRY_TAMPER', out.status === 403 && out.data.code === 'REGISTRY_TAMPER', JSON.stringify(out));
 
 // appending a clean new entry by B under an unclaimed free-text name -> OK
-out = await post('/upload', [relA, { ...relA, id: 'FONT-TESTB2', title: 'Legit', artist: 'DJ Freetext', artistWallet: walletB }]);
-check('upload: appending clean new entry succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
+const relB = authorizeEntry((({ artistProof: _proof, ...entry }) => ({ ...entry, id: 'FONT-TESTB2', title: 'Legit', artist: 'DJ Freetext', artistWallet: walletB }))(relA), B);
+out = await publish(B, 'TXCLEANB000000000000000000000000000000000006', [relA, relB]);
+check('publish: appending clean new entry succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
 
 // current registry after the clean append (baseline for the next probes)
-const seeded = [relA, { ...relA, id: 'FONT-TESTB2', title: 'Legit', artist: 'DJ Freetext', artistWallet: walletB }];
+const seeded = [relA, relB];
 
 // publishing under the protected 'fontainor' name with a non-treasury wallet -> 403 even though claimed by T
-out = await post('/upload', [...seeded, { ...relA, id: 'FONT-TESTB3', title: 'Fake Official', artist: 'Fontainor', artistWallet: walletB }]);
-check('upload: publishing as Fontainor from non-treasury wallet -> 403 HANDLE_OWNED', out.status === 403 && out.data.code === 'HANDLE_OWNED', JSON.stringify(out));
+out = await publish(B, 'TXFAKEOFF00000000000000000000000000000000007', [...seeded, authorizeEntry((({ artistProof: _proof, ...entry }) => ({ ...entry, id: 'FONT-TESTB3', title: 'Fake Official', artist: 'Fontainor', artistWallet: walletB }))(relA), B)]);
+check('publish: publishing as Fontainor from non-treasury wallet -> 403 HANDLE_OWNED', out.status === 403 && out.data.code === 'HANDLE_OWNED', JSON.stringify(out));
 
 // treasury wallet publishing under 'fontainor' -> OK
-out = await post('/upload', [...seeded, { ...relA, id: 'FONT-TESTT1', title: 'Official Drop', artist: '@Fontainor', artistWallet: walletT }]);
-check('upload: treasury wallet publishing as Fontainor succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
+out = await publish(T, 'TXOFFICIAL0000000000000000000000000000000008', [...seeded, authorizeEntry((({ artistProof: _proof, ...entry }) => ({ ...entry, id: 'FONT-TESTT1', title: 'Official Drop', artist: '@Fontainor', artistWallet: walletT }))(relA), T)]);
+check('publish: treasury wallet publishing as Fontainor succeeds', out.status === 200 && out.data.success, JSON.stringify(out));
 
 server.close();
 fakeUpstash.close();

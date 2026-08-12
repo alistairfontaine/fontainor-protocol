@@ -29,6 +29,8 @@ interface FontainorDownloadsPlugin {
   download(options: ServiceDownloadOptions): Promise<void>
   cancel(options: { id?: string }): Promise<void>
   isMetered(): Promise<NetworkStatus>
+  takeCompleted(): Promise<{ entries: { id: string; path: string; bytes: number }[] }>
+  acknowledgeCompleted(options: { ids: string[] }): Promise<void>
   addListener(
     event: 'downloadProgress' | 'downloadComplete' | 'downloadFailed' | 'downloadCancelled',
     cb: (data: { id: string; bytes?: number; total?: number; path?: string; message?: string }) => void,
@@ -150,5 +152,38 @@ export function onNetworkChange(cb: (st: NetworkStatus) => void): () => void {
   return () => {
     dead = true
     void handle?.remove()
+  }
+}
+
+/** Completed service transfers that outlived the previous WebView process. */
+export async function takeCompletedServiceDownloads(): Promise<{ id: string; path: string; bytes: number }[]> {
+  if (!hasDownloadService()) return []
+  try {
+    const out = await Downloads.takeCompleted()
+    return Array.isArray(out.entries)
+      ? out.entries.filter(
+          (e) =>
+            e &&
+            typeof e.id === 'string' &&
+            typeof e.path === 'string' &&
+            e.path === `downloads/${e.id}.mp3` &&
+            Number.isFinite(Number(e.bytes)) &&
+            Number(e.bytes) >= 0,
+        )
+      : []
+  } catch {
+    // Older shell without takeCompleted: no journal exists there.
+    return []
+  }
+}
+
+/** Acknowledge only after the JS download index has been persisted. */
+export async function acknowledgeCompletedServiceDownloads(ids: string[]): Promise<void> {
+  if (!hasDownloadService() || ids.length === 0) return
+  try {
+    await Downloads.acknowledgeCompleted({ ids })
+  } catch {
+    // Older shells have no journal; on a new shell an unacknowledged row is
+    // harmless and will be idempotently reconciled on the next launch.
   }
 }

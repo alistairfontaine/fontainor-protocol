@@ -29,6 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
+import org.json.JSONObject;
 
 /**
  * Offline downloads that survive leaving the app.
@@ -65,6 +66,7 @@ public class DownloadService extends Service {
     private static final int NOTIFICATION_ID = 4711;
     private static final long PROGRESS_INTERVAL_MS = 400; // bridge + notification updates
     private static final int BUFFER = 64 * 1024;
+    private static final String COMPLETED_PREFS = "fontainor_download_results_v1";
 
     /** Set by DownloaderPlugin so the service can report into the WebView. */
     public interface Reporter {
@@ -188,6 +190,12 @@ public class DownloadService extends Service {
             if (!part.renameTo(target)) {
                 throw new IllegalStateException("Could not finalize the downloaded file.");
             }
+            // Persist completion BEFORE relying on a WebView event. Android may
+            // kill the renderer while this foreground service keeps running;
+            // without this journal the finished MP3 exists but JS never adds it
+            // to the download index, leaving orphaned bytes the user cannot see
+            // or remove. The plugin drains this journal after the next launch.
+            rememberCompleted(id, relPath, written);
             publish(id, written, written);
             finish(id, relPath, written, null, false);
         } catch (CancelledException e) {
@@ -201,6 +209,23 @@ public class DownloadService extends Service {
             closeQuietly(in);
             closeQuietly(out);
             if (conn != null) conn.disconnect();
+        }
+    }
+
+    private void rememberCompleted(String id, String path, long bytes) {
+        synchronized (DownloadService.class) {
+            try {
+                android.content.SharedPreferences prefs =
+                        getSharedPreferences(COMPLETED_PREFS, Context.MODE_PRIVATE);
+                JSONObject row = new JSONObject();
+                row.put("id", id);
+                row.put("path", path);
+                row.put("bytes", bytes);
+                prefs.edit().putString(id, row.toString()).apply();
+            } catch (Exception ignored) {
+                // The file still exists and a live reporter can finish the
+                // current session. Journal failure is non-fatal.
+            }
         }
     }
 

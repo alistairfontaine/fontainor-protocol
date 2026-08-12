@@ -19,7 +19,16 @@ import { useSyncExternalStore } from 'react'
 import { announce } from './announce'
 import { nativeFetchableUrl } from './api'
 import { markGatewayDown, markGatewayUp, mediaCandidates } from './gateways'
-import { cancelServiceDownload, hasDownloadService, isCancellation, isMeteredConnection, onNetworkChange, serviceDownload } from './nativeDownloader'
+import {
+  acknowledgeCompletedServiceDownloads,
+  cancelServiceDownload,
+  hasDownloadService,
+  isCancellation,
+  isMeteredConnection,
+  onNetworkChange,
+  serviceDownload,
+  takeCompletedServiceDownloads,
+} from './nativeDownloader'
 import { IS_NATIVE } from './platform'
 import type { Release } from './registry'
 import { getSetting } from '../state/settings'
@@ -95,6 +104,57 @@ async function warmUriCache(): Promise<void> {
   emit()
 }
 void warmUriCache()
+
+/**
+ * Recover foreground-service completions that happened after Android killed
+ * the previous WebView. The native journal only knows id/path/bytes; enrich
+ * from the last-seen registry cache when available and still expose a safe
+ * removable offline row when it is not.
+ */
+async function reconcileServiceCompletions(): Promise<void> {
+  if (!IS_NATIVE || !hasDownloadService()) return
+  const completed = await takeCompletedServiceDownloads()
+  if (completed.length === 0) return
+  let seen: Record<string, unknown>[] = []
+  try {
+    const parsed = JSON.parse(localStorage.getItem('fontainor_registry_cache_v1') ?? '[]')
+    if (Array.isArray(parsed)) seen = parsed as Record<string, unknown>[]
+  } catch {
+    /* metadata falls back to the id */
+  }
+  const reconciled: string[] = []
+  for (const row of completed) {
+    if (index[row.id]) {
+      reconciled.push(row.id)
+      continue
+    }
+    try {
+      const stat = await Filesystem.stat({ directory: DIR, path: row.path })
+      const raw = seen.find((entry) => entry && (entry.id === row.id || entry.assetId === row.id))
+      index[row.id] = {
+        id: row.id,
+        title: typeof raw?.title === 'string' ? raw.title : typeof raw?.name === 'string' ? raw.name : row.id,
+        artist: typeof raw?.artist === 'string' ? raw.artist : 'Unknown artist',
+        audioPath: row.path,
+        coverPath: null,
+        bytes: Number(stat.size) || Number(row.bytes) || 0,
+        at: Date.now(),
+        audioUri: typeof raw?.audioUri === 'string' ? raw.audioUri : null,
+        coverUri: typeof raw?.coverUri === 'string' ? raw.coverUri : null,
+      }
+      const { uri } = await Filesystem.getUri({ directory: DIR, path: row.path })
+      uriCache = { ...uriCache, [row.id]: Capacitor.convertFileSrc(uri) }
+      reconciled.push(row.id)
+    } catch {
+      // Journal may outlive an OS/file cleanup. A missing file can never
+      // become recoverable, so acknowledge that row too.
+      reconciled.push(row.id)
+    }
+  }
+  persist()
+  await acknowledgeCompletedServiceDownloads(reconciled)
+}
+void reconcileServiceCompletions()
 
 /**
  * Absolute, natively-fetchable source for a release's remote audio/cover path.

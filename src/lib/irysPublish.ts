@@ -5,6 +5,7 @@
 // All Irys/web3 code loads lazily so the main bundle stays slim.
 import { API_BASE, type PublishResult } from './api'
 import { getConnectedPhantom, getWorkingRpc, PhantomError } from './phantom'
+import { primeServerClock, syncedNow } from './serverClock'
 import { getSolUsd } from './solPrice'
 
 export const IRYS_GATEWAY = 'https://gateway.irys.xyz'
@@ -12,6 +13,7 @@ export const IRYS_GATEWAY = 'https://gateway.irys.xyz'
 /** Tags must match the backend's registry self-heal query (api/index.js). */
 const APP_NAME = 'Fontainor-Protocol'
 const MANIFEST_TYPE = 'registry-manifest'
+const ENTRY_AUTH_DOMAIN = 'Fontainor registry entry v1'
 
 export type PublishStage = 'quote' | 'funding' | 'audio' | 'cover' | 'manifest' | 'listing'
 
@@ -52,6 +54,26 @@ function manifestBytesEstimate(currentRegistry: unknown[]): number {
   } catch {
     return 64 * 1024
   }
+}
+
+/** Recursively stable JSON used by both the client and API verifier. */
+function canonical(value: unknown): string {
+  if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']'
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>
+    const keys = Object.keys(record).sort()
+    return '{' + keys.map((key) => JSON.stringify(key) + ':' + canonical(record[key])).join(',') + '}'
+  }
+  return JSON.stringify(value)
+}
+
+/**
+ * Produce the immutable payload an artist authorizes. The signature fields are
+ * excluded to avoid a circular signature and every other entry field is bound.
+ */
+function entryAuthorizationMessage(entry: Record<string, unknown>): string {
+  const { artistProof: _proof, ...unsigned } = entry
+  return `${ENTRY_AUTH_DOMAIN}\n${canonical(unsigned)}`
 }
 
 /**
@@ -127,6 +149,14 @@ export async function publishReal(input: RealPublishInput): Promise<PublishResul
     }
 
     const patched: Record<string, unknown> = { ...asset }
+    const provider = await getConnectedPhantom()
+    const publicKey = provider.publicKey
+    if (!publicKey || !provider.signMessage) {
+      throw new Error('The connected wallet cannot authorize this registry entry.')
+    }
+    if (String(patched.artistWallet || '') !== publicKey.toString()) {
+      throw new Error('Phantom is on a different wallet than the release publisher. Switch accounts and retry.')
+    }
 
     // 2. Audio file → permanent record.
     if (audioFile) {
@@ -154,6 +184,19 @@ export async function publishReal(input: RealPublishInput): Promise<PublishResul
       patched.coverUri = `${IRYS_GATEWAY}/${up.id}`
     }
 
+    // Bind the finished immutable row (including uploaded media URLs) to the
+    // artist wallet. This proof lives inside the permanent manifest, allowing
+    // cold-start recovery to reject public actors' tagged spam manifests.
+    const entrySignature = await provider.signMessage(
+      new TextEncoder().encode(entryAuthorizationMessage(patched)),
+      'utf8',
+    )
+    patched.artistProof = {
+      version: 1,
+      publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
+      signature: JSON.stringify(Array.from(entrySignature.signature)),
+    }
+
     // 4. Updated registry manifest → permanent record (tagged for self-heal).
     onStage?.('manifest')
     const manifest = [...currentRegistry, patched]
@@ -167,6 +210,16 @@ export async function publishReal(input: RealPublishInput): Promise<PublishResul
 
     // 5. Repoint the live registry (server validates the manifest resolves).
     onStage?.('listing')
+    await primeServerClock(API_BASE)
+    const issuedAt = syncedNow()
+    const authorizationMessage = `Fontainor publish manifest: ${manifestUp.id} :: ${issuedAt}`
+    const authorization = await provider.signMessage(new TextEncoder().encode(authorizationMessage), 'utf8')
+    const listingBody = {
+      txId: manifestUp.id,
+      issuedAt,
+      publicKey: JSON.stringify(Array.from(publicKey.toBytes())),
+      signature: JSON.stringify(Array.from(authorization.signature)),
+    }
     let lastErr = ''
     for (let attempt = 0; attempt < 4; attempt++) {
       if (attempt > 0) await new Promise((r) => setTimeout(r, 2500))
@@ -174,7 +227,7 @@ export async function publishReal(input: RealPublishInput): Promise<PublishResul
         const res = await fetch(API_BASE + '/api/v1/publish', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ txId: manifestUp.id }),
+          body: JSON.stringify(listingBody),
         })
         if (res.ok) {
           return { ok: true, msg: 'Permanently etched onto Arweave — storage paid from your wallet.', txId: manifestUp.id }
@@ -183,20 +236,6 @@ export async function publishReal(input: RealPublishInput): Promise<PublishResul
       } catch (e) {
         lastErr = String((e as Error)?.message || e)
       }
-    }
-
-    // Fallback listing path: POST the full manifest (durable store route).
-    try {
-      const res = await fetch(API_BASE + '/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(manifest),
-      })
-      if (res.ok) {
-        return { ok: true, msg: 'Permanently etched onto Arweave — storage paid from your wallet.', txId: manifestUp.id }
-      }
-    } catch {
-      /* fall through to honest partial-failure report */
     }
 
     return {

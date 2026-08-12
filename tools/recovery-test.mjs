@@ -17,6 +17,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import nacl from 'tweetnacl';
+import bs58 from 'bs58';
+import { authorizeEntry } from './entry-proof.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const POINTER_FILE = path.join(__dirname, '..', 'api', 'pointer.json');
@@ -35,16 +38,20 @@ const clearPointer = () => { try { fs.rmSync(POINTER_FILE, { force: true }); } c
 clearPointer();
 
 // ---------- fetch stub: Irys GraphQL + gateways ----------
+const honestKeys = nacl.sign.keyPair();
+const attackerKeys = nacl.sign.keyPair();
+const honestWallet = bs58.encode(honestKeys.publicKey);
+const attackerWallet = bs58.encode(attackerKeys.publicKey);
 const entry = (id, artist = 'Honest Artist', extra = {}) => ({
     id, type: 'release', title: `Track ${id}`, artist,
     price: { amount: 1, currency: 'USD' }, editions: { total: 10 },
     status: 'REGISTERED_ON_FONTAINOR', date: '2026-08-01T00:00:00.000Z',
-    artistWallet: 'HonestWallet1111111111111111111111111111111', ...extra,
+    artistWallet: honestWallet, ...extra,
 });
 
-const A = entry('FONT-AAA001');
-const B = entry('FONT-BBB002');
-const C = entry('FONT-CCC003');
+const A = authorizeEntry(entry('FONT-AAA001'), honestKeys);
+const B = authorizeEntry(entry('FONT-BBB002'), honestKeys);
+const C = authorizeEntry(entry('FONT-CCC003'), honestKeys);
 
 // scenario state, mutated between requests
 const scenario = { ids: [], manifests: new Map() };
@@ -94,7 +101,7 @@ check('newest honest manifest recovered (3 entries)', ids(reg).join(',') === 'FO
 
 // ---------- 2. attacker full replacement: skipped ----------
 console.log('attacker full-replacement manifest is newest');
-const attackerOnly = [entry('EVIL-000001', 'Attacker', { artistWallet: 'AttackerWallet111111111111111111111111111111' })];
+const attackerOnly = [entry('EVIL-000001', 'Attacker', { artistWallet: attackerWallet })];
 setScenario([
     ['TXEVIL1', attackerOnly],      // drops all honest entries
     ['TXHONEST2', [A, B]],
@@ -106,7 +113,7 @@ check('attacker entry absent', !ids(reg).includes('EVIL-000001'));
 
 // ---------- 3. attacker edits an existing entry (payout hijack): skipped ----------
 console.log('attacker payout-hijack manifest is newest');
-const hijacked = [entry('FONT-AAA001', 'Honest Artist', { artistWallet: 'AttackerWallet111111111111111111111111111111' }), B];
+const hijacked = [entry('FONT-AAA001', 'Honest Artist', { artistWallet: attackerWallet }), B];
 setScenario([
     ['TXEVIL2', hijacked],          // same ids, artistWallet swapped on A
     ['TXHONEST2', [A, B]],
@@ -115,25 +122,35 @@ setScenario([
 reg = await getRegistry();
 check('hijack skipped, honest registry recovered', JSON.stringify(reg) === JSON.stringify([A, B]));
 
-// ---------- 4. append-only extension is accepted (spam, not hijack) ----------
-console.log('append-only extension (documented acceptance)');
-const spamExt = [A, B, entry('SPAM-000001', 'Spammer')];
+// ---------- 4. unsigned append-only spam is rejected ----------
+console.log('unsigned append-only spam');
+const spamExt = [A, B, entry('SPAM-000001', 'Spammer', { artistWallet: attackerWallet })];
 setScenario([
     ['TXSPAM1', spamExt],
     ['TXHONEST2', [A, B]],
 ]);
 reg = await getRegistry();
-check('append-only extension accepted', ids(reg).join(',') === 'FONT-AAA001,FONT-BBB002,SPAM-000001');
-check('honest entries unchanged in extension', JSON.stringify(reg.slice(0, 2)) === JSON.stringify([A, B]));
+check('unsigned append-only extension rejected', ids(reg).join(',') === 'FONT-AAA001,FONT-BBB002');
+check('spam entry absent after recovery', !ids(reg).includes('SPAM-000001'));
 
-// ---------- 5. nothing consistent: empty registry, no crash ----------
+// ---------- 5. signed append-only extension is accepted ----------
+console.log('artist-authorized append-only extension');
+const signedD = authorizeEntry(entry('FONT-DDD004'), honestKeys);
+setScenario([
+    ['TXHONEST4', [A, B, signedD]],
+    ['TXHONEST2', [A, B]],
+]);
+reg = await getRegistry();
+check('valid artist-authorized extension recovered', ids(reg).join(',') === 'FONT-AAA001,FONT-BBB002,FONT-DDD004');
+
+// ---------- 6. no signed/consistent manifest: empty, no crash ----------
 console.log('no consistent manifest');
 setScenario([
     ['TXEVILA', [entry('X1', 'a')]],
     ['TXEVILB', [entry('X2', 'b')]],  // disjoint histories — mutual tamper
 ]);
 reg = await getRegistry();
-check('newer tamperer skipped; oldest-in-window (trivially consistent) wins', ids(reg).join(',') === 'X2');
+check('no artist-authorized seed -> empty registry', Array.isArray(reg) && reg.length === 0);
 
 clearPointer();
 srv.close();

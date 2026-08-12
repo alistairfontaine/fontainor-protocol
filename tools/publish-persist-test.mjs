@@ -18,6 +18,9 @@ import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import nacl from 'tweetnacl';
+import bs58 from 'bs58';
+import { authorizeEntry } from './entry-proof.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const POINTER_FILE = path.join(__dirname, '..', 'api', 'pointer.json');
@@ -29,6 +32,10 @@ const check = (name, cond, detail = '') => {
     else { failed++; console.error(`  ✗ ${name} ${detail}`); }
 };
 
+const walletAKeys = nacl.sign.keyPair();
+const walletBKeys = nacl.sign.keyPair();
+const walletA = bs58.encode(walletAKeys.publicKey);
+const walletB = bs58.encode(walletBKeys.publicKey);
 const rel = (id, title, artist, wallet, extra = {}) => ({
     type: 'release', id, title, artist,
     price: { amount: 12, currency: 'USDC' }, editions: { total: 100 },
@@ -36,8 +43,8 @@ const rel = (id, title, artist, wallet, extra = {}) => ({
     audioUri: `https://gateway.irys.xyz/audio-${id}`, coverUri: null, artistWallet: wallet,
 });
 
-const A = rel('FONT-REALAAA1', 'First Real Track', 'Artist A', 'WalletAAAA1111111111111111111111111111111111');
-const B = rel('FONT-REALBBB2', 'Second Real Track', 'Artist B', 'WalletBBBB2222222222222222222222222222222222');
+const A = authorizeEntry(rel('FONT-REALAAA1', 'First Real Track', 'Artist A', walletA), walletAKeys);
+const B = authorizeEntry(rel('FONT-REALBBB2', 'Second Real Track', 'Artist B', walletB), walletBKeys);
 
 // ---- manifests the "Irys upload" produced, keyed by fake txId ----
 const manifestsByTx = new Map([
@@ -91,9 +98,18 @@ await new Promise((r) => srv.once('listening', r));
 const base = `http://localhost:${srv.address().port}`;
 
 const getJson = async (p) => { const r = await realFetch(base + p); return { status: r.status, body: await r.json().catch(() => null) }; };
-const publish = async (txId) => {
+const publish = async (txId, kp) => {
+    const issuedAt = Date.now();
+    const message = `Fontainor publish manifest: ${txId} :: ${issuedAt}`;
+    const signature = nacl.sign.detached(new TextEncoder().encode(message), kp.secretKey);
     const r = await realFetch(base + '/api/v1/publish', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ txId }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            txId,
+            issuedAt,
+            publicKey: JSON.stringify(Array.from(kp.publicKey)),
+            signature: JSON.stringify(Array.from(signature)),
+        }),
     });
     return { status: r.status, body: await r.json().catch(() => null) };
 };
@@ -105,7 +121,7 @@ check('registry starts empty', Array.isArray(reg.body) && reg.body.length === 0)
 
 // ── 2 + 3. Artist A publishes, persists durably ──
 console.log('artist A publishes');
-let pub = await publish('TXA0000000000000000000000000000000000000001');
+let pub = await publish('TXA0000000000000000000000000000000000000001', walletAKeys);
 check('publish A -> 200 success', pub.status === 200 && pub.body?.success === true, JSON.stringify(pub.body));
 check('publish A -> durable:true', pub.body?.durable === true);
 reg = await getJson('/registry');
@@ -123,7 +139,7 @@ check('share unknown id -> 3xx redirect (no fake meta)', badShare.status >= 300 
 
 // ── 5 + 6. Artist B append-publishes; fresh device sees both ──
 console.log('artist B append-publishes');
-pub = await publish('TXB0000000000000000000000000000000000000002');
+pub = await publish('TXB0000000000000000000000000000000000000002', walletBKeys);
 check('publish B (append) -> 200', pub.status === 200 && pub.body?.success === true, JSON.stringify(pub.body));
 reg = await getJson('/registry');
 const ids = (reg.body || []).map((e) => e.id);
@@ -135,7 +151,7 @@ check('fresh device read sees both releases', fresh.body?.length === 2);
 
 // ── 7. tamper rejection ──
 console.log('tamper attempt');
-const tamper = await publish('TXTAMPER00000000000000000000000000000000003');
+const tamper = await publish('TXTAMPER00000000000000000000000000000000003', walletBKeys);
 check('publish that hijacks A payout -> 403 REGISTRY_TAMPER', tamper.status === 403 && tamper.body?.code === 'REGISTRY_TAMPER', JSON.stringify(tamper.body));
 reg = await getJson('/registry');
 check("registry unchanged after tamper (A's wallet still honest)", reg.body.find((e) => e.id === A.id)?.artistWallet === A.artistWallet);

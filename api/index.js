@@ -91,6 +91,9 @@ const PURCHASE_SIGS_KEY = 'fontainor:purchases:sigs:v1'; // replay guard: signat
 const EDITIONS_MINTED_KEY = 'fontainor:editions:minted:v1'; // track id -> durable verified sale count
 const WALLET_RE = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 const favoritesKey = (wallet) => `fontainor:favorites:v1:${wallet}`;
+const LOGIN_FRESHNESS_MS = 10 * 60 * 1000;
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const CLOCK_SKEW_MS = 2 * 60 * 1000;
 let redis = null;
 if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
     try {
@@ -209,11 +212,79 @@ async function getWalletForHandle(bareHandle) {
 }
 
 /**
+ * Verify a wallet authorization over one exact registry manifest transaction.
+ * Binding the signature to txId prevents an authenticated wallet from being
+ * replayed to list any other permanent manifest, while the issue timestamp
+ * closes the replay window. Returns the verified base58 wallet or a clean
+ * HTTP error object.
+ */
+async function verifyPublishAuthorization(body, txId) {
+    const { publicKey, signature } = body || {};
+    const issuedAt = Number(body?.issuedAt);
+    if (!publicKey || !signature || !Number.isSafeInteger(issuedAt)) {
+        return { error: { status: 401, body: { success: false, code: 'PUBLISH_AUTH_REQUIRED', error: 'A fresh wallet signature is required to list this manifest.' } } };
+    }
+    const decoded = decodeSignedPayload(publicKey, signature);
+    if (!decoded) {
+        return { error: { status: 400, body: { success: false, code: 'PUBLISH_AUTH_INVALID', error: 'Malformed publish authorization.' } } };
+    }
+    const message = `Fontainor publish manifest: ${txId} :: ${issuedAt}`;
+    const stale = signedMessageStaleness(message, LOGIN_FRESHNESS_MS);
+    if (stale) {
+        return { error: { status: 401, body: { success: false, code: 'SIGNATURE_STALE', error: stale, serverTime: Date.now() } } };
+    }
+    const nacl = await import('tweetnacl');
+    const verified = nacl.default.sign.detached.verify(new TextEncoder().encode(message), decoded.sig, decoded.pk);
+    if (!verified) {
+        return { error: { status: 401, body: { success: false, code: 'PUBLISH_AUTH_INVALID', error: 'Cryptographic publish authorization rejected.' } } };
+    }
+    return { wallet: bs58.encode(decoded.pk) };
+}
+
+const ENTRY_AUTH_DOMAIN = 'Fontainor registry entry v1';
+
+/** Exact immutable payload signed by the artist and stored in the manifest. */
+function entryAuthorizationMessage(entry) {
+    const { artistProof: _proof, ...unsigned } = entry || {};
+    return `${ENTRY_AUTH_DOMAIN}\n${canonical(unsigned)}`;
+}
+
+/**
+ * Verify a self-contained artist proof on one registry entry.
+ * The proof survives independently of Redis and the serverless pointer, so a
+ * cold-start recovery never has to trust public Irys tags as authorization.
+ */
+async function verifyEntryAuthorization(entry) {
+    if (!entry || typeof entry !== 'object' || typeof entry.artistWallet !== 'string') return false;
+    const proof = entry.artistProof;
+    if (!proof || proof.version !== 1) return false;
+    const decoded = decodeSignedPayload(proof.publicKey, proof.signature);
+    if (!decoded || bs58.encode(decoded.pk) !== entry.artistWallet) return false;
+    const nacl = await import('tweetnacl');
+    return nacl.default.sign.detached.verify(
+        new TextEncoder().encode(entryAuthorizationMessage(entry)),
+        decoded.sig,
+        decoded.pk,
+    );
+}
+
+async function firstInvalidNewEntryProof(current, incoming) {
+    const check = checkAppendOnly(current, incoming);
+    if (!check.ok) return { tamper: check.error };
+    for (const entry of check.newEntries) {
+        if (!(await verifyEntryAuthorization(entry))) return { entry };
+    }
+    return null;
+}
+
+/**
  * Manifest safety gate shared by /upload and /api/v1/publish:
  * append-only vs. the trusted durable registry + claimed-handle ownership
- * on new entries. Returns null when clean, otherwise {status, body}.
+ * on new entries. Every new entry must also name the wallet that signed this
+ * exact publish request; a public Arweave txId is not authorization.
+ * Returns null when clean, otherwise {status, body}.
  */
-async function guardIncomingManifest(incoming) {
+async function guardIncomingManifest(incoming, authorizedWallet) {
     // Trusted baseline: durable store first, then the live manifest pointer.
     // With neither available there is no trusted state to defend yet.
     let current = await readDurableRegistry();
@@ -230,6 +301,29 @@ async function guardIncomingManifest(incoming) {
     const check = checkAppendOnly(current, incoming);
     if (!check.ok) {
         return { status: 403, body: { success: false, error: check.error, code: 'REGISTRY_TAMPER' } };
+    }
+    for (const entry of check.newEntries) {
+        if (!(await verifyEntryAuthorization(entry))) {
+            return {
+                status: 403,
+                body: {
+                    success: false,
+                    code: 'ENTRY_AUTH_INVALID',
+                    error: `New entry ${entry?.id || '(missing id)'} has no valid permanent artist authorization.`,
+                },
+            };
+        }
+    }
+    const unauthorized = check.newEntries.find((entry) => !entry || entry.artistWallet !== authorizedWallet);
+    if (unauthorized) {
+        return {
+            status: 403,
+            body: {
+                success: false,
+                code: 'PUBLISHER_MISMATCH',
+                error: `New entry ${unauthorized?.id || '(missing id)'} is not authorized by its artistWallet.`,
+            },
+        };
     }
     const conflicts = await findHandleConflicts(check.newEntries, getWalletForHandle);
     if (conflicts.length > 0) {
@@ -331,11 +425,8 @@ async function fetchRegistryFromGateway(txId) {
 
 // --- Registry self-heal via Irys GraphQL ---
 // The musician-pays publish flow uploads every registry manifest to Irys with
-// these tags. If the serverless pointer is lost (cold start) and no durable
-// store is configured, the newest tagged manifest is recovered from the
-// permanent record, so the catalog survives redeploys even with zero env vars.
-// NOTE: tags are not access-controlled; a durable store (Upstash), once
-// configured, always takes precedence over this recovery path.
+// these tags. Tags are public discovery hints, NOT authorization: recovery
+// accepts a candidate only when its appended entries carry valid artistProofs.
 const MANIFEST_TAGS = [
     { name: 'App-Name', value: 'Fontainor-Protocol' },
     { name: 'Type', value: 'registry-manifest' },
@@ -362,16 +453,10 @@ async function recoverLatestManifestFromIrys() {
         const ids = (out?.data?.transactions?.edges ?? []).map((e) => e?.node?.id).filter(Boolean);
         if (ids.length === 0) return null;
 
-        // Tags are not access-controlled, so the newest tagged manifest may be
-        // an attacker's. Every LEGIT manifest is an append-only extension of
-        // the one before it, so we fetch the newest few and accept the newest
-        // candidate that contains every older fetched manifest unchanged
-        // (checkAppendOnly). A forged full-replacement manifest drops or edits
-        // honest history and is skipped; a forged append-only extension is
-        // equivalent to a normal publish (spam entry, no hijack). Limitation:
-        // an attacker who floods more than RECOVERY_SCAN_DEPTH manifests can
-        // push honest history out of the window — the durable store (Upstash),
-        // once configured, always takes precedence over this path.
+        // Every LEGIT manifest is an append-only extension of the one before
+        // it. We fetch the newest window and build a trusted chain from oldest
+        // to newest. Every entry in the seed and every later append needs its
+        // own artist signature; public tags alone never establish trust.
         const manifests = [];
         for (const id of ids) {
             try {
@@ -379,16 +464,25 @@ async function recoverLatestManifestFromIrys() {
                 if (Array.isArray(data) && data.length > 0) manifests.push({ id, data });
             } catch { /* unresolvable yet — skip */ }
         }
-        for (let i = 0; i < manifests.length; i++) {
-            const candidate = manifests[i];
-            const tampers = manifests.slice(i + 1).some((older) => !checkAppendOnly(older.data, candidate.data).ok);
-            if (tampers) continue;
-            if (i > 0) console.warn(`⚠️ Irys recovery: skipped ${i} newer manifest(s) that tampered with older history.`);
-            writeManifestPointer(candidate.id); // warm-instance cache for subsequent reads
-            return candidate.data;
+        if (manifests.length === 0) return null;
+        const chronological = manifests.slice().reverse();
+        let trusted = null;
+        let rejected = 0;
+        for (const candidate of chronological) {
+            const invalid = await firstInvalidNewEntryProof(trusted?.data ?? [], candidate.data);
+            if (invalid) {
+                rejected++;
+                continue;
+            }
+            trusted = candidate;
         }
-        console.error('Irys manifest recovery: no consistent manifest found in the newest ' + manifests.length + '.');
-        return null;
+        if (rejected > 0) console.warn(`⚠️ Irys recovery: skipped ${rejected} unauthorized or tampering manifest(s).`);
+        if (!trusted) {
+            console.error('Irys manifest recovery: no fully artist-authorized manifest found.');
+            return null;
+        }
+        writeManifestPointer(trusted.id);
+        return trusted.data;
     } catch (e) {
         console.error('Irys manifest recovery failed:', e.message);
         return null;
@@ -438,45 +532,15 @@ app.get('/registry', async (req, res) => {
 });
 
 // 2. Upload (Manifest)
-app.post('/upload', validateUpload, async (req, res) => {
-    try {
-        const manifestArray = Array.isArray(req.body) ? req.body : [req.body];
-
-        // Tamper/impersonation gate: append-only vs. trusted registry,
-        // claimed handles only publishable by their owner wallet.
-        const guardFail = await guardIncomingManifest(manifestArray);
-        if (guardFail) return res.status(guardFail.status).json(guardFail.body);
-
-        // Try the permanent write first when a funded wallet exists.
-        const wallet = loadWallet();
-        const hasWallet = wallet && Object.keys(wallet).length > 0;
-        let txId = null;
-        if (hasWallet) {
-            // Always etch the normalized ARRAY (req.body may be a bare object).
-            const up = await uploadManifest(JSON.stringify(manifestArray), { arweave, wallet });
-            if (up.success) {
-                writeManifestPointer(up.txId);
-                txId = up.txId;
-            } else if (!redis) {
-                // no durable fallback either — surface the Arweave failure as before
-                return res.status(502).json({ success: false, error: up.error, code: up.code });
-            }
-        }
-
-        // Durable registry write (works with or without Arweave). Merge-on-write
-        // so a concurrent publish that landed since the guard check isn't dropped.
-        const { durable: durableOk } = await mergeWriteDurableRegistry(manifestArray);
-        if (!txId && !durableOk) {
-            return res.status(502).json({
-                success: false,
-                error: 'No write target available: fund an Arweave wallet or set UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN.',
-                code: 'NO_WRITE_TARGET',
-            });
-        }
-        return res.json({ success: true, txId: txId ?? 'REGISTRY_' + Date.now().toString(36).toUpperCase(), durable: durableOk, arweave: txId != null });
-    } catch (error) {
-        return res.status(500).json({ success: false, error: error.message, code: 'SERVER_ERR' });
-    }
+app.post('/upload', validateUpload, (_req, res) => {
+    // The real client already uploads the permanent manifest before listing.
+    // Accepting a caller-supplied full array here was an unauthenticated bypass
+    // of txId-bound publish authorization and could inject non-permanent rows.
+    return res.status(410).json({
+        success: false,
+        code: 'UPLOAD_RETIRED',
+        error: 'Direct registry uploads are retired. Upload the manifest to Irys, then list its txId through /api/v1/publish with wallet authorization.',
+    });
 });
 
 // 3. Audio Chunk Upload — REMOVED. This route was permanently non-functional:
@@ -711,10 +775,6 @@ app.post('/api/v1/verify-payment', async (req, res) => {
 //   - stored session proofs may keep authenticating profile writes for
 //     SESSION_TTL_MS, after which the app asks Phantom for one fresh signature.
 // Timestamps slightly in the future are tolerated up to CLOCK_SKEW_MS.
-const LOGIN_FRESHNESS_MS = 10 * 60 * 1000;
-const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const CLOCK_SKEW_MS = 2 * 60 * 1000;
-
 /** Extract the trailing " :: <unix-ms>" issue timestamp, or null if absent/invalid. */
 function signedMessageIssuedAt(message) {
     const m = /^[\s\S]*? :: (\d{10,16})$/.exec(String(message || ''));
@@ -1187,6 +1247,8 @@ app.post('/api/v1/publish', async (req, res) => {
         if (!txId || typeof txId !== 'string' || txId.length < 10 || txId.length > 64 || !/^[A-Za-z0-9_-]+$/.test(txId)) {
             return res.status(400).json({ success: false, error: 'Invalid txId' });
         }
+        const auth = await verifyPublishAuthorization(req.body, txId);
+        if (auth.error) return res.status(auth.error.status).json(auth.error.body);
         // Fetch and sanity-check the manifest before repointing the registry:
         // it must resolve on a gateway and parse as a non-empty array.
         let manifest = null;
@@ -1201,7 +1263,7 @@ app.post('/api/v1/publish', async (req, res) => {
         // Tamper/impersonation gate: the new manifest must contain every
         // existing entry unchanged, and new entries may not use someone
         // else's claimed handle.
-        const guardFail = await guardIncomingManifest(manifest);
+        const guardFail = await guardIncomingManifest(manifest, auth.wallet);
         if (guardFail) return res.status(guardFail.status).json(guardFail.body);
         writeManifestPointer(txId);
         // Merge-on-write: don't drop a release another artist published

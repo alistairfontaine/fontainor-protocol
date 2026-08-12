@@ -2,6 +2,7 @@ package com.fontainor.app;
 
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
@@ -11,6 +12,11 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+
+import java.io.File;
+import java.util.Map;
+
+import org.json.JSONObject;
 
 /**
  * WebView side of the offline-download foreground service.
@@ -27,6 +33,7 @@ import com.getcapacitor.annotation.CapacitorPlugin;
  */
 @CapacitorPlugin(name = "FontainorDownloads")
 public class DownloaderPlugin extends Plugin {
+    private static final String COMPLETED_PREFS = "fontainor_download_results_v1";
 
     private final DownloadService.Reporter reporter = new DownloadService.Reporter() {
         @Override
@@ -177,6 +184,54 @@ public class DownloaderPlugin extends Plugin {
         } catch (Exception e) {
             /* the service is already gone: nothing to cancel */
         }
+        call.resolve();
+    }
+
+    /**
+     * Drain service completions that happened while the WebView was dead.
+     * Rows remain until JS acknowledges each one after verifying/stat'ing the
+     * file and committing the authoritative metadata index.
+     */
+    @PluginMethod
+    public void takeCompleted(PluginCall call) {
+        SharedPreferences prefs = getContext().getSharedPreferences(COMPLETED_PREFS, Context.MODE_PRIVATE);
+        com.getcapacitor.JSArray rows = new com.getcapacitor.JSArray();
+        for (Map.Entry<String, ?> item : prefs.getAll().entrySet()) {
+            if (!(item.getValue() instanceof String)) continue;
+            try {
+                JSONObject row = new JSONObject((String) item.getValue());
+                String path = row.optString("path", "");
+                if (!path.isEmpty() && new File(getContext().getFilesDir(), path).isFile()) rows.put(row);
+            } catch (Exception ignored) {
+                /* malformed journal row is ignored */
+            }
+        }
+        JSObject ret = new JSObject();
+        ret.put("entries", rows);
+        call.resolve(ret);
+    }
+
+    /** Remove journal rows only after JS has durably saved their index rows. */
+    @PluginMethod
+    public void acknowledgeCompleted(PluginCall call) {
+        com.getcapacitor.JSArray ids = call.getArray("ids");
+        if (ids == null) {
+            call.reject("ids are required");
+            return;
+        }
+        SharedPreferences.Editor edit = getContext()
+                .getSharedPreferences(COMPLETED_PREFS, Context.MODE_PRIVATE)
+                .edit();
+        try {
+            for (int i = 0; i < ids.length(); i++) {
+                String id = ids.getString(i);
+                if (id != null && !id.isEmpty()) edit.remove(id);
+            }
+        } catch (Exception e) {
+            call.reject("invalid ids");
+            return;
+        }
+        edit.apply();
         call.resolve();
     }
 }
