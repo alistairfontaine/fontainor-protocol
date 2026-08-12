@@ -1,10 +1,20 @@
 // A desktop Phantom account switch/disconnect must invalidate the authenticated
 // SPA user immediately. Otherwise wallet B can remain behind wallet A's
 // profile, cached session proof, and publisher UI until a manual logout.
+import { spawn } from 'child_process';
 import { chromium } from 'playwright';
 
 const EXE = process.env.FONTAINOR_CHROMIUM || undefined;
-const BASE = 'http://127.0.0.1:4173';
+// Self-hosted preview: never assume a shared server on 4173 (CI starts those
+// on `localhost`, which is not always reachable as 127.0.0.1 on runners).
+const PORT = 4194;
+const BASE = `http://localhost:${PORT}`;
+const server = spawn('npx', ['vite', 'preview', '--port', String(PORT), '--strictPort'], { stdio: 'ignore' });
+process.on('exit', () => { try { server.kill(); } catch { /* ignore */ } });
+for (let i = 0; i < 60; i++) {
+    try { if ((await fetch(BASE + '/')).ok) break; } catch { /* not up yet */ }
+    await new Promise((r) => setTimeout(r, 500));
+}
 const WALLET_A = '71FvemD53qhyPSbT4abM19PUcFkhkPGCAW85SRZt9eKg';
 const WALLET_B = '7YttLkHDoSgC5c6ayhNHj6xnEQvVf4DqSxYFfcoZkpVx';
 let passed = 0, failed = 0;
@@ -82,5 +92,6 @@ state = await page.evaluate(() => ({
 check('disconnect clears restored identity and proof', state.user === null && state.proof === null && /Your wallet is your identity/i.test(state.text), JSON.stringify(state));
 
 await browser.close();
+server.kill();
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

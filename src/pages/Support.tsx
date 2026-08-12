@@ -5,21 +5,28 @@ import { useEffect, useState } from 'react'
 import { IconCheck, IconExternal, IconSpinner, IconWallet } from '../components/icons'
 import { Button, PageHead } from '../components/ui'
 import { CHANNELS, TIP_PRESETS, TIP_WALLET, TIP_WALLET_HANDLE } from '../config/support'
-import { getPhantom, getWorkingRpc } from '../lib/phantom'
+import { sendTip } from '../lib/tip'
 
 type TipState =
   | { phase: 'idle' }
   | { phase: 'sending'; amount: number }
-  | { phase: 'sent'; signature: string }
-  | { phase: 'error'; message: string }
+  | { phase: 'sent'; signature?: string; explorerUrl?: string }
+  | { phase: 'error'; message: string; explorerUrl?: string }
 
 function useCopy(): [boolean, (text: string) => void] {
   const [copied, setCopied] = useState(false)
   const copy = (text: string) => {
-    void navigator.clipboard?.writeText(text).then(() => {
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    })
+    // Clipboard access rejects in insecure contexts and when permission is
+    // denied — swallow it instead of throwing an unhandled rejection, and
+    // leave the address on screen (it is always selectable) as the fallback.
+    Promise.resolve(navigator.clipboard?.writeText(text))
+      .then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+      })
+      .catch(() => {
+        /* address stays visible and selectable */
+      })
   }
   return [copied, copy]
 }
@@ -30,40 +37,13 @@ function TipJar() {
   const [copied, copy] = useCopy()
 
   const tip = async (amount: number) => {
+    if (state.phase === 'sending') return
     setState({ phase: 'sending', amount })
-    try {
-      const provider = getPhantom()
-      if (!provider) {
-        setState({
-          phase: 'error',
-          message: 'Phantom not detected — you can still copy the address below and send from any wallet.',
-        })
-        return
-      }
-      const pubkey = provider.publicKey ?? (await provider.connect()).publicKey
-      const { Connection, PublicKey, SystemProgram, Transaction } = await import('@solana/web3.js')
-      const connection = new Connection(await getWorkingRpc(), 'confirmed')
-      const from = new PublicKey(pubkey.toString())
-      const tx = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: from,
-          toPubkey: new PublicKey(TIP_WALLET),
-          lamports: Math.round(amount * 1e9),
-        }),
-      )
-      tx.feePayer = from
-      tx.recentBlockhash = (await connection.getLatestBlockhash()).blockhash
-      const { signature } = await provider.signAndSendTransaction(tx)
-      setState({ phase: 'sent', signature })
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e)
-      setState({
-        phase: 'error',
-        message: /reject|denied|cancel/i.test(message)
-          ? 'No problem — the tip was cancelled.'
-          : `Couldn't send the tip (${message}). You can copy the address below instead.`,
-      })
-    }
+    // A signature alone is not a payment: sendTip only reports success once
+    // the network confirms, and always returns the id of anything it sent.
+    const result = await sendTip(amount)
+    if (result.ok) setState({ phase: 'sent', signature: result.signature, explorerUrl: result.explorerUrl })
+    else setState({ phase: 'error', message: result.msg, explorerUrl: result.explorerUrl })
   }
 
   return (
@@ -77,17 +57,26 @@ function TipJar() {
       </p>
 
       {state.phase === 'sent' ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ok">
+        <div className="mt-4 flex flex-wrap items-center gap-2 text-sm text-ok" data-testid="tip-sent">
           <IconCheck size={16} />
           <span>Tip sent — thank you for keeping the registry alive.</span>
-          <a
-            href={`https://solscan.io/tx/${state.signature}`}
-            target="_blank"
-            rel="noreferrer"
-            className="inline-flex items-center gap-1 text-muted underline decoration-line underline-offset-2 hover:text-ink"
+          {state.explorerUrl && (
+            <a
+              href={state.explorerUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-muted underline decoration-line underline-offset-2 hover:text-ink"
+            >
+              View transaction <IconExternal size={13} />
+            </a>
+          )}
+          <button
+            type="button"
+            onClick={() => setState({ phase: 'idle' })}
+            className="text-[12px] text-muted underline decoration-line underline-offset-2 hover:text-ink"
           >
-            View transaction <IconExternal size={13} />
-          </a>
+            Tip again
+          </button>
         </div>
       ) : (
         <div className="mt-4 flex flex-wrap items-center gap-2.5">
@@ -107,7 +96,24 @@ function TipJar() {
         </div>
       )}
 
-      {state.phase === 'error' && <p className="mt-3 text-[13px] text-warn">{state.message}</p>}
+      {state.phase === 'error' && (
+        <p className="mt-3 text-[13px] text-warn" data-testid="tip-error">
+          {state.message}
+          {state.explorerUrl && (
+            <>
+              {' '}
+              <a
+                href={state.explorerUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1 underline decoration-line underline-offset-2 hover:text-ink"
+              >
+                View transaction <IconExternal size={13} />
+              </a>
+            </>
+          )}
+        </p>
+      )}
 
       <div className="mt-4 border-t border-line pt-4">
         <p className="text-[11px] font-medium uppercase tracking-wider text-faint">
