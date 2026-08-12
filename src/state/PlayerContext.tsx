@@ -69,6 +69,7 @@ const ProgressCtx = createContext<PlayerProgress>({ pos: 0, cur: 0, dur: 0 })
 
 const DEMO_DURATION = 180 // simulated playback when a release has no audioUri
 const PRELOAD_EAGER_SECONDS = 12 // fully buffer the next track when this close to the end (F60)
+const STALL_TIMEOUT_MS = 12000 // a source that buffers this long without progress is treated as dead (C21)
 const RESTART_THRESHOLD = 3 // seconds — prev restarts the track past this point (Spotify behavior)
 
 // ── Media session (lock-screen / notification controls) ─────────────────────
@@ -397,7 +398,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       if (!handleEnded()) setPlaying(false)
     })
-    a.addEventListener('error', () => {
+    const failOver = () => {
       if (audioRef.current !== a) return
       const rel = currentRef.current
       // A local downloaded file that no longer decodes must not silently turn
@@ -405,7 +406,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       // the download; the remaining sources are gateways.
       if (rel && a.dataset.localDownload === rel.id) void dropBrokenDownload(rel.id)
       else markGatewayDown(a.src)
-      if (rel && attemptsRef.current?.id === rel.id && attachNextSource()) return
+      // Continue from where this source died, not from 0:00 (C21).
+      if (rel && attemptsRef.current?.id === rel.id && attachNextSource(a.currentTime)) return
       // Out of sources. A release that HAS audio must say so instead of
       // pretending to play: the demo simulator is for entries with no audio.
       audioRef.current = null
@@ -418,14 +420,40 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       }
       setDur(DEMO_DURATION)
       startSim(0)
+    }
+    a.addEventListener('error', failOver)
+    // Stall watchdog (C21): a gateway that answers headers and then stops
+    // sending bytes never fires 'error' — playback just freezes with a stuck
+    // playhead. 'waiting' fires when the buffer runs dry; if the position has
+    // not moved STALL_TIMEOUT_MS later while we still want playback, treat the
+    // source as dead and fail over exactly like an error.
+    let stallTimer: ReturnType<typeof setTimeout> | null = null
+    const clearStallTimer = () => {
+      if (stallTimer) {
+        clearTimeout(stallTimer)
+        stallTimer = null
+      }
+    }
+    a.addEventListener('waiting', () => {
+      if (audioRef.current !== a || !playingRef.current) return
+      clearStallTimer()
+      const posAtStall = a.currentTime
+      stallTimer = setTimeout(() => {
+        stallTimer = null
+        if (audioRef.current !== a || !playingRef.current) return
+        if (a.currentTime <= posAtStall + 0.1 && !a.ended) failOver()
+      }, STALL_TIMEOUT_MS)
     })
+    a.addEventListener('playing', clearStallTimer)
+    a.addEventListener('pause', clearStallTimer)
+    a.addEventListener('ended', clearStallTimer)
   }
 
   /**
    * Advance to the next source for the current release, if there is one.
    * Returns false when the list is exhausted.
    */
-  const attachNextSource = (): boolean => {
+  const attachNextSource = (resumeAt = 0): boolean => {
     const at = attemptsRef.current
     const rel = currentRef.current
     if (!at || !rel || at.id !== rel.id) return false
@@ -435,6 +463,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const url = at.list[next]
     const b = new Audio(url)
     if (url === localAudioSrc(rel.id)) b.dataset.localDownload = rel.id
+    // Mid-track failover must CONTINUE the track, not restart it (C21): pick
+    // up where the dead source left off. Set before play(); the browser
+    // queues the seek until metadata arrives.
+    if (resumeAt > 0.5) b.currentTime = resumeAt
     audioRef.current = b
     wireAudio(b)
     void b.play().catch(() => {
