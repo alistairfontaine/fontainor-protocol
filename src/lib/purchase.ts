@@ -65,6 +65,17 @@ export function loadPurchases(): PurchaseReceipt[] {
   return cache
 }
 
+/**
+ * The receipt store is shared by the browser profile, not by a wallet account.
+ * Always scope collection reads to the active wallet; otherwise wallet B sees
+ * wallet A's locally cached receipts after an account switch (and logout still
+ * shows the previous person's collection).
+ */
+export function purchasesForWallet(wallet: string | null | undefined): PurchaseReceipt[] {
+  if (!wallet) return []
+  return cache.filter((p) => p.buyerWallet === wallet)
+}
+
 export function subscribePurchases(l: Listener): () => void {
   listeners.add(l)
   return () => listeners.delete(l)
@@ -75,8 +86,9 @@ export function usePurchases(): PurchaseReceipt[] {
   return useSyncExternalStore(subscribePurchases, loadPurchases)
 }
 
-export function hasPurchased(trackId: string): PurchaseReceipt | undefined {
-  return loadPurchases().find((p) => p.trackId === trackId)
+export function hasPurchased(trackId: string, buyerWallet: string | null | undefined): PurchaseReceipt | undefined {
+  if (!buyerWallet) return undefined
+  return cache.find((p) => p.trackId === trackId && p.buyerWallet === buyerWallet)
 }
 
 function savePurchase(r: PurchaseReceipt): void {

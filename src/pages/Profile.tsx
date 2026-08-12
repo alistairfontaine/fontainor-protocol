@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
 import { IconDisc, IconExternal, IconHeart, IconHistory, IconPublish, IconSpinner, IconWallet } from '../components/icons'
 import { Badge, Button, EmptyState, PageHead } from '../components/ui'
-import { solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
+import { purchasesForWallet, solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
 import type { Release } from '../lib/registry'
 import { shortAddress, useAuth } from '../state/AuthContext'
 import { useRegistry } from '../state/RegistryContext'
@@ -11,7 +11,8 @@ import { useRegistry } from '../state/RegistryContext'
 export default function Profile() {
   const { user, connect, connecting, logout, updateHandle } = useAuth()
   const { releases } = useRegistry()
-  const purchases = usePurchases()
+  usePurchases()
+  const purchases = purchasesForWallet(user?.address)
   const [err, setErr] = useState<string | null>(null)
   const [editingHandle, setEditingHandle] = useState(false)
   const [handleDraft, setHandleDraft] = useState('')

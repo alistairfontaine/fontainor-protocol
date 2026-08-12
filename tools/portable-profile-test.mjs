@@ -203,6 +203,50 @@ async function frontend() {
   check('B4 machine B local stores hydrated', persisted.purchases === 1 && persisted.favs.includes('FONT-BUYME1'))
 
   await ctxB.close()
+
+  // ── Machine C: same browser profile, DIFFERENT wallet ──
+  // Receipt localStorage is shared by the browser. A collection must be scoped
+  // to the active wallet rather than blindly rendering every cached receipt.
+  const OTHER_BUYER = '7YttLkHDoSgC5c6ayhNHj6xnEQvVf4DqSxYFfcoZkpVx'
+  const ctxC = await browser.newContext({ viewport: { width: 1280, height: 900 } })
+  await ctxC.route('**/registry', (r) => r.fulfill({ json: REGISTRY }))
+  await ctxC.route('**/registry.json', (r) => r.fulfill({ json: REGISTRY }))
+  await ctxC.route('**/api/v1/auth/sovereign-login', (r) =>
+    r.fulfill({ json: { success: true, wallet: OTHER_BUYER, handle: '@other...kpVx' } }))
+  await ctxC.route('**/api/v1/purchases?*', (r) => r.fulfill({ json: { success: true, durable: true, purchases: [] } }))
+  await ctxC.route('**/api/v1/favorites*', (r) => r.fulfill({ json: { success: true, durable: true, ids: [] } }))
+  await ctxC.addInitScript(`(() => {
+    localStorage.setItem('fontainor_purchases_v1', ${JSON.stringify(JSON.stringify([{
+      trackId: 'FONT-BUYME1', signature: 'buyerAOnlySig', artistWallet: ARTIST,
+      buyerWallet: BUYER, lamports: 10000000, at: '2026-07-27T12:00:00.000Z',
+      serverVerified: true, title: 'Purchasable Track', artist: 'Wallet Artist'
+    }]))})
+    const pkBytes = new Uint8Array([99,24,215,28,77,143,209,32,55,191,81,52,160,218,29,174,191,20,85,204,67,116,75,4,199,172,172,45,181,226,219,223])
+    const pk = { toString: () => '${OTHER_BUYER}', toBytes: () => pkBytes }
+    window.solana = {
+      isPhantom: true, publicKey: pk,
+      connect: async () => ({ publicKey: pk }),
+      disconnect: async () => {},
+      signMessage: async () => ({ signature: new Uint8Array(64).fill(5) }),
+    }
+  })()`)
+  const pageC = await ctxC.newPage()
+  await connectOnProfile(pageC)
+  await pageC.goto(`${BASE}/#/collection`)
+  await pageC.reload()
+  await pageC.getByText('Nothing collected yet').waitFor({ timeout: 10000 }).catch(() => {})
+  const cBody = await pageC.textContent('body')
+  check('B5 cached receipt from wallet A is hidden from wallet B', cBody.includes('Nothing collected yet') && !cBody.includes('buyerAOnlySig'))
+
+  // Logout is also an identity boundary: a public Collection route must not
+  // keep displaying the wallet that just logged out.
+  await pageC.goto(`${BASE}/#/profile`)
+  await pageC.getByRole('button', { name: 'Log out' }).click()
+  await pageC.goto(`${BASE}/#/collection`)
+  const loggedOutBody = await pageC.textContent('body')
+  check('B6 logout hides all wallet-scoped cached receipts', loggedOutBody.includes('Your collection lives here') && !loggedOutBody.includes('Purchasable Track'))
+
+  await ctxC.close()
   await browser.close()
 }
 

@@ -213,7 +213,7 @@ function CollectCta({ rel, sold }: { rel: Release; sold: boolean }) {
     | { phase: 'done'; signature: string }
     | { phase: 'error'; message: string }
   const [st, setSt] = useState<St>({ phase: 'idle' })
-  const owned = useMemo(() => hasPurchased(rel.id), [rel.id, st.phase])
+  const owned = useMemo(() => hasPurchased(rel.id, user?.address), [rel.id, user?.address, st.phase])
 
   if (rel.type !== 'release' || rel.price.amount <= 0) return null
 

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { ReleaseGrid } from '../components/ReleaseCard'
 import { IconDisc, IconExternal, IconHeart, IconHistory } from '../components/icons'
 import { Button, EmptyState, GridSkeleton, PageHead } from '../components/ui'
-import { solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
+import { purchasesForWallet, solscanTx, usePurchases, type PurchaseReceipt } from '../lib/purchase'
 import type { Release } from '../lib/registry'
 import { useAuth } from '../state/AuthContext'
 import { useFavorites, useHistoryLog } from '../state/collections'
@@ -77,7 +77,11 @@ export function History() {
 export function Collection() {
   const { releases, loading } = useRegistry()
   const { user } = useAuth()
-  const purchases = usePurchases()
+  // Subscribe to receipt changes, then expose only this wallet's collection.
+  // Local storage is browser-wide; receipts from a previous account must not
+  // appear after logout/account switch.
+  usePurchases()
+  const purchases = purchasesForWallet(user?.address)
   // Receipts recovered from the durable server record carry no title/artist —
   // resolve them from the registry by trackId (same rule as the Profile page).
   const rows = purchases.map((p) => {
