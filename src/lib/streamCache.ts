@@ -37,6 +37,33 @@ export function streamCacheCapBytes(): number {
   return STREAM_CACHE_DEFAULT_BYTES
 }
 
+/**
+ * Persist a new byte cap and immediately evict down to it (settings UI).
+ * Passing a non-positive/invalid value restores the default cap.
+ */
+export async function setStreamCacheCapBytes(bytes: number): Promise<void> {
+  try {
+    if (Number.isFinite(bytes) && bytes > 0) localStorage.setItem(STREAM_CACHE_CAP_KEY, String(Math.floor(bytes)))
+    else localStorage.removeItem(STREAM_CACHE_CAP_KEY)
+  } catch {
+    /* storage blocked — the default cap stays in force */
+  }
+  await enforceStreamCacheCap()
+}
+
+/** Evict LRU entries until the index fits the current cap. Never throws. */
+export async function enforceStreamCacheCap(): Promise<void> {
+  try {
+    if (!hasCaches()) return
+    const cache = await caches.open(STREAM_CACHE_NAME)
+    const idx = loadIndex()
+    await evictToCap(cache, idx, streamCacheCapBytes())
+    saveIndex(idx)
+  } catch {
+    /* best-effort */
+  }
+}
+
 /** Refuse to cache single files bigger than this — they'd evict everything else. */
 function maxItemBytes(): number {
   return Math.min(64 * 1024 * 1024, streamCacheCapBytes())
@@ -86,6 +113,27 @@ const inflight = new Set<string>()
 /** Cache request URL — a synthetic same-origin path keyed by content id. */
 function cacheRequestFor(key: string): string {
   return `/__stream-cache__/${encodeURIComponent(key)}`
+}
+
+/**
+ * LRU eviction: delete oldest-touched entries (cache body + blob URL) until
+ * `idx` fits `cap`. Mutates `idx` in place; `protectKey` is never evicted.
+ */
+async function evictToCap(cache: Cache, idx: IndexEntry[], cap: number, protectKey?: string): Promise<void> {
+  let total = idx.reduce((s, e) => s + e.size, 0)
+  if (total <= cap) return
+  const byAge = [...idx].sort((a, b) => a.at - b.at)
+  for (const victim of byAge) {
+    if (total <= cap || victim.key === protectKey) continue
+    await cache.delete(cacheRequestFor(victim.key))
+    const url = materialized.get(victim.key)
+    if (url) {
+      URL.revokeObjectURL(url)
+      materialized.delete(victim.key)
+    }
+    idx.splice(idx.indexOf(victim), 1)
+    total -= victim.size
+  }
 }
 
 function touch(key: string): void {
@@ -163,22 +211,7 @@ export function stashStream(uri: string | null | undefined, fetchUrl: string): v
       const idx = loadIndex().filter((e) => e.key !== key)
       idx.push({ key, size: blob.size, at: Date.now() })
       // LRU eviction: oldest-touched first, never the entry just written.
-      const cap = streamCacheCapBytes()
-      let total = idx.reduce((s, e) => s + e.size, 0)
-      if (total > cap) {
-        const byAge = [...idx].sort((a, b) => a.at - b.at)
-        for (const victim of byAge) {
-          if (total <= cap || victim.key === key) continue
-          await cache.delete(cacheRequestFor(victim.key))
-          const url = materialized.get(victim.key)
-          if (url) {
-            URL.revokeObjectURL(url)
-            materialized.delete(victim.key)
-          }
-          idx.splice(idx.indexOf(victim), 1)
-          total -= victim.size
-        }
-      }
+      await evictToCap(cache, idx, streamCacheCapBytes(), key)
       saveIndex(idx)
       if (!materialized.has(key)) materialized.set(key, URL.createObjectURL(blob))
     } catch {

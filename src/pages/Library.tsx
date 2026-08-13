@@ -7,6 +7,13 @@ import { IconClose, IconLibrary, IconSearch } from '../components/icons'
 import { clearDownloadError, dismissWaiting, downloadRelease, releaseFromDownload, removeAllDownloads, removeDownload, useDownloads } from '../lib/downloads'
 import { hapticThump, hapticTick } from '../lib/haptics'
 import { IS_NATIVE } from '../lib/platform'
+import {
+  STREAM_CACHE_DEFAULT_BYTES,
+  clearStreamCache,
+  setStreamCacheCapBytes,
+  streamCacheBytes,
+  streamCacheCapBytes,
+} from '../lib/streamCache'
 import { usePlayer } from '../state/PlayerContext'
 import { useSettings } from '../state/settings'
 import { Chip, EmptyState, GridSkeleton, PageHead } from '../components/ui'
@@ -137,6 +144,78 @@ function DownloadSettings() {
           checked={settings.autoDownloadLikes}
           onChange={(v) => set('autoDownloadLikes', v)}
         />
+      </div>
+    </section>
+  )
+}
+
+const CACHE_CAP_OPTIONS: { label: string; bytes: number }[] = [
+  { label: '64 MB', bytes: 64 * 1024 * 1024 },
+  { label: '128 MB', bytes: 128 * 1024 * 1024 },
+  { label: '256 MB', bytes: STREAM_CACHE_DEFAULT_BYTES },
+  { label: '512 MB', bytes: 512 * 1024 * 1024 },
+  { label: '1 GB', bytes: 1024 * 1024 * 1024 },
+]
+
+/**
+ * Streaming-cache controls (C41). Metrolist exposes exactly this pair of
+ * knobs: a max-size picker and a clear button. Works on web and native —
+ * anywhere CacheStorage exists.
+ */
+function StreamCacheSettings() {
+  const [used, setUsed] = useState(() => streamCacheBytes())
+  const [cap, setCap] = useState(() => streamCacheCapBytes())
+  const [busy, setBusy] = useState(false)
+  if (typeof caches === 'undefined') return null
+  const capChoice = CACHE_CAP_OPTIONS.some((o) => o.bytes === cap) ? cap : STREAM_CACHE_DEFAULT_BYTES
+  return (
+    <section className="mb-10" aria-label="Streaming cache">
+      <h2 className="mb-4 text-lg font-semibold text-ink">Streaming cache</h2>
+      <div className="divide-y divide-line rounded-card border border-line bg-surface">
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-ink">Cache size limit</span>
+            <span className="block text-[12px] text-faint">
+              Recently streamed tracks replay instantly without re-downloading. Using {formatBytes(used)}.
+            </span>
+          </span>
+          <select
+            value={capChoice}
+            onChange={(e) => {
+              const bytes = Number(e.target.value)
+              setCap(bytes)
+              void setStreamCacheCapBytes(bytes).then(() => setUsed(streamCacheBytes()))
+            }}
+            className="h-9 shrink-0 cursor-pointer rounded-chip border border-line bg-surface px-3 text-[13px] text-body focus:outline-none"
+            aria-label="Streaming cache size limit"
+          >
+            {CACHE_CAP_OPTIONS.map((o) => (
+              <option key={o.bytes} value={o.bytes}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="flex items-center gap-3 px-3 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-medium text-ink">Clear streaming cache</span>
+            <span className="block text-[12px] text-faint">Downloads for offline listening are not affected.</span>
+          </span>
+          <button
+            onClick={() => {
+              if (busy) return
+              setBusy(true)
+              void clearStreamCache().then(() => {
+                setUsed(streamCacheBytes())
+                setBusy(false)
+              })
+            }}
+            disabled={busy || used <= 0}
+            className="h-9 shrink-0 cursor-pointer rounded-chip border border-line bg-surface px-3 text-[13px] font-medium text-body enabled:hover:border-accent enabled:hover:text-accent disabled:cursor-default disabled:opacity-50"
+          >
+            {busy ? 'Clearing…' : 'Clear'}
+          </button>
+        </div>
       </div>
     </section>
   )
@@ -393,6 +472,7 @@ export default function Library() {
 
       <DownloadsSection />
       <DownloadSettings />
+      <StreamCacheSettings />
 
       {q && (
         <p className="mb-5 text-sm text-muted">
